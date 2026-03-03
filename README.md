@@ -401,4 +401,19 @@ Tests use pytest-asyncio with `asyncio_mode = "auto"`. No running services requi
 
 ## License
 
-TBD
+FORMICOS LICENSE AGREEMENT
+==========================
+
+This software is licensed under the GNU Affero General Public License version 3 (AGPLv3), with the following Additional Permissions granted under Section 7 of the AGPLv3.
+
+SPECIAL EXCEPTION FOR SMALL BUSINESSES AND EDUCATIONAL INSTITUTIONS:
+As a special exception to the AGPLv3, the copyright holders of FormicOS grant you permission to modify the software and interact with it remotely through a computer network (e.g., as a SaaS) WITHOUT the obligation to distribute the corresponding source code under Section 13, PROVIDED THAT you meet at least one of the following criteria:
+
+1. Educational / Non-Profit: You are using the software exclusively for academic research, teaching at a recognized educational institution, or operating as a registered non-profit organization (e.g., 501(c)(3)).
+2. Small Business Commercial Use: Your organization (including any corporate affiliates) has a Gross Annual Revenue of less than $1,000,000 USD (or local equivalent) in the trailing 12 months.
+
+If your organization exceeds the $1,000,000 USD revenue threshold, this exception automatically terminates. At that point, you must either fully comply with the source-sharing requirements of Section 13 of the AGPLv3, or obtain a separate Commercial License from the copyright holder.
+
+COMMERCIAL LICENSING:
+If you do not meet the criteria for the exception above and wish to use FormicOS in a closed-source commercial environment without complying with the AGPLv3 network source-sharing requirements, please contact the repository owner for a Commercial License.
+
