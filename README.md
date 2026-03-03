@@ -2,7 +2,7 @@
 
 A local-first colony operating system that coordinates multiple LLM agents into self-organizing swarms using stigmergic coordination, dynamic topology routing, and shared environmental state.
 
-**Version**: 0.8.0
+**Version**: 0.9.0
 
 ## Architecture
 
