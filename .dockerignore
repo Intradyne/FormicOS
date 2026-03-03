@@ -1,0 +1,20 @@
+# FormicOS Docker Build Ignore
+# Skip large dirs that don't belong in the container
+.git
+.gitignore
+.models/
+docs/
+models/
+sessions/
+workspace/
+build/
+dist/
+*.gguf
+*.egg-info/
+formicos.egg-info/
+__pycache__
+*.pyc
+.env
+.venv
+venv/
+node_modules/

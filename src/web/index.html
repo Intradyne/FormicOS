@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FormicOS v0.9.0 — Operations Console</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+</head>
+<body>
+    <!-- ── Header ─────────────────────────────── -->
+    <header id="app-header">
+        <div class="header-left">
+            <h1 class="logo">FormicOS</h1>
+            <span class="version-badge">v0.9.0</span>
+            <span id="ws-status" class="ws-indicator ws-disconnected" title="WebSocket disconnected"></span>
+        </div>
+        <nav class="tab-nav" id="tab-nav">
+            <button class="tab-btn active" data-tab="fleet">Fleet</button>
+            <button class="tab-btn" data-tab="colony-workspace">Workspace</button>
+            <button class="tab-btn" data-tab="objects">Contracts</button>
+            <button class="tab-btn" data-tab="operations">Operations</button>
+        </nav>
+        <div class="header-right">
+            <span id="gpu-header-stat" class="gpu-stat" title="VRAM usage">GPU: --</span>
+        </div>
+    </header>
+
+    <!-- ── Tab Containers ─────────────────────── -->
+    <main id="main-content">
+
+        <!-- ══ Mission Control Tab ══════════════════ -->
+        <section id="tab-mission" class="tab-content">
+            <!-- Health Badges -->
+            <div class="dashboard-status-bar">
+                <div class="status-card" id="colony-name-card">
+                    <div class="status-label">Colony</div>
+                    <div class="status-value" id="colony-name-value">No colony selected</div>
+                    <span id="colony-test-flight-badge" class="badge-test-flight hidden">TEST FLIGHT (NO CONSEQUENCES)</span>
+                </div>
+                <div class="status-card" id="colony-status-card">
+                    <div class="status-label">Colony Status</div>
+                    <div class="status-value" id="colony-status-value">IDLE</div>
+                    <!-- Headless approval override (hidden by default) -->
+                    <div id="headless-override-panel" class="headless-override-panel hidden">
+                        <div class="headless-override-info">
+                            <span class="headless-override-label">Awaiting API Client:</span>
+                            <span id="headless-override-client" class="font-mono">--</span>
+                        </div>
+                        <div class="headless-override-details">
+                            <div class="approval-field">
+                                <label>Tool</label>
+                                <code id="headless-override-tool">--</code>
+                            </div>
+                            <div class="approval-field">
+                                <label>Arguments</label>
+                                <pre id="headless-override-args" class="code-block" style="max-height:120px;font-size:11px"></pre>
+                            </div>
+                        </div>
+                        <div class="headless-override-actions">
+                            <button class="btn btn-approve btn-sm" onclick="overrideHeadlessApproval(true)">Force Approve</button>
+                            <button class="btn btn-deny btn-sm" onclick="overrideHeadlessApproval(false)">Force Deny</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">Task</div>
+                    <div class="status-value status-task" id="colony-task-value">No task</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">Round</div>
+                    <div class="status-value" id="colony-round-value">0 / 0</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">Active Agents</div>
+                    <div class="status-value" id="colony-agents-value">0</div>
+                </div>
+            </div>
+
+            <!-- Colony Creation Form (inline) -->
+            <div class="mission-form">
+                <div class="mission-form-row">
+                    <div class="mission-form-field mission-form-field-wide">
+                        <label for="task-input">Task</label>
+                        <textarea id="task-input" class="command-input command-task-textarea" rows="3" placeholder="Enter task for the colony... (one per line for multi-task)"></textarea>
+                    </div>
+                </div>
+                <div class="mission-form-row">
+                    <div class="mission-form-field">
+                        <label for="mission-colony-id">Colony ID</label>
+                        <input type="text" id="mission-colony-id" class="form-input" placeholder="e.g. colony-alpha">
+                    </div>
+                    <div class="mission-form-field">
+                        <label for="rounds-input">Max Rounds</label>
+                        <input type="number" id="rounds-input" class="command-rounds form-input" value="5" min="1" max="50">
+                    </div>
+                    <div class="mission-form-field">
+                        <label>Team Preset</label>
+                        <div class="team-presets-row">
+                            <button class="btn btn-preset" type="button" onclick="applyTeamPreset('full-stack')">Full-Stack</button>
+                            <button class="btn btn-preset" type="button" onclick="applyTeamPreset('code-review')">Code Review</button>
+                            <button class="btn btn-preset" type="button" onclick="applyTeamPreset('research')">Research</button>
+                        </div>
+                    </div>
+                    <div class="mission-form-field">
+                        <label>&nbsp;</label>
+                        <div class="suggest-team-row">
+                            <button class="btn btn-accent" type="button" id="suggest-team-btn" onclick="suggestTeam()">Suggest Team</button>
+                            <span id="suggest-team-status" class="suggest-status"></span>
+                        </div>
+                    </div>
+                </div>
+                <div id="team-members-list" class="team-members-list"></div>
+                <div class="mission-form-row">
+                    <button class="btn btn-secondary" type="button" onclick="addTeamMember()">+ Add Agent</button>
+                </div>
+            </div>
+
+            <!-- Round Controls -->
+            <div class="command-bar">
+                <button class="btn btn-primary" id="btn-run" onclick="dashboardRunTask()">Run</button>
+                <button class="btn btn-secondary" id="btn-pause" onclick="dashboardPauseResume()">Pause</button>
+                <button class="btn btn-secondary" id="btn-extend" onclick="dashboardExtendRounds()">Extend</button>
+                <input type="text" id="hint-input" class="command-input command-hint" placeholder="Inject operator hint...">
+                <button class="btn btn-accent" id="btn-hint" onclick="dashboardInjectHint()">Hint</button>
+            </div>
+        </section>
+
+        <!-- ══ Colony Workspace Tab ═════════════════ -->
+        <section id="tab-colony-workspace" class="tab-content">
+            <div class="workspace-toolbar">
+                <input type="text" id="reuse-task-input" class="form-input reuse-task-input" placeholder="New task using this colony's retained context...">
+                <input type="number" id="reuse-rounds-input" class="form-input reuse-rounds-input" value="5" min="1" max="100">
+                <label class="toggle-label"><input type="checkbox" id="reuse-preserve-history" checked> Preserve context history</label>
+                <label class="toggle-label"><input type="checkbox" id="reuse-clear-workspace"> Clear workspace files</label>
+                <button class="btn btn-primary" onclick="reuseCurrentColony()">Reuse Colony</button>
+            </div>
+            <div class="colony-workspace-grid">
+                <!-- Topology Timeline Panel -->
+                <div class="panel panel-graph">
+                    <div class="panel-header">
+                        <h3>Topology</h3>
+                        <div class="panel-controls">
+                            <span id="topo-progress-summary" class="topo-progress-summary">No rounds yet</span>
+                            <button class="btn-icon btn-icon-active" onclick="toggleGraphView('topology')" title="Topology view">Topo</button>
+                            <button class="btn-icon" onclick="toggleGraphView('tkg')" title="TKG view">TKG</button>
+                            <select id="graph-layout-select" class="form-input console-filter-select" onchange="changeGraphLayout(this.value)">
+                                <option value="breadthfirst">Tree</option>
+                                <option value="cose">Force</option>
+                                <option value="circle">Circle</option>
+                                <option value="grid">Grid</option>
+                            </select>
+                            <button class="btn-icon" onclick="fitGraph()" title="Fit graph">Fit</button>
+                        </div>
+                    </div>
+                    <div id="topo-round-progress" class="topo-round-progress"></div>
+                    <div id="cy-container" class="cytoscape-container"></div>
+                </div>
+
+                <!-- Live Stream Console Panel -->
+                <div class="panel panel-console">
+                    <div class="panel-header">
+                        <h3>Live Stream</h3>
+                        <div class="panel-controls">
+                            <select id="console-agent-filter" class="form-input console-filter-select" onchange="filterConsoleByAgent(this.value)">
+                                <option value="">All agents</option>
+                            </select>
+                            <label class="toggle-label">
+                                <input type="checkbox" id="console-autoscroll" checked> Auto-scroll
+                            </label>
+                            <button class="btn-icon" onclick="clearConsole()">Clear</button>
+                        </div>
+                    </div>
+                    <div id="streaming-console" class="console-output" role="log" aria-live="polite" aria-relevant="additions"></div>
+                </div>
+
+                <!-- Decisions & Governance Panel -->
+                <div class="panel panel-decisions">
+                    <div class="panel-header">
+                        <h3>Decisions &amp; Governance</h3>
+                        <div class="panel-controls">
+                            <span id="decision-count" class="badge">0</span>
+                            <button class="btn-icon" onclick="exportDecisions()" title="Export decisions as JSON">Export</button>
+                        </div>
+                    </div>
+                    <div id="decision-log" class="decision-list" aria-live="polite" aria-relevant="additions"></div>
+                </div>
+
+                <!-- Approvals Queue Panel -->
+                <div class="panel panel-approvals">
+                    <div class="panel-header">
+                        <h3>Approvals Queue</h3>
+                        <div class="panel-controls">
+                            <span id="approvals-count" class="badge">0</span>
+                        </div>
+                    </div>
+                    <div id="approvals-queue" class="approvals-list">
+                        <div class="empty-state">No pending approvals</div>
+                    </div>
+                </div>
+
+
+                <!-- Artifacts Browser Panel (workspace files) -->
+                <div class="panel panel-workspace">
+                    <div class="panel-header">
+                        <h3>Artifacts</h3>
+                        <div class="panel-controls">
+                            <button class="btn-icon btn-accent-text" onclick="showDataClawModal()" title="Extract reasoning trace">DataClaw</button>
+                            <button class="btn-icon" onclick="downloadWorkspaceArchive()" title="Select workspace files for ZIP download">Download ZIP</button>
+                            <button class="btn-icon" onclick="refreshWorkspace()">Refresh</button>
+                            <label class="btn-icon upload-label">
+                                Upload <input type="file" id="workspace-upload" onchange="uploadWorkspaceFile()" hidden>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="workspace-path-bar" class="workspace-path-bar">/</div>
+                    <div id="workspace-file-list" class="workspace-file-list">
+                        <div class="empty-state">No colony active</div>
+                    </div>
+                    <div id="workspace-file-viewer" class="workspace-file-viewer hidden">
+                        <div class="workspace-viewer-header">
+                            <span id="workspace-viewer-name"></span>
+                            <button class="btn-icon" onclick="closeWorkspaceViewer()">Close</button>
+                        </div>
+                        <pre id="workspace-viewer-content" class="code-block"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══ Supercolony Fleet Tab ════════════════ -->
+        <section id="tab-fleet" class="tab-content active">
+            <div class="tab-toolbar">
+                <h2>Supercolony Fleet</h2>
+                <div class="tab-toolbar-actions">
+                    <button class="btn btn-secondary" onclick="loadFleet()">Refresh</button>
+                    <button class="btn btn-primary" onclick="showCreateColonyModal()">+ New Colony</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="fleet-table data-table" id="fleet-table">
+                    <thead>
+                        <tr>
+                            <th>Colony</th>
+                            <th>Task</th>
+                            <th>Status</th>
+                            <th>Round</th>
+                            <th>Health</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fleet-tbody">
+                        <tr><td colspan="6" class="empty-state">No colonies created yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="fleet-pagination" id="fleet-pagination">
+                <button class="btn btn-secondary btn-sm" id="fleet-prev" onclick="fleetPrevPage()" disabled>Prev</button>
+                <span id="fleet-page-info" class="text-muted">Page 1</span>
+                <button class="btn btn-secondary btn-sm" id="fleet-next" onclick="fleetNextPage()">Next</button>
+            </div>
+            <div class="fleet-bulk-actions hidden" id="fleet-bulk-actions">
+                <button class="btn btn-secondary" onclick="fleetBulkPause()">Pause Selected</button>
+                <button class="btn btn-secondary" onclick="fleetBulkResume()">Resume Selected</button>
+                <button class="btn btn-danger" onclick="fleetBulkDestroy()">Destroy Selected</button>
+            </div>
+        </section>
+
+        <!-- ══ Contracts & Objects Tab ══════════════ -->
+        <section id="tab-objects" class="tab-content">
+            <div class="objects-layout">
+                <!-- Sidebar -->
+                <div class="objects-sidebar">
+                    <button class="obj-nav-btn active" data-section="obj-castes" onclick="switchObjectSection('obj-castes')">Castes</button>
+                    <button class="obj-nav-btn" data-section="obj-tools" onclick="switchObjectSection('obj-tools')">Tools</button>
+                    <button class="obj-nav-btn" data-section="obj-skills" onclick="switchObjectSection('obj-skills')">Skills</button>
+                    <button class="obj-nav-btn" data-section="obj-models" onclick="switchObjectSection('obj-models')">Models</button>
+                    <button class="obj-nav-btn" data-section="obj-api-inspector" onclick="switchObjectSection('obj-api-inspector')">API Inspector</button>
+                </div>
+                <!-- Content -->
+                <div class="objects-content">
+                    <!-- Castes & Prompts -->
+                    <div id="obj-castes" class="obj-section active">
+                        <div class="castes-header">
+                            <h3>Castes &amp; Prompts</h3>
+                            <button class="btn btn-primary" onclick="showCreateCasteForm()">+ New Caste</button>
+                        </div>
+                        <div id="obj-castes-list" class="castes-grid"></div>
+                        <div id="caste-editor" class="caste-editor hidden">
+                            <div class="caste-editor-header">
+                                <h4 id="caste-editor-title">Edit Caste</h4>
+                                <div class="caste-editor-actions">
+                                    <button class="btn btn-primary" onclick="saveCaste()">Save</button>
+                                    <button class="btn btn-danger" onclick="deleteCaste()">Delete</button>
+                                    <button class="btn btn-secondary" onclick="closeCasteEditor()">Close</button>
+                                </div>
+                            </div>
+                            <div class="caste-editor-grid">
+                                <div class="caste-editor-prompt">
+                                    <label>System Prompt</label>
+                                    <textarea id="caste-prompt-editor" class="prompt-editor" rows="16"></textarea>
+                                </div>
+                                <div class="caste-editor-config">
+                                    <label>Description</label>
+                                    <input type="text" id="caste-desc" class="form-input">
+                                    <label>Builtin Tools</label>
+                                    <div id="caste-builtin-tools" class="tools-checklist"></div>
+                                    <label>MCP Tools</label>
+                                    <div id="caste-mcp-tools" class="tools-checklist"></div>
+                                    <label>Model Override</label>
+                                    <select id="caste-model-override" class="form-input">
+                                        <option value="">Default (global inference)</option>
+                                    </select>
+                                    <label>Subcaste Tier Overrides</label>
+                                    <div id="caste-subcaste-overrides" class="subcaste-overrides"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tools (MCP) -->
+                    <div id="obj-tools" class="obj-section">
+                        <h3>MCP Tools</h3>
+                        <div class="mcp-toolbar">
+                            <span id="mcp-gateway-status" class="badge badge-neutral">Unknown</span>
+                            <label class="mcp-caste-label" for="mcp-policy-caste">Caste</label>
+                            <select id="mcp-policy-caste" class="form-input mcp-caste-select" onchange="syncMcpSelectionFromSelectedCaste()"></select>
+                            <button class="btn btn-primary" onclick="applyMcpSelectionToCaste()">Apply To Caste</button>
+                            <button class="btn btn-secondary" onclick="reconnectMcp()">Reconnect</button>
+                            <button class="btn btn-secondary" onclick="loadMcpTools()">Refresh</button>
+                            <label class="toggle-label">
+                                <input type="checkbox" id="mcp-show-all" onchange="loadMcpTools()"> Show all discovered MCP tools
+                            </label>
+                            <input type="text" id="mcp-tool-search" class="form-input mcp-search-input" placeholder="Filter tools by id/description..." oninput="loadMcpTools()">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="mcp-selected-only" onchange="loadMcpTools()"> Show selected only
+                            </label>
+                            <button class="btn btn-secondary" onclick="toggleVisibleMcpTools(true)">Select Visible</button>
+                            <button class="btn btn-secondary" onclick="toggleVisibleMcpTools(false)">Clear Visible</button>
+                        </div>
+                        <h4 class="tools-subheading">Core Built-In Tools</h4>
+                        <div id="obj-builtin-tools" class="mcp-tools-list"></div>
+                        <h4 class="tools-subheading">Docker Toolkit MCP Tools</h4>
+                        <div id="obj-mcp-tools" class="mcp-tools-list"></div>
+                    </div>
+
+                    <!-- Skills -->
+                    <div id="obj-skills" class="obj-section">
+                        <h3>Skill Bank</h3>
+                        <div class="skills-toolbar">
+                            <button class="btn btn-primary" onclick="showCreateSkillForm()">+ New Skill</button>
+                        </div>
+                        <div id="obj-skills-list" class="skills-list"></div>
+                        <div id="skill-form-area" class="skill-form-area hidden">
+                            <h4 id="skill-form-title">Create Skill</h4>
+                            <input type="hidden" id="skill-form-id">
+                            <label>Name</label>
+                            <input type="text" id="skill-form-name" class="form-input">
+                            <label>Category</label>
+                            <select id="skill-form-category" class="form-input">
+                                <option value="General">General</option>
+                                <option value="TaskSpecific">TaskSpecific</option>
+                                <option value="Lesson">Lesson</option>
+                            </select>
+                            <label>Description</label>
+                            <textarea id="skill-form-desc" class="form-input" rows="3"></textarea>
+                            <label>Content</label>
+                            <textarea id="skill-form-content" class="form-input" rows="6"></textarea>
+                            <div class="form-actions">
+                                <button class="btn btn-primary" onclick="submitSkillForm()">Save</button>
+                                <button class="btn btn-secondary" onclick="cancelSkillForm()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Models -->
+                    <div id="obj-models" class="obj-section">
+                        <div class="tab-toolbar">
+                            <h3>Model Registry</h3>
+                            <button class="btn btn-secondary" onclick="loadModels()">Refresh</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table" id="models-table">
+                                <thead>
+                                    <tr>
+                                        <th>Model ID</th>
+                                        <th>Backend</th>
+                                        <th>Endpoint</th>
+                                        <th>Health</th>
+                                        <th>Status</th>
+                                        <th>VRAM</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="models-tbody">
+                                    <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- API Inspector -->
+                    <div id="obj-api-inspector" class="obj-section">
+                        <h3>API Inspector</h3>
+                        <div class="api-inspector">
+                            <div class="api-inspector-controls">
+                                <select id="api-method" class="form-input">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                                <input type="text" id="api-endpoint" class="form-input" placeholder="/api/...">
+                                <button class="btn btn-primary" onclick="sendApiRequest()">Send</button>
+                            </div>
+                            <label>Request Body (JSON)</label>
+                            <textarea id="api-request-body" class="form-input code-block" rows="4" placeholder="{}"></textarea>
+                            <label>Response</label>
+                            <pre id="api-response" class="code-block">No request sent</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══ Operations Tab ═══════════════════════ -->
+        <section id="tab-operations" class="tab-content">
+            <div class="tab-toolbar">
+                <h2>Operations</h2>
+            </div>
+            <div class="operations-grid">
+                <!-- Sessions -->
+                <div class="operations-section">
+                    <h3>Sessions</h3>
+                    <div class="tab-toolbar">
+                        <button class="btn btn-secondary" onclick="loadSessions()">Refresh</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="sessions-table">
+                            <thead>
+                                <tr>
+                                    <th>Session ID</th>
+                                    <th>Task</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sessions-tbody">
+                                <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- External Agent Credentials -->
+                <div class="operations-section" id="apikeys-section">
+                    <h3>External Agent Credentials</h3>
+                    <div class="tab-toolbar">
+                        <button class="btn btn-primary" onclick="showGenerateApiKeyModal()">+ Generate New Key</button>
+                        <button class="btn btn-secondary" onclick="loadApiKeys()">Refresh</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="apikeys-table">
+                            <thead>
+                                <tr>
+                                    <th>Key Name</th>
+                                    <th>Prefix</th>
+                                    <th>Created</th>
+                                    <th>Tokens Used</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="apikeys-tbody">
+                                <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Compute & Queue -->
+                <div class="operations-section" id="compute-queue-section">
+                    <h3>Compute &amp; Queue</h3>
+                    <div class="tab-toolbar">
+                        <button class="btn btn-secondary" onclick="loadQueueState()">Refresh</button>
+                    </div>
+                    <!-- Stall warning banner (hidden by default) -->
+                    <div id="queue-stall-banner" class="queue-stall-banner hidden" role="alert">
+                        <span class="queue-stall-icon">&#9888;</span>
+                        CRITICAL: No active workers — queue is stalled. Check backend logs.
+                    </div>
+                    <!-- Metrics row -->
+                    <div class="compute-metrics-row" id="compute-metrics-row">
+                        <div class="compute-metric">
+                            <span class="compute-metric-label">Active VRAM</span>
+                            <span class="compute-metric-value" id="compute-vram-active">--</span>
+                        </div>
+                        <div class="compute-metric">
+                            <span class="compute-metric-label">Queued Colonies</span>
+                            <span class="compute-metric-value" id="compute-queue-depth">0</span>
+                        </div>
+                        <div class="compute-metric">
+                            <span class="compute-metric-label">Active Workers</span>
+                            <span class="compute-metric-value" id="compute-active-workers">0</span>
+                        </div>
+                        <div class="compute-metric">
+                            <span class="compute-metric-label">Avg Wait</span>
+                            <span class="compute-metric-value" id="compute-avg-wait">--</span>
+                        </div>
+                    </div>
+                    <!-- Active compute locks table -->
+                    <h4 style="margin: 12px 0 6px; font-size: 13px; color: var(--text-muted);">Active Compute Locks</h4>
+                    <div class="table-container" style="max-height: 200px;">
+                        <table class="data-table" id="compute-locks-table">
+                            <thead>
+                                <tr>
+                                    <th>Colony ID</th>
+                                    <th>Client ID</th>
+                                    <th>VRAM Est.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="compute-locks-tbody">
+                                <tr><td colspan="3" class="empty-state">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Queued colonies table -->
+                    <h4 style="margin: 12px 0 6px; font-size: 13px; color: var(--text-muted);">Queued Colonies</h4>
+                    <div class="table-container" style="max-height: 250px;">
+                        <table class="data-table" id="queue-table">
+                            <thead>
+                                <tr>
+                                    <th>Colony ID</th>
+                                    <th>Client ID</th>
+                                    <th>Priority</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="queue-tbody">
+                                <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Dependency Status -->
+                <div class="operations-section">
+                    <h3>Dependency Status</h3>
+                    <div class="dependency-status-grid">
+                        <div class="dep-card">
+                            <div class="dep-card-header">
+                                <span class="dep-name">GPU</span>
+                                <span class="dep-badge" id="dep-gpu-status">Unknown</span>
+                            </div>
+                            <div class="dep-card-body">
+                                <div class="gpu-stat-row">
+                                    <span class="gpu-label">VRAM Used</span>
+                                    <span class="gpu-value" id="gpu-vram-used">--</span>
+                                </div>
+                                <div class="gpu-stat-row">
+                                    <span class="gpu-label">VRAM Total</span>
+                                    <span class="gpu-value" id="gpu-vram-total">--</span>
+                                </div>
+                                <div class="gpu-stat-row">
+                                    <span class="gpu-label">GPU Name</span>
+                                    <span class="gpu-value" id="gpu-name">--</span>
+                                </div>
+                                <div class="gpu-vram-bar-container">
+                                    <progress class="gpu-vram-bar" id="gpu-vram-bar" max="100" value="0" aria-label="GPU VRAM usage"></progress>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="dep-card">
+                            <div class="dep-card-header">
+                                <span class="dep-name">MCP Gateway</span>
+                                <span class="dep-badge" id="dep-mcp-status">Unknown</span>
+                            </div>
+                            <div class="dep-card-body">
+                                <span id="dep-mcp-info" class="dep-info">--</span>
+                                <button class="btn btn-secondary" onclick="reconnectMcp()">Reconnect</button>
+                            </div>
+                        </div>
+                        <div class="dep-card">
+                            <div class="dep-card-header">
+                                <span class="dep-name">Models</span>
+                                <span class="dep-badge" id="dep-models-status">Unknown</span>
+                            </div>
+                            <div class="dep-card-body">
+                                <span id="dep-models-info" class="dep-info">--</span>
+                            </div>
+                        </div>
+                        <div class="dep-card">
+                            <div class="dep-card-header">
+                                <span class="dep-name">Embedding</span>
+                                <span class="dep-badge" id="dep-embed-status">Unknown</span>
+                            </div>
+                            <div class="dep-card-body">
+                                <span id="dep-embed-info" class="dep-info">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SLO Metrics -->
+                <div class="operations-section">
+                    <h3>SLO Metrics</h3>
+                    <div id="slo-metrics-grid" class="slo-metrics-grid">
+                        <div class="empty-state">No metrics collected yet.</div>
+                    </div>
+                </div>
+
+                <!-- System Diagnostics -->
+                <div class="operations-section" id="diagnostics-section">
+                    <h3>System Diagnostics</h3>
+                    <div class="tab-toolbar">
+                        <button class="btn btn-secondary" onclick="loadSystemDiagnostics()">Refresh</button>
+                    </div>
+                    <div class="diagnostics-panes">
+                        <div class="diagnostics-pane">
+                            <h4 class="diagnostics-pane-title diagnostics-danger">Stack Traces (Last 5 min)</h4>
+                            <pre id="diag-stack-traces" class="code-block diagnostics-pre diagnostics-pre-danger">No exceptions recorded.</pre>
+                        </div>
+                        <div class="diagnostics-pane">
+                            <h4 class="diagnostics-pane-title diagnostics-warning">DataClaw Diffs</h4>
+                            <pre id="diag-dataclaw-diffs" class="code-block diagnostics-pre diagnostics-pre-warning">No failed diffs.</pre>
+                        </div>
+                        <div class="diagnostics-pane">
+                            <h4 class="diagnostics-pane-title diagnostics-info">WebSocket Faults</h4>
+                            <pre id="diag-ws-faults" class="code-block diagnostics-pre diagnostics-pre-info">No WS faults.</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Webhook Debug -->
+                <div class="operations-section">
+                    <div class="tab-toolbar">
+                        <h3>Webhook Delivery Logs</h3>
+                        <button class="btn btn-secondary" onclick="showWebhookDebugModal()">View Webhook Logs</button>
+                    </div>
+                </div>
+
+                <!-- Event Log / WS Diagnostics -->
+                <div class="operations-section">
+                    <h3>Event Log &amp; WS Diagnostics</h3>
+                    <div class="ws-diagnostics">
+                        <div class="gpu-stat-row">
+                            <span class="gpu-label">WS Status</span>
+                            <span class="gpu-value" id="settings-ws-status">Disconnected</span>
+                        </div>
+                        <div class="gpu-stat-row">
+                            <span class="gpu-label">Reconnect Attempts</span>
+                            <span class="gpu-value" id="settings-ws-reconnects">0</span>
+                        </div>
+                        <button class="btn btn-secondary" onclick="reconnectWebSocket()">Force Reconnect</button>
+                    </div>
+                    <div id="event-log" class="event-log">
+                        <div class="empty-state">No events recorded</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ── Modals ─────────────────────────────── -->
+
+    <!-- Approval Modal (HITL) -->
+    <div id="approval-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="approval-modal-title">
+        <div class="modal-backdrop" onclick="dismissApprovalModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="approval-modal-title">Approval Required</h3>
+                <span id="approval-agent" class="badge badge-accent"></span>
+            </div>
+            <div id="approval-details" class="approval-details">
+                <div class="approval-field">
+                    <label>Tool</label>
+                    <code id="approval-tool"></code>
+                </div>
+                <div class="approval-field">
+                    <label>Arguments</label>
+                    <pre id="approval-args" class="code-block"></pre>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-approve" onclick="approveAction(true)">Approve</button>
+                <button class="btn btn-deny" onclick="approveAction(false)">Deny</button>
+            </div>
+            <div class="timeout-bar-container">
+                <div class="timeout-bar" id="approval-timeout"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Colony Creation Modal -->
+    <div id="create-colony-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="create-colony-modal-title">
+        <div class="modal-backdrop" onclick="hideCreateColonyModal()"></div>
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3 id="create-colony-modal-title">Create Colony</h3>
+                <button class="btn-close" onclick="hideCreateColonyModal()">&times;</button>
+            </div>
+            <div class="create-colony-form">
+                <label>Colony ID</label>
+                <input type="text" id="new-colony-id" class="form-input" placeholder="e.g. colony-alpha">
+                <label>Task <span class="hint">(one task per line for multi-task)</span></label>
+                <textarea id="new-colony-task" class="form-input" rows="3" placeholder="Describe the colony task..."></textarea>
+                <label>Max Rounds</label>
+                <input type="number" id="new-colony-rounds" class="form-input" value="5" min="1" max="50">
+                <label class="toggle-label">
+                    <input type="checkbox" id="new-colony-start-immediately" checked> Start immediately after create
+                </label>
+                <label>Team Composition</label>
+                <div class="team-builder">
+                    <div class="suggest-team-row">
+                        <button class="btn btn-accent" type="button" id="modal-suggest-team-btn" onclick="suggestTeam()">Suggest Team</button>
+                        <span id="modal-suggest-team-status" class="suggest-status"></span>
+                    </div>
+                    <div class="team-presets-row">
+                        <span class="presets-label">Presets:</span>
+                        <button class="btn btn-preset" type="button" onclick="applyTeamPreset('full-stack')">Full-Stack</button>
+                        <button class="btn btn-preset" type="button" onclick="applyTeamPreset('code-review')">Code Review</button>
+                        <button class="btn btn-preset" type="button" onclick="applyTeamPreset('research')">Research</button>
+                    </div>
+                    <div id="modal-team-members-list" class="team-members-list"></div>
+                    <button class="btn btn-secondary" type="button" onclick="addTeamMember()">+ Add Agent</button>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="submitCreateColony()">Create</button>
+                <button class="btn btn-secondary" onclick="hideCreateColonyModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Modal -->
+    <div id="results-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="results-modal-title">
+        <div class="modal-backdrop" onclick="hideResultsModal()"></div>
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3 id="results-modal-title">Colony Results</h3>
+                <button class="btn-close" onclick="hideResultsModal()">&times;</button>
+            </div>
+            <div id="results-body" class="results-body"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="downloadWorkspaceArchive(lastResultsColonyId)">Download ZIP</button>
+                <button class="btn btn-secondary" onclick="hideResultsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workspace Archive Selection Modal -->
+    <div id="workspace-archive-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="archive-modal-title">
+        <div class="modal-backdrop" onclick="hideWorkspaceArchiveModal()"></div>
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3 id="archive-modal-title">Download Workspace ZIP</h3>
+                <button class="btn-close" onclick="hideWorkspaceArchiveModal()">&times;</button>
+            </div>
+            <div class="archive-modal-controls">
+                <input
+                    type="text"
+                    id="workspace-archive-filter"
+                    class="form-input"
+                    placeholder="Filter files..."
+                    oninput="filterWorkspaceArchiveFiles(this.value)"
+                >
+                <button class="btn btn-secondary" onclick="setWorkspaceArchiveSelectionVisible(true)">All Visible</button>
+                <button class="btn btn-secondary" onclick="setWorkspaceArchiveSelectionVisible(false)">None Visible</button>
+            </div>
+            <div id="workspace-archive-summary" class="archive-summary">No files loaded</div>
+            <div id="workspace-archive-list" class="archive-file-list">
+                <div class="empty-state">No files loaded</div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="downloadSelectedWorkspaceArchive()">Download ZIP</button>
+                <button class="btn btn-secondary" onclick="hideWorkspaceArchiveModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webhook Debug Modal -->
+    <div id="webhook-debug-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="webhook-debug-modal-title">
+        <div class="modal-backdrop" onclick="hideWebhookDebugModal()"></div>
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3 id="webhook-debug-modal-title">Webhook Delivery Logs</h3>
+                <button class="btn-close" onclick="hideWebhookDebugModal()">&times;</button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="webhook-logs-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Target URL</th>
+                            <th>HTTP Status</th>
+                            <th>Colony ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="webhook-logs-tbody">
+                        <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="loadWebhookLogs()">Refresh</button>
+                <button class="btn btn-secondary" onclick="hideWebhookDebugModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generate API Key Modal -->
+    <div id="generate-apikey-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="generate-apikey-modal-title">
+        <div class="modal-backdrop" onclick="hideGenerateApiKeyModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="generate-apikey-modal-title">Generate API Key</h3>
+                <button class="btn-close" onclick="hideGenerateApiKeyModal()">&times;</button>
+            </div>
+            <!-- Phase 1: name input -->
+            <div id="apikey-form-phase">
+                <label>Key Name</label>
+                <input type="text" id="apikey-name-input" class="form-input" placeholder="e.g. swarm-agent-prod" maxlength="64">
+                <p class="apikey-hint">A human-readable label to identify this credential.</p>
+            </div>
+            <!-- Phase 2: secret reveal (shown after POST success) -->
+            <div id="apikey-reveal-phase" class="hidden">
+                <div class="apikey-warning">Copy this key now. It will not be shown again.</div>
+                <div class="apikey-secret-container">
+                    <pre id="apikey-secret-display" class="code-block apikey-secret-block"></pre>
+                    <button class="btn btn-secondary" id="apikey-copy-btn" onclick="copyApiKeyToClipboard()">Copy</button>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="apikey-submit-btn" onclick="submitGenerateApiKey()">Generate</button>
+                <button class="btn btn-secondary hidden" id="apikey-done-btn" onclick="hideGenerateApiKeyModal()">Done</button>
+                <button class="btn btn-secondary" id="apikey-cancel-btn" onclick="hideGenerateApiKeyModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Area -->
+    <div id="notification-area" class="notification-area" role="alert" aria-live="assertive"></div>
+
+    <!-- CDN Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.4/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script type="module" src="js/main.js"></script>
+    <!-- DataClaw Export Modal -->
+    <div id="dataclaw-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dataclaw-modal-title">
+        <div class="modal-backdrop" onclick="hideDataClawModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="dataclaw-modal-title">Extract Reasoning Trace (DataClaw)</h3>
+                <button class="btn-close" onclick="hideDataClawModal()">&times;</button>
+            </div>
+            <label>Export Format</label>
+            <select id="dataclaw-format" class="form-input">
+                <option value="sharegpt">ShareGPT</option>
+                <option value="jsonl">OpenAI JSONL</option>
+                <option value="raw">Raw FormicOS Snapshot</option>
+            </select>
+            <label class="toggle-label" style="margin-top: 12px; display: block;">
+                <input type="checkbox" id="dataclaw-scrub" checked> Scrub PII / Secrets before export
+            </label>
+            <div class="modal-actions">
+                <button class="btn btn-accent" onclick="executeDataClawExport()">Export</button>
+                <button class="btn btn-secondary" onclick="hideDataClawModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

@@ -1,0 +1,63 @@
+# ============================================================================
+# FormicOS v0.9.0 — .gitignore
+# ============================================================================
+
+# ── Python caches ──────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ── Environment & secrets ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Stripe keys — block any file containing sk_test_ or sk_live_ ──────
+# (Defence-in-depth: grep CI hook should also catch these)
+**/stripe_key*
+**/stripe_secret*
+
+# ── Ed25519 keypairs (CFO caste signing keys) ─────────────────────────
+*.pem
+*.key
+**/signing_key*
+**/ed25519*
+
+# ── Model weights (GGUF, safetensors, etc.) ───────────────────────────
+models/*.gguf
+models/*.bin
+models/*.safetensors
+.models/
+*.gguf
+
+# ── Qdrant persistence (local dev / Docker bind-mount fallback) ───────
+qdrant_storage/
+qdrant_data/
+
+# ── Colony runtime data ───────────────────────────────────────────────
+sessions/
+workspace/
+.formicos/
+expenses/
+
+# ── IDE / OS ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+.DS_Store
+
+# ── Docker build artifacts ────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Audit JSONL logs (large, session-specific) ────────────────────────
+**/*.audit.jsonl
+**/audit.jsonl

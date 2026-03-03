@@ -1,0 +1,229 @@
+{
+  "main": {
+    "id": "ffad57f1c589aa89",
+    "type": "split",
+    "children": [
+      {
+        "id": "06655ea5929a280a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "39d36ea44a2868e5",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "e191aeab74fe2559",
+    "type": "split",
+    "children": [
+      {
+        "id": "881f540f30f1f3b3",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "56cbd7f219eeb2eb",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "8e2250e3922d3139",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "7f2b7bba54c09e6a",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "9dad368bdca39bdb",
+    "type": "split",
+    "children": [
+      {
+        "id": "805c4cf8262b3bd2",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a298d7eadfa0e33e",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "docs/v0.6.2-bugfix/ColonyFlow-v062.canvas",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for ColonyFlow-v062"
+            }
+          },
+          {
+            "id": "1e48e9853b85a01c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "docs/v0.6.2-bugfix/ColonyFlow-v062.canvas",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from ColonyFlow-v062"
+            }
+          },
+          {
+            "id": "7e938b505e94d9a8",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "c783cdc84881e4bc",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "d84a135364a0d7e5",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "docs/v0.6.2-bugfix/ColonyFlow-v062.canvas",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of ColonyFlow-v062"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "canvas:Create new canvas": false,
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "39d36ea44a2868e5",
+  "lastOpenFiles": [
+    "docs/v0.6.2-bugfix/ColonyFlow-v062.canvas",
+    "docs/v0.9.0/index.md",
+    "workspace/dashboard_65af7545/analysis_report.md",
+    "sessions/dashboard_65af7545/context.json",
+    "sessions/dashboard_65af7545",
+    "workspace/dashboard_65af7545/src/core/network/egress_proxy.py",
+    "workspace/dashboard_65af7545/src/core/network",
+    "workspace/dashboard_65af7545/src/core",
+    "workspace/dashboard_65af7545/src",
+    "sessions/dashboard_65af7545_b843d95e/audit.jsonl",
+    "sessions/dashboard_65af7545_b843d95e",
+    "workspace/dashboard_65af7545",
+    "sedaVZ2Zd",
+    "docs/v0.9.0/perception_layer_spec.md",
+    "docs/v0.9.0/sovereign_memory_spec.md",
+    "docs/v0.9.0/cryptographic_egress_spec.md",
+    "config/prompts/cfo.md",
+    "config/prompts/root_architect.md",
+    "config/prompts/designer.md",
+    "screenshots/view_colony_test.png",
+    "workspace/snake-game-colony/README.md",
+    "docs/v0.8.0/backend-changelog.md",
+    "docs/v0.8.0/FormicOS-v0.8.0-Backend-Master-Spec.md",
+    "docs/v0.8.0/Data-Migration-Strategy.md",
+    "docs/v0.8.0/AI-CONTRIBUTING.md",
+    "docs/v0.7.9/backend-changelog.md",
+    "docs/v0.7.9/frontend-changelog.md",
+    "docs/v0.7.9/FormicOS-v0.8.0-Frontend-Master-Spec.md",
+    "docs/v0.7.9/backend-refactor-plan.md",
+    "docs/v0.7.9/frontend-refactor-plan.md",
+    "docs/v0.7.8/frontend-changelog.md",
+    "docs/v0.7.8/FormicOS-v0.8.0-Frontend-Master-Spec.md",
+    "docs/v0.7.8/backend-changelog.md",
+    "docs/v0.7.8/backend-plan.md",
+    "docs/v0.7.8/frontend-plan.md",
+    "docs/v0.7.7/backend-changelog.md",
+    "docs/v0.7.7/backend-plan.md",
+    "docs/V0,5,0-old/FormicOS_v0.5.0_Architecture.canvas",
+    "docs/V0,5,0-old/ColonyFlow.canvas",
+    "ColonyFlow.canvas",
+    "docs/V0,5,0/FormicOS_v0.5.0_Architecture.canvas",
+    "docs/V0,5,0/ColonyFlow.canvas",
+    "FormicOS_v0.5.0_Architecture.canvas",
+    "Architecture overview.canvas"
+  ]
+}

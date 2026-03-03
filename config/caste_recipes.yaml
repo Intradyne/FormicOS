@@ -1,0 +1,158 @@
+# ============================================================================
+# FormicOS Caste Recipes — Configuration as Code
+# Schema Version 0.8.0
+# ============================================================================
+#
+# Each recipe defines the complete brain/body specification for a caste.
+# Fields here OVERRIDE the base CasteConfig in formicos.yaml for the
+# matching caste name.  Omitted fields inherit from formicos.yaml.
+#
+# Optional file — if absent, all caste behaviour comes from formicos.yaml.
+# ============================================================================
+
+schema_version: "0.8.0"
+
+recipes:
+
+  # ── Architect ────────────────────────────────────────────────────────────
+  architect:
+    description: "System designer — architecture, API contracts, module boundaries"
+    system_prompt_file: architect.md
+    tools:
+      - qdrant_search
+      - file_read
+    mcp_tools:
+      - sequentialthinking_sequentialthinking
+    temperature: 0.3
+    context_window: 65536
+    max_tokens: 8000
+    model_override: null
+    subcaste_overrides:
+      heavy:
+        primary: cloud/claude-opus-4.6
+        refine_with: local/qwen3-30b
+        refine_prompt: "Review this architecture for consistency and correctness."
+    escalation_fallback:
+      - model_id: cloud/claude-sonnet-4.6
+        requires_approval: false
+      - model_id: cloud/claude-opus-4.6
+        requires_approval: true
+    governance_triggers:
+      similarity_threshold: 0.90
+      rounds_before_force_halt: 3
+      path_diversity_warning_after: 2
+
+  # ── Coder ────────────────────────────────────────────────────────────────
+  coder:
+    temperature: 0.0
+    context_window: 32768
+    max_tokens: 5000
+    tools:
+      - file_read
+      - file_write
+      - code_execute
+    mcp_tools:
+      - filesystem_read_file
+      - filesystem_write_file
+      - filesystem_list_directory
+    escalation_fallback:
+      - model_id: cloud/claude-sonnet-4.6
+        requires_approval: false
+    governance_triggers:
+      stall_repeat_threshold: 4
+      stall_window_minutes: 30
+
+  # ── Reviewer ─────────────────────────────────────────────────────────────
+  reviewer:
+    temperature: 0.0
+    context_window: 65536
+    max_tokens: 6000
+    tools:
+      - file_read
+      - code_execute
+    mcp_tools: []
+    governance_triggers:
+      similarity_threshold: 0.98
+      rounds_before_force_halt: 1
+
+  # ── Researcher ───────────────────────────────────────────────────────────
+  researcher:
+    temperature: 0.5
+    context_window: 32768
+    tools:
+      - qdrant_search
+      - web_search
+    mcp_tools:
+      - fetch_fetch
+    escalation_fallback:
+      - model_id: cloud/claude-sonnet-4.6
+        requires_approval: false
+
+  # ── Manager ──────────────────────────────────────────────────────────────
+  manager:
+    temperature: 0.1
+    context_window: 131072
+    max_tokens: 4000
+    tools: []
+    mcp_tools: []
+    governance_triggers:
+      path_diversity_warning_after: 4
+
+  # ── DyTopo (generalist) ─────────────────────────────────────────────────
+  dytopo:
+    temperature: 0.0
+    context_window: 32768
+    tools:
+      - file_read
+      - file_write
+      - code_execute
+      - qdrant_search
+    mcp_tools: []
+
+  # ── Root_Architect (RLM dense analysis) ────────────────────────────────
+  root_architect:
+    description: >
+      Dense repository analyst — uses REPL with formic_read_bytes() to
+      scan memory-mapped codebases and formic_subcall() to delegate
+      implementation tasks to sub-agents.
+    system_prompt_file: root_architect.md
+    tools:
+      - code_execute
+      - file_read
+      - file_write
+    mcp_tools:
+      - sequentialthinking_sequentialthinking
+    temperature: 0.0
+    context_window: 8192
+    max_tokens: 4000
+    model_override: local/qwen3-30b
+    escalation_fallback:
+      - model_id: cloud/claude-sonnet-4.6
+        requires_approval: false
+      - model_id: cloud/claude-opus-4.6
+        requires_approval: true
+    governance_triggers:
+      similarity_threshold: 0.90
+      rounds_before_force_halt: 3
+      path_diversity_warning_after: 2
+
+  # ── CFO (Colony Financial Officer) ──────────────────────────────────
+  cfo:
+    description: "Colony financial officer — Ed25519 signing, expense approval, Stripe ledger"
+    system_prompt_file: cfo.md
+    tools:
+      - expense_review
+      - expense_approve
+      - expense_reject
+      - file_read
+    mcp_tools: []
+    temperature: 0.0
+    context_window: 32768
+    max_tokens: 4000
+    escalation_fallback:
+      - model_id: cloud/claude-sonnet-4.6
+        requires_approval: false
+    governance_triggers:
+      similarity_threshold: 0.95
+      rounds_before_force_halt: 2
+      path_diversity_warning_after: 1

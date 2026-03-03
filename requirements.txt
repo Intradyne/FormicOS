@@ -1,0 +1,53 @@
+# Formic-OS v0.9.0 — Colony Operating System
+# Core
+openai>=1.12.0
+pydantic>=2.6.0
+pyyaml>=6.0.1
+numpy>=1.26.0
+
+# Embedding (descriptor routing + skill retrieval)
+sentence-transformers>=2.5.0
+
+# Resilience
+tenacity>=8.2.0
+json-repair>=0.25.0
+
+# File watching (stigmergy)
+watchdog>=4.0.0
+
+# Audit
+jsonlines>=4.0.0
+
+# RAG pipeline
+qdrant-client>=1.15.0
+
+# Document perception (topological chunking)
+docling>=2.75.0
+
+# API server
+fastapi>=0.110.0
+uvicorn>=0.27.0
+websockets>=12.0
+python-multipart>=0.0.9
+
+# HTTP client (embedding API, health checks, fetch tool)
+httpx>=0.27.0
+
+# Async HTTP client (LLM inference connection pooling)
+aiohttp>=3.9.0
+
+# Cryptographic signing (Ed25519 egress proxy)
+PyNaCl>=1.5.0
+
+# Payment processing (CFO ledger)
+stripe>=8.0.0
+
+# TUI dashboard (REPL telemetry)
+textual>=1.0.0
+
+# MCP protocol client (optional)
+mcp>=1.20.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

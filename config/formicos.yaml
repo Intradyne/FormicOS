@@ -1,0 +1,334 @@
+# ============================================================================
+# FormicOS Colony Operating System — Configuration
+# Schema Version 0.6.0
+# ============================================================================
+#
+# This file defines the full runtime configuration for FormicOS. Every section
+# maps to a field in the FormicOSConfig Pydantic model. Values here are
+# defaults that can be overridden per-colony at creation time.
+# ============================================================================
+
+schema_version: "0.6.0"
+
+# ── Identity ─────────────────────────────────────────────────────────────────
+# Colony OS metadata. Shown in the dashboard header and API responses.
+identity:
+  name: FormicOS
+  version: "0.6.0"
+
+# ── Hardware ─────────────────────────────────────────────────────────────────
+# Physical GPU constraints. VRAM alert threshold triggers dashboard warnings
+# and may pause colony spawning to prevent OOM crashes.
+hardware:
+  gpu: rtx5090
+  vram_gb: 32
+  vram_alert_threshold_gb: 28
+
+# ── Inference ────────────────────────────────────────────────────────────────
+# Primary LLM backend for agent reasoning. Endpoint points to llama.cpp
+# server running inside Docker. model_alias maps to the OpenAI-compatible
+# /v1/chat/completions endpoint.
+inference:
+  endpoint: http://llm:8080/v1
+  model: local/qwen3-30b
+  model_alias: gpt-4
+  max_tokens_per_agent: 5000
+  temperature: 0
+  timeout_seconds: 120
+  context_size: 8192
+  intent_model: null
+  intent_max_tokens: 512
+
+# ── Embedding ────────────────────────────────────────────────────────────────
+# Vector embedding backend for RAG and semantic search. BGE-M3 produces
+# 1024-dim dense vectors. routing_model is a lightweight sentence-transformer
+# used for DyTopo agent routing (loaded in-process, not via API).
+embedding:
+  model: BAAI/bge-m3
+  endpoint: http://embedding:8080/v1
+  dimensions: 1024
+  max_tokens: 8192
+  batch_size: 32
+  routing_model: all-MiniLM-L6-v2
+
+# ── Routing ──────────────────────────────────────────────────────────────────
+# DyTopo dynamic topology parameters. tau is the cosine-similarity threshold
+# for message relevance. k_in is the max number of incoming edges per agent.
+# broadcast_fallback sends to all agents when no edge exceeds tau.
+routing:
+  tau: 0.35
+  k_in: 3
+  broadcast_fallback: true
+
+# ── Convergence ──────────────────────────────────────────────────────────────
+# Colony termination governance. similarity_threshold detects when agent
+# outputs stop changing. rounds_before_force_halt caps extra rounds after
+# convergence is detected. path_diversity_warning_after triggers a "tunnel
+# vision" alert to the manager if all agents use the same approach label
+# for N consecutive rounds.
+convergence:
+  similarity_threshold: 0.95
+  rounds_before_force_halt: 2
+  path_diversity_warning_after: 3
+
+# ── Summarization ────────────────────────────────────────────────────────────
+# Context compression settings. epoch_window is how many rounds form one
+# epoch for summarization. Tree-sitter languages list which grammars are
+# available for code-aware summarization.
+summarization:
+  epoch_window: 5
+  max_epoch_tokens: 400
+  max_agent_summary_tokens: 200
+  tree_sitter_languages:
+  - python
+  - javascript
+  - typescript
+
+# ── Temporal ─────────────────────────────────────────────────────────────────
+# Episodic memory and stall detection. episodic_ttl_hours controls how long
+# episodes persist. Stall detection triggers when the same output repeats
+# stall_repeat_threshold times within stall_window_minutes.
+# tkg_max_tuples caps the Temporal Knowledge Graph size.
+temporal:
+  episodic_ttl_hours: 72
+  stall_repeat_threshold: 3
+  stall_window_minutes: 20
+  tkg_max_tuples: 5000
+
+# ── Castes ───────────────────────────────────────────────────────────────────
+# Agent role definitions. Each caste has a system prompt file (resolved
+# relative to config/prompts/), a list of allowed tools, and an optional
+# model_override to use a different LLM than the default inference endpoint.
+castes:
+  dytopo:
+    system_prompt_file: dytopo.md
+    tools:
+    - file_read
+    - file_write
+    - code_execute
+    - qdrant_search
+    mcp_tools: []          # empty = safe MCP subset (docker toolkit/reference helpers)
+    model_override: null
+    description: "Generalist agent — default for single-agent colonies"
+  manager:
+    system_prompt_file: manager.md
+    tools: []
+    mcp_tools: []
+    model_override: null
+    description: "Colony coordinator — sets goals, evaluates progress, decides termination"
+  architect:
+    system_prompt_file: architect.md
+    tools:
+    - qdrant_search
+    - file_read
+    mcp_tools:
+    - sequentialthinking_sequentialthinking
+    model_override: null
+    description: "System designer — produces architecture, API contracts, module boundaries"
+  root_architect:
+    system_prompt_file: root_architect.md
+    tools:
+    - code_execute
+    - file_read
+    - file_write
+    mcp_tools:
+    - sequentialthinking_sequentialthinking
+    model_override: null
+    description: "Dense repository analyst — REPL with formic_read_bytes and formic_subcall"
+  coder:
+    system_prompt_file: coder.md
+    tools:
+    - file_read
+    - file_write
+    - code_execute
+    mcp_tools:
+    - filesystem_read_file
+    - filesystem_write_file
+    - filesystem_list_directory
+    model_override: null
+    description: "Implementation — writes, modifies, and debugs code"
+  reviewer:
+    system_prompt_file: reviewer.md
+    tools:
+    - file_read
+    - code_execute
+    mcp_tools: []
+    model_override: null
+    description: "Quality gate — reviews code, runs tests, identifies issues"
+  researcher:
+    system_prompt_file: researcher.md
+    tools:
+    - qdrant_search
+    - web_search
+    mcp_tools:
+    - fetch_fetch
+    model_override: null
+    description: "Information specialist — searches docs, synthesizes findings"
+  cfo:
+    system_prompt_file: cfo.md
+    tools:
+    - expense_review
+    - expense_approve
+    - expense_reject
+    - file_read
+    mcp_tools: []
+    model_override: null
+    description: "Colony financial officer — Ed25519 signing, expense approval, Stripe ledger"
+
+# ── Cloud Burst ──────────────────────────────────────────────────────────────
+# Automatic escalation to cloud LLM when local inference fails repeatedly.
+# Requires operator approval when requires_approval is true.
+cloud_burst:
+  enabled: false
+  provider: anthropic
+  model: claude-sonnet-4-5-20250929
+  trigger: 2 consecutive test failures
+  requires_approval: true
+
+# ── Persistence ──────────────────────────────────────────────────────────────
+# Session save/restore. Sessions are stored as JSON in session_dir.
+# autosave_interval_seconds controls how often running colony state is
+# flushed to disk.
+persistence:
+  session_dir: .formicos/sessions
+  autosave_interval_seconds: 30
+
+# ── Approval Required ────────────────────────────────────────────────────────
+# Actions that require Human-In-The-Loop (HITL) approval before execution.
+# These are checked in the orchestrator before tool calls proceed.
+approval_required:
+- main_branch_merge
+- cloud_escalation
+- file_delete_outside_workspace
+
+# ── Qdrant ───────────────────────────────────────────────────────────────────
+# Vector database connection. Runs as a Docker sidecar. Collections are
+# auto-created on first use. Per-colony collections use the namespace
+# pattern colony_{id}_docs.
+qdrant:
+  host: qdrant
+  port: 6333
+  grpc_port: 6334
+  collections:
+    project_docs:
+      embedding: bge-m3
+      dimensions: 1024
+    swarm_memory:
+      embedding: bge-m3
+      dimensions: 1024
+
+# ── MCP Gateway ──────────────────────────────────────────────────────────────
+# Model Context Protocol gateway for external tool integration. Three-layer
+# transport strategy:
+#   1. Host-native (stdio): docker mcp gateway run — direct subprocess
+#   2. Docker sidecar (SSE): mcp-gateway container on port 8811
+#   3. Auto-fallback: tries stdio first, falls back to SSE on failure
+mcp_gateway:
+  enabled: true
+
+  # ── Transport strategy ──────────────────────────────────────
+  # On host (native dev): tries stdio -> `docker mcp gateway run`
+  # Inside Docker container: auto-falls back to SSE via mcp-gateway sidecar
+  transport: stdio
+  command: docker
+  args: ["mcp", "gateway", "run"]
+
+  # ── Docker-native fallback ──────────────────────────────────
+  # When stdio fails (no docker binary inside container), MCPGatewayClient
+  # falls back to this SSE endpoint. Points to the docker/mcp-gateway
+  # sidecar on the colony-local Docker network.
+  docker_fallback_endpoint: http://mcp-gateway:8811
+
+  # Retry settings for SSE fallback (gateway may take time to start)
+  sse_retry_attempts: 5
+  sse_retry_delay_seconds: 3
+
+  # ── Server management ─────────────────────────────────────
+  # Servers are managed via Docker MCP Toolkit, NOT in this file.
+  # Enable/disable servers in Docker Desktop: Settings -> MCP Toolkit
+  # Or via CLI:
+  #   docker mcp server enable filesystem fetch memory sequentialthinking
+  #   docker mcp server ls
+  #   docker mcp tools ls
+
+# ── External API Gateway ────────────────────────────────────────────────────
+# Outbound network access for agents via the cryptographic egress proxy.
+# All requests are signed by the CFO caste's Ed25519 key before forwarding.
+external_api_gateway:
+  enabled: false
+  target_url: "https://en.wikipedia.org/api/rest_v1/page/summary"
+  default_amount: 0.01
+  approval_timeout_seconds: 120
+
+# ── Model Registry ───────────────────────────────────────────────────────────
+# Maps logical model IDs to backend connections. Each entry specifies the
+# inference backend type, endpoint URL, context length, VRAM usage, and
+# capability flags. Used by the SubcasteMap and AgentFactory for model
+# dispatch.
+model_registry:
+  local/qwen3-30b:
+    type: autoregressive
+    backend: llama_cpp
+    endpoint: "http://llm:8080/v1"
+    context_length: 32768
+    vram_gb: 25.6
+    supports_tools: true
+    supports_streaming: true
+  cloud/claude-opus-4.6:
+    type: autoregressive
+    backend: anthropic_api
+    model_string: "claude-opus-4-6"
+    context_length: 200000
+    requires_approval: true
+    supports_tools: true
+    supports_streaming: true
+  cloud/claude-sonnet-4.6:
+    type: autoregressive
+    backend: anthropic_api
+    model_string: "claude-sonnet-4-6"
+    context_length: 200000
+    requires_approval: false
+    supports_tools: true
+    supports_streaming: true
+
+# ── Skill Bank ───────────────────────────────────────────────────────────────
+# Persistent skill library. Skills are distilled from colony outputs and
+# retrieved by semantic similarity during planning. dedup_threshold prevents
+# near-duplicate skills. evolution_interval controls how often skill scores
+# are recalculated. prune_zero_hit_after removes unused skills after N
+# evolution cycles.
+skill_bank:
+  storage_file: ".formicos/skill_bank.json"
+  retrieval_top_k: 3
+  dedup_threshold: 0.85
+  evolution_interval: 5
+  prune_zero_hit_after: 10
+
+# ── Subcaste Map ─────────────────────────────────────────────────────────────
+# Maps subcaste tiers (heavy/balanced/light) to model registry entries.
+# Each tier has a primary model and an optional refine_with model for
+# draft-refine two-stage inference.
+subcaste_map:
+  heavy:
+    primary: local/qwen3-30b
+  balanced:
+    primary: local/qwen3-30b
+  light:
+    primary: local/qwen3-30b
+    # refine_with: local/qwen3-30b
+    # refine_prompt: "Review and correct this draft for accuracy."
+
+# ── Teams ────────────────────────────────────────────────────────────────────
+# Team configuration defaults. Teams are agent groupings within a colony,
+# each with independent DyTopo routing. The manager coordinates between
+# teams via compressed summaries and cross-team relays.
+teams:
+  max_teams_per_colony: 4
+  team_summary_max_tokens: 200
+  allow_dynamic_spawn: true
+
+# ── Colonies ─────────────────────────────────────────────────────────────────
+# Pre-defined colony configurations. Empty by default — colonies are created
+# at runtime via the API or dashboard. Each colony gets an isolated context
+# tree, workspace directory, and Qdrant namespace.
+colonies: {}

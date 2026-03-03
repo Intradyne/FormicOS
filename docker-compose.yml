@@ -1,0 +1,173 @@
+services:
+  # ── FormicOS Colony ──────────────────────────────
+  formicos:
+    build: .
+    container_name: formicos-colony
+    ports:
+      - "8080:8000" # Web dashboard
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./workspace:/app/workspace # Shared project workspace (must match WORKDIR /app)
+      - ./sessions:/app/.formicos/sessions # Session persistence
+      - ./config:/app/config # Configuration
+    environment:
+      - FORMICOS_CONFIG=/app/config/formicos.yaml
+    networks:
+      - colony-local
+      - colony-uplink
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      llm:
+        condition: service_started
+      embedding:
+        condition: service_healthy
+      mcp-gateway:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8000/api/colony || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── LLM Inference — llama.cpp (GPU) ─────────────
+  # Qwen3-30B-A3B Q4_K_M — MoE (3B active), 8192 ctx
+  # Port 8008 → OpenAI-compatible /v1/chat/completions
+  #
+  # VRAM budget (RTX 5090 32GB):
+  #   Model weights:  ~17.3 GB (Q4_K_M)
+  #   KV cache:       ~0.4 GB (8192 ctx × 2 slots × q8_0)
+  #   Compute buffers: ~2.4 GB
+  #   Prompt cache:    ~1 GB (dynamic)
+  #   ─────────────────────────
+  #   Total:          ~21.1 GB — leaves ~11 GB headroom
+  llm:
+    image: ${LLM_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
+    container_name: formicos-llm
+    restart: "no"
+    ports:
+      - "${LLM_PORT:-8008}:8080"
+    volumes:
+      - ${LLM_MODEL_DIR:-./.models}:/models:ro
+    command: >
+      --model /models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+      --alias gpt-4
+      --ctx-size ${LLM_CONTEXT_SIZE:-8192}
+      --n-gpu-layers 99
+      --flash-attn on
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+      --batch-size 4096
+      --ubatch-size 2048
+      --threads 8
+      --threads-batch 16
+      --jinja
+      --slots -np 2
+      --cache-ram 1024
+      --host 0.0.0.0
+      --port 8080
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    networks:
+      - colony-local
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Embedding — llama.cpp BGE-M3 (CPU) ──────────
+  # 1024-dim dense vectors, Q8_0 quantization (~635 MB RAM)
+  # Port 8009 → OpenAI-compatible /v1/embeddings
+  # Runs on CPU to keep all VRAM for the LLM. BGE-M3 embeddings
+  # are batch workloads (not latency-critical like generation).
+  embedding:
+    image: ${LLM_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
+    container_name: formicos-embedding
+    restart: unless-stopped
+    ports:
+      - "${EMBEDDING_PORT:-8009}:8080"
+    volumes:
+      - ${LLM_MODEL_DIR:-./.models}:/models:ro
+    command: >
+      --model /models/bge-m3-q8_0.gguf
+      --embeddings
+      --ctx-size 8192
+      --batch-size 2048
+      --ubatch-size 2048
+      --n-gpu-layers 0
+      --parallel 2
+      --threads 8
+      --host 0.0.0.0
+      --port 8080
+    networks:
+      - colony-local
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── MCP Gateway — Docker MCP Toolkit (Official) ──
+  # Docker's official MCP Gateway image. Spawns MCP servers
+  # as isolated Docker containers from the Docker MCP Catalog.
+  # Serves a unified SSE endpoint for FormicOS to connect to.
+  #
+  # Prerequisites:
+  #   1. Docker Desktop 4.48+ with MCP Toolkit enabled
+  #   2. Enable servers: docker mcp server enable filesystem fetch memory
+  mcp-gateway:
+    image: docker/mcp-gateway
+    container_name: formicos-mcp-gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - --transport=sse
+      - --port=8811
+    networks:
+      - colony-local
+      - colony-uplink
+    restart: unless-stopped
+
+  # ── Qdrant Vector DB ─────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: formicos-qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - colony-local
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/localhost/6333' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+# ── Networks ─────────────────────────────────────
+networks:
+  colony-local:
+    driver: bridge
+
+  colony-uplink:
+    driver: bridge # Internet access for browser MCP + cloud bursting
+
+# ── Volumes ──────────────────────────────────────
+volumes:
+  qdrant_data:
