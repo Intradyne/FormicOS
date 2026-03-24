@@ -1,0 +1,10 @@
+# Scaffold validation: 2 moderate tasks to measure parse failure rate change.
+task_order:
+  - csv-analyzer
+  - markdown-parser
+
+strategy: sequential
+budget_per_task: 2.00
+max_rounds_per_task: 5
+escalation_policy: none
+model_mix: {}

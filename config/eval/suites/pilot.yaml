@@ -1,0 +1,12 @@
+# Pilot suite: fast validation of harness integrity.
+# 3 tasks covering simple → moderate, suitable for Phase 0/1 runs.
+task_order:
+  - email-validator
+  - json-transformer
+  - csv-analyzer
+
+strategy: stigmergic
+budget_per_task: 1.50
+max_rounds_per_task: 10
+escalation_policy: none
+model_mix: {}

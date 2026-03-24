@@ -1,0 +1,19 @@
+task_class: creative
+castes: [coder]
+workflow: "Review reference material -> Draft -> Refine -> Deliver"
+steps:
+  - "Review any reference material with read_workspace_file"
+  - "Write your first draft with write_workspace_file"
+  - "Refine by patching with patch_file"
+  - "Finalize and commit with git_commit"
+productive_tools: [write_workspace_file, patch_file, git_commit]
+observation_tools: [read_workspace_file, memory_search]
+observation_limit: 2
+example:
+  name: write_workspace_file
+  arguments:
+    file_path: "output/draft.md"
+    content: |
+      # Title
+
+      Opening paragraph that establishes the core theme...

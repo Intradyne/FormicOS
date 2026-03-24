@@ -1,0 +1,10 @@
+# Coder-specific anti-patterns — injected for coder caste at context position 2.6.
+# Wave 56.5 Sub-packet A.
+#
+# Combined with universal common_mistakes.yaml, total under 120 tokens for coders.
+
+anti_patterns:
+  - id: write_before_observing
+    rule: "Do NOT write code without first reading the target file. Observe current state before every edit."
+  - id: ignore_error_output
+    rule: "When a tool call returns an error, READ the full error message before your next action."

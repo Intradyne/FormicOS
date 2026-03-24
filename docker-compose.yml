@@ -1,0 +1,266 @@
+# FormicOS v2 — Docker Compose
+#
+# Default stack: llama.cpp LLM (GPU) + Qwen3-Embedding sidecar (GPU) + FormicOS
+# Tuned for RTX 5090 (32 GB VRAM) with Qwen3-30B-A3B Q4_K_M + Qwen3-Embedding-0.6B.
+# See .env.example for all tunable knobs.
+#
+# Setup:
+#   1. Download models:
+#      mkdir -p .models && cd .models
+#      huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507-GGUF \
+#        Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf --local-dir .
+#      huggingface-cli download Qwen/Qwen3-Embedding-0.6B-GGUF \
+#        Qwen3-Embedding-0.6B-Q8_0.gguf --local-dir .
+#   2. Build the local llama.cpp image once if you are using the default local stack:
+#      bash scripts/build_llm_image.sh
+#   3. docker compose up -d
+#   4. Open http://localhost:8080
+
+services:
+  # ── Qdrant Vector Store (ADR-013) ─────────────
+  qdrant:
+    image: qdrant/qdrant:v1.16.2
+    container_name: formicos-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Embedding Sidecar — Qwen3-Embedding-0.6B (Wave 13) ──
+  # Decoder-only model via llama.cpp with last-token pooling.
+  # ~700 MB VRAM (Q8_0) at --n-gpu-layers 99.
+  # Set EMBED_GPU_LAYERS=0 to move embedding to CPU, freeing ~700 MB VRAM.
+  #
+  # Download model:
+  #   huggingface-cli download Qwen/Qwen3-Embedding-0.6B-GGUF \
+  #     Qwen3-Embedding-0.6B-Q8_0.gguf --local-dir .models
+  formicos-embed:
+    image: ${LLM_IMAGE:-local/llama.cpp:server-cuda-blackwell}
+    container_name: formicos-embed
+    ports:
+      - "8200:8200"
+    volumes:
+      - ${LLM_MODEL_DIR:-./.models}:/models:ro
+    environment:
+      # GPU pinning: CUDA_VISIBLE_DEVICES is the effective control on
+      # Docker Desktop / WSL2 (device_ids in deploy is ignored there).
+      # Set CUDA_DEVICE in .env to target a different GPU index.
+      - CUDA_VISIBLE_DEVICES=${CUDA_DEVICE:-0}
+    command: >
+      --model /models/Qwen3-Embedding-0.6B-Q8_0.gguf
+      --embedding
+      --pooling last
+      -ub 8192
+      --port 8200
+      --host 0.0.0.0
+      --n-gpu-layers ${EMBED_GPU_LAYERS:-99}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # device_ids works on native Linux; ignored on Docker Desktop / WSL2.
+            - driver: nvidia
+              device_ids: ['${CUDA_DEVICE:-0}']
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8200/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Docker Socket Proxy (Wave 43) ──────────────
+  # Restricts Docker API access to the minimum operations needed for
+  # sandbox container spawning. The FormicOS backend connects through
+  # this proxy instead of the raw socket.
+  #
+  # SECURITY: This is a MITIGATION, not a complete fix. For stronger
+  # isolation, use Sysbox or gVisor (see docker-compose.sysbox.yml).
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: formicos-docker-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Allow only the operations needed for sandbox spawning
+      - CONTAINERS=1     # create/start/stop/remove containers
+      - POST=1           # allow POST (create/start)
+      - IMAGES=0         # no image pull/build through proxy
+      - NETWORKS=0       # no network management
+      - VOLUMES=0        # no volume management
+      - SERVICES=0       # no swarm services
+      - NODES=0          # no swarm nodes
+      - BUILD=0          # no image builds
+      - EXEC=0           # no exec into running containers
+      - SWARM=0          # no swarm operations
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ── FormicOS Colony OS ──────────────────────────
+  formicos:
+    build: .
+    container_name: formicos-colony
+    ports:
+      - "8080:8080"
+    volumes:
+      - formicos-data:/data
+      # Wave 43: No raw Docker socket mount. Use the socket proxy instead.
+      # To bypass the proxy (dev only), uncomment the line below and remove
+      # DOCKER_HOST, then remove the docker-proxy service dependency.
+      # - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - FORMICOS_DATA_DIR=/data
+      - LLM_HOST=http://llm:8080
+      - QDRANT_URL=http://qdrant:6333
+      - EMBED_URL=http://formicos-embed:8200
+      # Wave 43: Route Docker commands through the socket proxy
+      - DOCKER_HOST=tcp://docker-proxy:2375
+    depends_on:
+      llm:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      formicos-embed:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── LLM Inference — llama.cpp (GPU) ─────────────
+  # Qwen3-30B-A3B: MoE with 3.3B active params per token.
+  # Excellent tool calling. The --alias gpt-4 maps to "llama-cpp/gpt-4" in formicos.yaml.
+  #
+  # VRAM budget (RTX 5090 32GB, Qwen3-30B-A3B Q4_K_M, 80000 ctx):
+  #   Model weights:  ~17.3 GB (Q4_K_M, MoE — only 3.3B active per token)
+  #   KV cache:       ~5.2 GB (80000 ctx x 2 slots x q8_0)
+  #   Compute buffers: ~2.4 GB
+  #   Embed sidecar:   ~0.7 GB (Qwen3-Embedding-0.6B Q8_0)
+  #   Prompt cache:    ~1 GB (--cache-ram, in system RAM not VRAM)
+  #   ─────────────────────────
+  #   Total GPU:      ~25.6 GB — leaves ~6.4 GB headroom
+  #   --fit on auto-sizes KV cache to available VRAM (OOM safety net).
+  #
+  # Requires Blackwell-native image for full 80000 context.
+  # Build with: bash scripts/build_llm_image.sh
+  # Fallback: LLM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda (PTX JIT, ~16k effective).
+  #
+  # COUPLING: LLM_SLOTS must match the adapter concurrency limit.
+  # The adapter reads LLM_SLOTS from the environment automatically.
+  llm:
+    image: ${LLM_IMAGE:-local/llama.cpp:server-cuda-blackwell}
+    container_name: formicos-llm
+    ports:
+      - "${LLM_PORT:-8008}:8080"
+    volumes:
+      - ${LLM_MODEL_DIR:-./.models}:/models:ro
+    environment:
+      # GPU pinning: CUDA_VISIBLE_DEVICES is the effective control on
+      # Docker Desktop / WSL2 (device_ids in deploy is ignored there).
+      # Set CUDA_DEVICE in .env to target a different GPU index.
+      - CUDA_VISIBLE_DEVICES=${CUDA_DEVICE:-0}
+      - GGML_CUDA_GRAPH_OPT=1
+    command: >
+      --model /models/${LLM_MODEL_FILE:-Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf}
+      --alias gpt-4
+      --ctx-size ${LLM_CONTEXT_SIZE:-80000}
+      --n-gpu-layers 99
+      --flash-attn on
+      --fit on
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+      --batch-size 8192
+      --ubatch-size 4096
+      --threads 8
+      --threads-batch 16
+      --jinja
+      --reasoning-format none
+      --slots
+      -np ${LLM_SLOTS:-2}
+      -sps ${LLM_SLOT_PROMPT_SIMILARITY:-0.5}
+      --cache-ram ${LLM_CACHE_RAM:-1024}
+      --host 0.0.0.0
+      --port 8080
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # device_ids works on native Linux; ignored on Docker Desktop / WSL2.
+            - driver: nvidia
+              device_ids: ['${CUDA_DEVICE:-0}']
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── ALTERNATIVE: Ollama (simpler, heavier) ──────
+  # Uncomment this and comment out the llm service above if you prefer Ollama.
+  # Then change LLM_HOST to http://ollama:11434 and model defaults to ollama/*.
+  #
+  # VRAM budget (RTX 5090 32GB, llama3.3 Q4_K_M 70B):
+  #   Model weights:  ~40 GB (Q4_K_M 70B) — tight fit
+  #   KV cache:       reduced by q8_0 quantization
+  #   ─────────────────────────
+  #   Fits with KV cache quantization enabled.
+  #   For better headroom, use Qwen3-30B-A3B (~18.6 GB weights).
+  #
+  # ollama:
+  #   image: ollama/ollama
+  #   container_name: formicos-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   environment:
+  #     - OLLAMA_FLASH_ATTENTION=1
+  #     - OLLAMA_GPU_OVERHEAD=0
+  #     - OLLAMA_NUM_PARALLEL=4
+  #     - OLLAMA_MAX_LOADED_MODELS=2
+  #     - OLLAMA_KV_CACHE_TYPE=q8_0
+  #     - CUDA_VISIBLE_DEVICES=0
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+  #     interval: 10s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 60s
+
+volumes:
+  formicos-data:
+  qdrant-data:
+  # ollama-data:

@@ -1,0 +1,31 @@
+# Phase 0 Measurement Suite — Wave 53
+#
+# Calibrated for local Qwen3-30B-A3B. Tasks ordered for maximum
+# compounding opportunity: simple tasks first (produce knowledge),
+# moderate tasks later (can consume earlier knowledge).
+#
+# 8 tasks: 3 fast-path simple tasks, 2 moderate sequential review tasks,
+# 3 higher-complexity stigmergic tasks.
+# Deliberately avoids frontier-only work that stalls on the local model.
+# Expected wall time: ~20-45 min per arm depending on model speed.
+
+task_order:
+  # --- Warm-up / knowledge seeding ---
+  - email-validator       # simple: pure code, establishes Python patterns
+  - json-transformer      # simple: data manipulation, builds on Python patterns
+  - haiku-writer          # simple/creative: cross-domain control (no code reuse)
+
+  # --- Moderate: should benefit from earlier knowledge ---
+  - csv-analyzer          # moderate: data processing, can reuse patterns from json-transformer
+  - markdown-parser       # moderate: parsing, independent domain
+  - rate-limiter          # moderate: concurrency, tests deeper code quality
+
+  # --- Moderate with design element ---
+  - api-design            # moderate: design task, tests research/reasoning
+  - data-pipeline         # moderate: multi-stage, strongest compounding candidate
+
+strategy: sequential
+budget_per_task: 2.00
+max_rounds_per_task: 5
+escalation_policy: none
+model_mix: {}  # system defaults (local Qwen3-30B-A3B)

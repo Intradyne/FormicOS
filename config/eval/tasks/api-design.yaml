@@ -1,0 +1,28 @@
+id: api-design
+description: >
+  Design a REST API for a task management application (similar to Todoist).
+  The API must support: projects (CRUD), tasks within projects (CRUD with
+  priority, due date, labels), task comments, and task assignment to users.
+  Produce an OpenAPI-style specification with endpoint paths, HTTP methods,
+  request/response schemas, error codes, and pagination strategy.
+  Include authentication approach and rate limiting recommendations.
+difficulty: moderate
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: researcher
+    tier: light
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Complete API spec with all required resources. Consistent naming and
+  response shapes. Pagination, auth, and error handling are addressed.
+  Researcher provides industry-standard references. Reviewer confirms
+  REST conventions are followed.
+budget_limit: 2.00
+max_rounds: 8
+eval_timeout_s: 1200

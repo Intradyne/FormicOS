@@ -1,0 +1,40 @@
+# FormicOS v0.12.6 — Routing Table
+#
+# Per-role model routing heuristic for the ComputeRouter.
+# Each route maps an agent role to a default and fallback model.
+# If VRAM usage exceeds throttle_threshold_vram_mb, the router
+# automatically down-tiers to the fallback model.
+#
+# Model IDs must match entries in the model_registry (formicos.yaml).
+
+# Global defaults — used when no role-specific route matches.
+default_model: "local/qwen3-30b"
+default_fallback: "cloud/claude-haiku-4-5"
+
+routes:
+  # Reviewer: local by default, fallback to cloud on high VRAM
+  - role: "reviewer"
+    default_model: "local/qwen3-30b"
+    fallback_model: "cloud/claude-haiku-4-5"
+    throttle_threshold_vram_mb: 20000
+
+  # Coder: cloud for higher reasoning quality
+  - role: "coder"
+    default_model: "cloud/claude-sonnet-4-5"
+    fallback_model: "cloud/claude-haiku-4-5"
+
+  # Architect: cloud for design quality, local fallback
+  - role: "architect"
+    default_model: "cloud/claude-sonnet-4-5"
+    fallback_model: "local/qwen3-30b"
+
+  # Manager: cloud for orchestration quality
+  - role: "manager"
+    default_model: "cloud/claude-sonnet-4-5"
+    fallback_model: "cloud/claude-haiku-4-5"
+
+  # Researcher: local by default, cloud fallback on load
+  - role: "researcher"
+    default_model: "local/qwen3-30b"
+    fallback_model: "cloud/claude-haiku-4-5"
+    throttle_threshold_vram_mb: 24000

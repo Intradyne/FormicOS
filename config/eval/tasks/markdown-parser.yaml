@@ -1,0 +1,22 @@
+id: markdown-parser
+description: >
+  Write a Python function that parses a subset of Markdown into an AST.
+  Support headers (h1-h3), bold, italic, code blocks (fenced), unordered
+  lists, and paragraphs. Return a list of typed AST nodes. Include at
+  least 10 test cases covering nested formatting and edge cases.
+difficulty: moderate
+category: language_breadth
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Parser handles all specified elements. AST nodes are typed and
+  testable. Nested bold/italic within list items works. Edge cases
+  (empty input, unclosed formatting) handled gracefully.
+budget_limit: 2.00
+max_rounds: 5
+eval_timeout_s: 1200

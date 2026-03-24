@@ -1,0 +1,27 @@
+id: cli-framework
+description: >
+  Build a minimal CLI framework in Python (no external deps beyond
+  stdlib). Support: (1) command registration via decorators, (2) typed
+  argument parsing from function signatures, (3) help text generation,
+  (4) nested subcommands. Create a sample CLI app with at least 3
+  commands. Include tests for argument parsing, help output, and
+  error handling.
+difficulty: complex
+category: compounding
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: researcher
+    tier: light
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Decorators register commands correctly. Argument parsing handles
+  types (str, int, bool, optional). Help text is accurate and
+  auto-generated. Subcommands nest properly. Sample app works end
+  to end.
+budget_limit: 3.50
+max_rounds: 20

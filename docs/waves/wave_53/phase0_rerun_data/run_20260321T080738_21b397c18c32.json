@@ -1,0 +1,346 @@
+{
+  "conditions": {
+    "suite_id": "phase0",
+    "task_order": [
+      "email-validator",
+      "json-transformer",
+      "haiku-writer",
+      "csv-analyzer",
+      "markdown-parser",
+      "rate-limiter",
+      "api-design",
+      "data-pipeline"
+    ],
+    "strategy": "sequential",
+    "model_mix": {},
+    "budget_per_task": 2.0,
+    "max_rounds_per_task": 5,
+    "escalation_policy": "none",
+    "knowledge_mode": "empty",
+    "foraging_policy": "disabled",
+    "random_seed": null,
+    "run_id": "21b397c18c32",
+    "workspace_id": "seq-phase0-21b397c18c32",
+    "started_at": "2026-03-21T07:48:46.664975+00:00",
+    "config_hash": "b196acb0969b5529",
+    "git_commit": "",
+    "task_profiles": {
+      "email-validator": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.0,
+        "max_rounds": 3,
+        "fast_path": true,
+        "model_mix": {}
+      },
+      "json-transformer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.0,
+        "max_rounds": 3,
+        "fast_path": true,
+        "model_mix": {}
+      },
+      "haiku-writer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "light",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 0.5,
+        "max_rounds": 3,
+        "fast_path": true,
+        "model_mix": {}
+      },
+      "csv-analyzer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "light",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.5,
+        "max_rounds": 5,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "markdown-parser": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 2.0,
+        "max_rounds": 5,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "rate-limiter": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "stigmergic",
+        "budget_limit": 2.0,
+        "max_rounds": 8,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "api-design": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "researcher",
+            "tier": "light",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "stigmergic",
+        "budget_limit": 2.0,
+        "max_rounds": 8,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "data-pipeline": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 2
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "stigmergic",
+        "budget_limit": 2.5,
+        "max_rounds": 8,
+        "fast_path": false,
+        "model_mix": {}
+      }
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "email-validator",
+      "sequence_index": 0,
+      "colony_id": "colony-e22f7a4e",
+      "status": "completed",
+      "quality_score": 0.9036,
+      "cost": 0.0,
+      "wall_time_s": 73.8,
+      "rounds_completed": 1,
+      "entries_extracted": 1,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:49:55.840975+00:00"
+    },
+    {
+      "task_id": "json-transformer",
+      "sequence_index": 1,
+      "colony_id": "colony-760e65db",
+      "status": "completed",
+      "quality_score": 0.9036,
+      "cost": 0.0,
+      "wall_time_s": 113.38,
+      "rounds_completed": 1,
+      "entries_extracted": 1,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:51:42.460149+00:00"
+    },
+    {
+      "task_id": "haiku-writer",
+      "sequence_index": 2,
+      "colony_id": "colony-60cf1010",
+      "status": "completed",
+      "quality_score": 0.9036,
+      "cost": 0.0,
+      "wall_time_s": 12.12,
+      "rounds_completed": 1,
+      "entries_extracted": 0,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 0,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:51:52.273870+00:00"
+    },
+    {
+      "task_id": "csv-analyzer",
+      "sequence_index": 3,
+      "colony_id": "colony-b0598793",
+      "status": "completed",
+      "quality_score": 0.1592,
+      "cost": 0.0,
+      "wall_time_s": 47.43,
+      "rounds_completed": 5,
+      "entries_extracted": 5,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 5,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:52:37.488899+00:00"
+    },
+    {
+      "task_id": "markdown-parser",
+      "sequence_index": 4,
+      "colony_id": "colony-de16f355",
+      "status": "completed",
+      "quality_score": 0.2311,
+      "cost": 0.0,
+      "wall_time_s": 97.59,
+      "rounds_completed": 5,
+      "entries_extracted": 1,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:54:05.965407+00:00"
+    },
+    {
+      "task_id": "rate-limiter",
+      "sequence_index": 5,
+      "colony_id": "colony-3f5bab07",
+      "status": "completed",
+      "quality_score": 0.2634,
+      "cost": 0.0,
+      "wall_time_s": 58.21,
+      "rounds_completed": 8,
+      "entries_extracted": 1,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:54:59.664415+00:00"
+    },
+    {
+      "task_id": "api-design",
+      "sequence_index": 6,
+      "colony_id": "colony-50a99372",
+      "status": "completed",
+      "quality_score": 0.2881,
+      "cost": 0.0,
+      "wall_time_s": 299.33,
+      "rounds_completed": 8,
+      "entries_extracted": 0,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 0,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:59:36.036887+00:00"
+    },
+    {
+      "task_id": "data-pipeline",
+      "sequence_index": 7,
+      "colony_id": "colony-d60e8c75",
+      "status": "failed",
+      "quality_score": 0.0,
+      "cost": 0.0,
+      "wall_time_s": 521.96,
+      "rounds_completed": 8,
+      "entries_extracted": 6,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 6,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T08:07:38.783693+00:00"
+    }
+  ],
+  "total_cost": 0.0,
+  "total_wall_time_s": 1223.84,
+  "completed_at": "2026-03-21T08:07:38.784090+00:00",
+  "manifest_path": ""
+}

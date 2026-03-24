@@ -1,0 +1,22 @@
+# Full suite: comprehensive evaluation across all categories.
+# 10 tasks: language breadth (A), multi-file depth (B), compounding (C).
+task_order:
+  # Category A: language breadth (simple → moderate)
+  - email-validator
+  - json-transformer
+  - csv-analyzer
+  - rate-limiter
+  # Category B: multi-file depth (moderate → complex)
+  - api-design
+  - plugin-system
+  - event-store
+  # Category C: compounding clusters (complex, benefits from prior knowledge)
+  - data-pipeline
+  - notification-system
+  - cli-framework
+
+strategy: stigmergic
+budget_per_task: 2.50
+max_rounds_per_task: 15
+escalation_policy: none
+model_mix: {}

@@ -1,0 +1,20 @@
+task_class: research
+castes: [coder]
+workflow: "Search existing knowledge -> Read relevant files -> Write findings"
+steps:
+  - "Search existing knowledge with memory_search (up to 3 times)"
+  - "Read relevant workspace files with read_workspace_file"
+  - "Write your findings document with write_workspace_file"
+  - "Commit with git_commit when findings are complete"
+productive_tools: [write_workspace_file, git_commit]
+observation_tools: [memory_search, read_workspace_file, list_workspace_files]
+observation_limit: 4
+example:
+  name: write_workspace_file
+  arguments:
+    file_path: "docs/findings.md"
+    content: |
+      # Research Findings
+
+      ## Summary
+      The analysis shows three key patterns...

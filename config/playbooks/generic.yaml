@@ -1,0 +1,21 @@
+task_class: generic
+castes: [coder]
+workflow: "Read context -> Produce output -> Verify -> Iterate"
+steps:
+  - "Read relevant files with read_workspace_file to understand the task"
+  - "Write your output with write_workspace_file"
+  - "Verify results with code_execute or workspace_execute"
+  - "Fix any issues with patch_file, then re-verify"
+productive_tools: [write_workspace_file, patch_file, code_execute, workspace_execute]
+observation_tools: [list_workspace_files, read_workspace_file, memory_search]
+observation_limit: 3
+example:
+  name: write_workspace_file
+  arguments:
+    file_path: "src/main.py"
+    content: |
+      def main():
+          print("Hello, world!")
+
+      if __name__ == "__main__":
+          main()

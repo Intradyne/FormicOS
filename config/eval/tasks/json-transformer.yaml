@@ -1,0 +1,20 @@
+id: json-transformer
+description: >
+  Write a Python script that takes a flat list of user records
+  (each with id, name, email, department, role) and transforms it into a
+  nested structure grouped by department, then by role within each department.
+  Handle edge cases: missing fields, duplicate ids, empty department names.
+  Include sample input data (at least 12 records across 3 departments)
+  and verify the output structure is correct.
+difficulty: simple
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+strategy: sequential
+fast_path: true
+success_rubric: >
+  Script runs correctly, handles all edge cases, sample data is realistic,
+  output structure matches the nesting spec.
+budget_limit: 1.00
+max_rounds: 3

@@ -1,0 +1,14 @@
+task_class: code_review
+castes: [reviewer]
+workflow: "Read code -> Check diffs -> Analyze -> Synthesize findings"
+steps:
+  - "Read the file under review with read_workspace_file"
+  - "Check recent changes with git_diff"
+  - "Search for relevant conventions with memory_search"
+  - "Synthesize your review as a complete analysis in your response"
+productive_tools: [git_diff, git_status]
+observation_tools: [read_workspace_file, list_workspace_files, memory_search, knowledge_detail]
+observation_limit: 4
+example:
+  name: git_diff
+  arguments: {}

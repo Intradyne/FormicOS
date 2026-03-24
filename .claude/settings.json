@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos /app/.venv/bin/python -c \":*)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos /app/.venv/bin/python -m formicos.eval.sequential_runner --suite phase0 --knowledge-mode empty)",
+      "Bash(ls c:/Users/User/FormicOSa/.models/*.gguf)",
+      "Bash(LLM_MODEL_FILE=Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf docker compose up -d --force-recreate llm formicos)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos ls /app/config/eval/suites/)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos /app/.venv/bin/python -m formicos.eval.sequential_runner --suite phase0-heavy --knowledge-mode accumulate)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos /app/.venv/bin/python -m formicos.eval.sequential_runner --suite phase0-heavy --knowledge-mode empty)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos ls -la /data/eval/sequential/phase0-heavy/)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos ls -la /app/data/)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos find / -name *.db -maxdepth 4)",
+      "Bash(find /c/Users/User/FormicOSa/docs/waves -type f -name *phase* -o -name *result*)",
+      "Bash(ls -d /c/Users/User/FormicOSa/docs/waves/wave_*)",
+      "Bash(ls -lh /c/Users/User/FormicOSa/docs/waves/wave_53/phase0* /c/Users/User/FormicOSa/docs/waves/wave_54/phase0* /c/Users/User/FormicOSa/docs/waves/wave_55/phase0*)",
+      "Bash(ls -la c:/Users/User/FormicOSa/config/playbooks/common_mistakes*)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos ls -la /app/config/playbooks/common_mistakes*)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos ls /app/config/playbooks/)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec formicos cat /data/eval/sequential/phase0/results.jsonl)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep LLM_MODEL /app/.env)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep -rn \"LLM_MODEL\\\\|Qwen3-Coder\\\\|model.*gguf\" /app/docker-compose.yaml /app/.env /app/config/)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep -n \"GOVERNANCE_EXTENSION\" /app/src/formicos/eval/sequential_runner.py)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep \"eval_timeout_s\" /app/config/eval/tasks/api-design.yaml)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep \"_original_id\" /app/src/formicos/surface/memory_store.py)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep \"similarity\" /app/src/formicos/engine/context.py)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos ls /app/config/playbooks/common_mistakes*.yaml)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose exec -T formicos grep \"playbook_generation\" /app/src/formicos/surface/colony_manager.py)"
+    ]
+  }
+}

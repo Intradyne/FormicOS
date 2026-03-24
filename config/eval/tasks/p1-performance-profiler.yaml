@@ -1,0 +1,29 @@
+id: p1-performance-profiler
+description: >
+  Write a Python module `profiler.py` that wraps our pipeline
+  orchestrator and measures performance. Track: wall-clock time per
+  stage (read, validate, transform, write), peak memory usage,
+  rows processed per second, and bottleneck identification (which
+  stage takes the most time). Output a structured profile report
+  (JSON + markdown). The profiler should work as a decorator or
+  context manager that wraps the existing pipeline without modifying
+  it. Include at least 5 test cases with synthetic data of varying
+  sizes (100, 1K, 10K rows).
+difficulty: moderate
+category: code_implementation
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: researcher
+    tier: light
+    count: 1
+success_rubric: >
+  Profiler wraps pipeline without modifying pipeline code. Timing
+  is accurate per-stage. Memory tracking uses tracemalloc or
+  resource module. Bottleneck identification is correct.
+  Tests verify accuracy with known synthetic data.
+budget_limit: 2.00
+max_rounds: 8
+eval_timeout_s: 1200

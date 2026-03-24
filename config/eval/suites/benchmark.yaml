@@ -1,0 +1,27 @@
+# Benchmark suite: full rigor with all tasks and refactoring.
+# 13 tasks ordered to maximize compounding opportunity.
+# Only run after pilot/full suites show signal.
+task_order:
+  # Warm-up: simple tasks to seed knowledge
+  - email-validator
+  - haiku-writer
+  - json-transformer
+  # Language breadth
+  - csv-analyzer
+  - markdown-parser
+  - rate-limiter
+  # Multi-file depth
+  - api-design
+  - plugin-system
+  - event-store
+  # Compounding cluster: later tasks benefit from patterns established earlier
+  - data-pipeline
+  - notification-system
+  - cli-framework
+  - refactor-plan
+
+strategy: stigmergic
+budget_per_task: 3.00
+max_rounds_per_task: 20
+escalation_policy: none
+model_mix: {}

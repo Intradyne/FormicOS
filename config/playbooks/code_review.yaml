@@ -1,0 +1,18 @@
+task_class: code_review
+castes: [coder]
+workflow: "Read code -> Analyze changes -> Write feedback -> Suggest patches"
+steps:
+  - "Read the file under review with read_workspace_file"
+  - "Check recent changes with git_diff"
+  - "Write your review with write_workspace_file to a review file"
+  - "Suggest fixes with patch_file on the target"
+productive_tools: [write_workspace_file, patch_file, git_diff, git_status]
+observation_tools: [read_workspace_file, list_workspace_files, memory_search]
+observation_limit: 3
+example:
+  name: patch_file
+  arguments:
+    file_path: "src/handler.py"
+    patches:
+      - find: "except Exception:"
+        replace: "except ValueError as e:\n    logger.error(f'Validation failed: {e}')"

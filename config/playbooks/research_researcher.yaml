@@ -1,0 +1,16 @@
+task_class: research
+castes: [researcher]
+workflow: "Search knowledge -> Read files -> Synthesize -> Store findings"
+steps:
+  - "Search existing knowledge with memory_search (up to 3 times)"
+  - "Read relevant workspace files with read_workspace_file"
+  - "Store key findings with memory_write for future colonies"
+  - "Synthesize your complete analysis in your response"
+productive_tools: [memory_write]
+observation_tools: [memory_search, read_workspace_file, list_workspace_files, knowledge_detail, transcript_search]
+observation_limit: 5
+example:
+  name: memory_write
+  arguments:
+    content: "Research finding: the CSV parser uses pandas read_csv with UTF-8 encoding."
+    category: "finding"

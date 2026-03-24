@@ -1,0 +1,25 @@
+template_id: "builtin-documentation"
+name: "Documentation"
+description: "Archivist-led team for writing docs, extracting knowledge, and building the knowledge graph."
+version: 1
+castes:
+  - caste: researcher
+    tier: light
+    count: 1
+  - caste: archivist
+    tier: standard
+    count: 1
+strategy: "stigmergic"
+budget_limit: 3.0
+max_rounds: 8
+tags:
+  - docs
+  - documentation
+  - knowledge
+source_colony_id: null
+created_at: "2026-03-14T00:00:00Z"
+use_count: 0
+input_description: "Code or system to document"
+output_description: "Documentation covering usage and architecture"
+expected_output_types: ["document"]
+completion_hint: "Documentation is comprehensive and accurate"

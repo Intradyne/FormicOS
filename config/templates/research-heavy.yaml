@@ -1,0 +1,25 @@
+template_id: "builtin-research-heavy"
+name: "Research Heavy"
+description: "Researcher + Archivist team for deep information gathering and knowledge extraction."
+version: 1
+castes:
+  - caste: researcher
+    tier: standard
+    count: 2
+  - caste: archivist
+    tier: light
+    count: 1
+strategy: "stigmergic"
+budget_limit: 5.0
+max_rounds: 15
+tags:
+  - research
+  - knowledge
+  - analysis
+source_colony_id: null
+created_at: "2026-03-14T00:00:00Z"
+use_count: 0
+input_description: "A research question or topic to investigate"
+output_description: "Research summary document with findings and sources"
+expected_output_types: ["document"]
+completion_hint: "Research question is answered with supporting evidence"

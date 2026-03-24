@@ -1,0 +1,9 @@
+# Moderate preflight: single task under exact benchmark mode.
+task_order:
+  - csv-analyzer
+
+strategy: sequential
+budget_per_task: 2.00
+max_rounds_per_task: 5
+escalation_policy: none
+model_mix: {}

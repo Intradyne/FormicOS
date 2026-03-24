@@ -1,0 +1,31 @@
+id: refactor-plan
+description: >
+  Given a legacy Python module that handles user authentication (described
+  below), produce a detailed refactoring plan. The module currently has:
+  a single 800-line auth.py file mixing password hashing, JWT token
+  generation, session management, OAuth2 provider integration, rate limiting,
+  and audit logging. All functions share a global database connection.
+  Tests exist but are slow (hitting a real database) and cover only 40%
+  of branches. Plan the refactoring into clean modules with dependency
+  injection, identify the extraction order that minimizes risk, specify
+  which tests to add at each step, and produce a migration checklist
+  that a team of two developers could execute over one sprint.
+difficulty: complex
+castes:
+  - caste: coder
+    tier: heavy
+    count: 1
+  - caste: researcher
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: heavy
+    count: 1
+success_rubric: >
+  Plan identifies correct module boundaries. Extraction order is justified
+  with risk analysis. Test strategy covers both unit and integration levels.
+  Migration checklist is actionable with clear done-criteria per step.
+  Researcher contributes relevant patterns or references. Reviewer validates
+  the plan is executable in one sprint.
+budget_limit: 4.00
+max_rounds: 20

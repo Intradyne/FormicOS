@@ -1,0 +1,27 @@
+id: p1-error-reporter
+description: >
+  Extend our data_validator module to produce rich error reports. Write
+  a Python module `error_reporter.py` that takes a ValidationReport
+  from our validator and produces: (1) a human-readable markdown summary
+  with error counts per column and per rule type, (2) a JSON report
+  with full error details for programmatic consumption, and (3) a
+  "fix suggestions" section that recommends data corrections for common
+  errors (e.g., "Column 'age' has 12 non-integer values -- consider
+  removing non-numeric characters"). Include at least 6 test cases.
+difficulty: moderate
+category: code_implementation
+strategy: sequential
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  All three output formats produced correctly. Fix suggestions are
+  sensible for common error types. Markdown is well-formatted.
+  JSON is machine-parseable. Tests cover each output format.
+budget_limit: 2.00
+max_rounds: 5
+eval_timeout_s: 1200

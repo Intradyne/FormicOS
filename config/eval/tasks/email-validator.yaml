@@ -1,0 +1,19 @@
+id: email-validator
+description: >
+  Write a Python function that validates email addresses. It should check
+  format correctness (RFC 5322 basics), reject obviously invalid inputs,
+  and return a structured result with the local part, domain, and any
+  validation errors found. Include at least 8 test cases.
+difficulty: simple
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+strategy: sequential
+fast_path: true
+success_rubric: >
+  Function exists, handles valid/invalid emails correctly, test cases
+  cover edge cases (missing @, double dots, unicode, empty string).
+  Output is self-checking and coherent.
+budget_limit: 1.00
+max_rounds: 3

@@ -1,0 +1,20 @@
+# FormicOS Sandbox — Minimal Python image for code execution (Wave 14)
+# Build: docker build -f Dockerfile.sandbox -t formicos-sandbox:latest .
+
+FROM python:3.12-slim
+
+# No network access, read-only root, writable /tmp only
+RUN useradd --create-home --shell /bin/false sandbox
+
+# Pre-install common data science packages
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    scipy \
+    && rm -rf /root/.cache
+
+WORKDIR /code
+USER sandbox
+
+# Default entrypoint — overridden by docker run args
+ENTRYPOINT ["python"]

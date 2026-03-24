@@ -1,0 +1,35 @@
+# Phase 1 Measurement Suite — Wave 59
+#
+# Same-domain data processing pipeline. 8 tasks with progressive
+# complexity. Tests knowledge compounding within a single domain.
+#
+# Unlike Phase 0 (5+ unrelated domains, cross-domain transfer),
+# Phase 1 uses a single domain where each task builds on prior work.
+# Later tasks reference prior modules using project-specific language
+# ("our csv_reader," "our pipeline"), triggering the specificity gate.
+#
+# Expected wall time: ~30-60 min per arm depending on model speed.
+# Heavy tasks (T7-T8) use 3 agents and stigmergic strategy.
+
+task_order:
+  # --- Foundation (knowledge seeding) ---
+  - p1-csv-reader          # simple: CSV parsing, encoding, auto-detection
+  - p1-data-validator      # simple: validation rules, extends csv_reader format
+
+  # --- Extension (should benefit from T1-T2 knowledge) ---
+  - p1-data-transformer    # moderate: composable transforms, uses T1 format
+  - p1-pipeline-orchestrator  # moderate: integrates T1-T3, YAML config
+
+  # --- Enrichment (should benefit from T1-T4 knowledge) ---
+  - p1-error-reporter      # moderate: rich reports from T2's ValidationReport
+  - p1-performance-profiler  # moderate: wraps T4's pipeline stages
+
+  # --- Integration (full compounding test) ---
+  - p1-schema-evolution    # hard: extends T4 config + T2 rules
+  - p1-pipeline-cli        # hard: wraps ALL prior module interfaces
+
+strategy: sequential
+budget_per_task: 2.50
+max_rounds_per_task: 8
+escalation_policy: none
+model_mix: {}

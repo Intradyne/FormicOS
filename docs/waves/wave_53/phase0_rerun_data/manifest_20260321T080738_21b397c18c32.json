@@ -1,0 +1,37 @@
+{
+  "run_id": "21b397c18c32",
+  "suite_id": "phase0",
+  "started_at": "2026-03-21T07:48:46.664975+00:00",
+  "completed_at": "2026-03-21T08:07:38.784090+00:00",
+  "git_commit": "",
+  "config_hash": "b196acb0969b5529",
+  "knowledge_mode": "empty",
+  "foraging_policy": "disabled",
+  "strategy": "sequential",
+  "workspace_id": "seq-phase0-21b397c18c32",
+  "tasks_run": 8,
+  "total_cost": 0.0,
+  "total_wall_time_s": 1223.84,
+  "task_ids": [
+    "email-validator",
+    "json-transformer",
+    "haiku-writer",
+    "csv-analyzer",
+    "markdown-parser",
+    "rate-limiter",
+    "api-design",
+    "data-pipeline"
+  ],
+  "statuses": [
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "failed"
+  ],
+  "total_knowledge_used": 0,
+  "total_knowledge_produced": 0
+}

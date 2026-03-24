@@ -1,0 +1,21 @@
+task_class: design
+castes: [coder]
+workflow: "Survey structure -> Design components -> Document -> Create skeletons"
+steps:
+  - "Survey existing structure with list_workspace_files (once)"
+  - "Read key files with read_workspace_file (up to 3)"
+  - "Write your design document with write_workspace_file"
+  - "Create skeleton files with write_workspace_file for each component"
+productive_tools: [write_workspace_file, patch_file]
+observation_tools: [list_workspace_files, read_workspace_file, memory_search, git_status]
+observation_limit: 4
+example:
+  name: write_workspace_file
+  arguments:
+    file_path: "docs/design.md"
+    content: |
+      # Component Design
+
+      ## Architecture
+      - Module A handles input parsing
+      - Module B handles transformation

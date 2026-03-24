@@ -1,0 +1,13 @@
+# Phase 0 heavy tasks only — for rerun with coder model + 900s timeout.
+# Wave 56.5 v7 heavy task rerun.
+
+task_order:
+  - rate-limiter
+  - api-design
+  - data-pipeline
+
+strategy: sequential
+budget_per_task: 2.00
+max_rounds_per_task: 5
+escalation_policy: none
+model_mix: {}

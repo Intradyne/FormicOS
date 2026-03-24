@@ -1,0 +1,28 @@
+template_id: "builtin-full-stack"
+name: "Full Stack"
+description: "Balanced team for implementation tasks. Includes Archivist for knowledge extraction."
+version: 1
+castes:
+  - caste: coder
+    tier: standard
+    count: 2
+  - caste: reviewer
+    tier: light
+    count: 1
+  - caste: archivist
+    tier: light
+    count: 1
+strategy: "stigmergic"
+budget_limit: 5.0
+max_rounds: 12
+tags:
+  - coding
+  - implementation
+  - refactoring
+source_colony_id: null
+created_at: "2026-03-14T00:00:00Z"
+use_count: 0
+input_description: "Feature specification or requirements"
+output_description: "Full implementation with tests and documentation"
+expected_output_types: ["code", "test", "document"]
+completion_hint: "Feature is implemented, tested, and documented"

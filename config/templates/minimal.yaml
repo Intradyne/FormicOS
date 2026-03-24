@@ -1,0 +1,22 @@
+template_id: "builtin-minimal"
+name: "Minimal"
+description: "Single coder for quick tasks. Fast demo path — completes in 2-3 rounds."
+version: 1
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+strategy: "stigmergic"
+budget_limit: 2.0
+max_rounds: 6
+tags:
+  - quick
+  - demo
+  - single-agent
+source_colony_id: null
+created_at: "2026-03-14T00:00:00Z"
+use_count: 0
+input_description: "Simple task or question"
+output_description: "Direct answer or small output"
+expected_output_types: ["generic"]
+completion_hint: "Task is completed"

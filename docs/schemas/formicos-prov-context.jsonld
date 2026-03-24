@@ -1,0 +1,10 @@
+{
+  "@context": {
+    "prov": "http://www.w3.org/ns/prov#",
+    "formicos": "https://formicos.dev/ns/",
+    "generated_by": "prov:wasGeneratedBy",
+    "attributed_to": "prov:wasAttributedTo",
+    "derived_from": "prov:wasDerivedFrom",
+    "generated_at": "prov:generatedAtTime"
+  }
+}

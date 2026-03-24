@@ -1,0 +1,30 @@
+id: p1-schema-evolution
+description: >
+  Extend our pipeline orchestrator to handle schema evolution. When
+  the CSV input has columns that don't match the YAML config's
+  validation rules (new columns appeared, expected columns missing,
+  column order changed), the pipeline should: (1) detect the schema
+  drift, (2) report which columns are new/missing/reordered,
+  (3) apply a configurable strategy: "strict" (fail on any drift),
+  "lenient" (validate only known columns, pass through unknown),
+  or "adaptive" (auto-generate default rules for new columns based
+  on their content). Update pipeline.py and add a schema_evolution.py
+  module. Include at least 8 test cases.
+difficulty: hard
+category: code_implementation
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 2
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Schema drift detected correctly. All three strategies work.
+  Adaptive strategy generates sensible default rules. Integration
+  with existing pipeline is clean (no breaking changes to config
+  format). Tests cover each strategy plus mixed scenarios.
+budget_limit: 2.50
+max_rounds: 8
+eval_timeout_s: 1200

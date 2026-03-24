@@ -1,0 +1,55 @@
+# ============================================================================
+# FormicOS Sandbox Profiles
+# Wave 17
+# ============================================================================
+#
+# Execution environment profiles for agent code execution.
+# The sandbox adapter (future wave) selects a profile based on context.
+#
+# Pruned to alpha-relevant profiles only:
+#   harness        — dev/test, no Docker runtime
+#   local_sandboxed — production default, gVisor isolation
+#   queen_sandbox   — elevated Queen profile, network allowed
+# ============================================================================
+
+schema_version: "1.0.0"
+
+profiles:
+  harness:
+    runtime: ""
+    isolation: local_harness
+    readonly_rootfs: false
+    network_access: false
+    memory_limit_mb: 512
+    cpu_limit_cores: 1.0
+    pids_limit: 128
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    notes: "Fast local harness execution for test-flight and dev. No Docker runtime."
+
+  local_sandboxed:
+    runtime: runsc
+    isolation: gvisor
+    readonly_rootfs: false
+    network_access: false
+    memory_limit_mb: 512
+    cpu_limit_cores: 1.0
+    pids_limit: 128
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    notes: "Default local isolation with gVisor sandboxing and no network."
+
+  queen_sandbox:
+    runtime: ""
+    isolation: local_harness
+    readonly_rootfs: false
+    network_access: true
+    memory_limit_mb: 2048
+    cpu_limit_cores: 2.0
+    pids_limit: 512
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    notes: "Elevated Queen profile. Local harness, network allowed, extended resources."

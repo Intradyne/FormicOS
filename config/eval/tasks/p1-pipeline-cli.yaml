@@ -1,0 +1,29 @@
+id: p1-pipeline-cli
+description: >
+  Write a CLI tool `pipeline_cli.py` that wraps our entire data
+  processing pipeline with a user-friendly interface. Support
+  these commands: `run` (execute pipeline from config), `validate`
+  (dry-run validation only), `profile` (run with profiling),
+  `schema-check` (detect schema drift without processing), and
+  `report` (generate error report from last run). Use argparse
+  or click. The CLI should have helpful error messages, progress
+  output for large files, and return appropriate exit codes.
+  Include at least 8 test cases covering each command.
+difficulty: hard
+category: code_implementation
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 2
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  All 5 commands work. CLI is well-documented with --help.
+  Error messages are helpful. Progress output for large files.
+  Exit codes follow convention (0=success, 1=validation error,
+  2=config error). Tests cover each command plus error cases.
+budget_limit: 2.50
+max_rounds: 8
+eval_timeout_s: 1200

@@ -1,0 +1,23 @@
+id: event-store
+description: >
+  Implement a simple in-memory event store in Python with: (1) append-only
+  event log with sequence numbers, (2) event replay by stream ID,
+  (3) snapshot support for aggregate state, (4) a projection builder
+  that maintains materialized views from events. Create at least two
+  event types and one projection. Include tests for append, replay,
+  snapshot restore, and projection consistency.
+difficulty: complex
+category: multifile_depth
+castes:
+  - caste: coder
+    tier: heavy
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Event store correctly appends and replays events. Sequence numbers
+  are monotonic. Snapshots reduce replay work. Projection stays
+  consistent after replay. Tests cover concurrent append scenarios.
+budget_limit: 3.00
+max_rounds: 18

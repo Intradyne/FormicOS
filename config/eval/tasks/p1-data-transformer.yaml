@@ -1,0 +1,27 @@
+id: p1-data-transformer
+description: >
+  Write a Python module `data_transformer.py` that transforms validated
+  CSV data from our pipeline. Support these transformations: rename columns,
+  drop columns, type casting (string to int/float/date), computed columns
+  (simple expressions like "col_a + col_b"), filtering rows by predicate,
+  and sorting by one or more columns. Each transformation should be
+  composable -- the operator defines a list of transforms that execute
+  in order. Include at least 10 test cases.
+difficulty: moderate
+category: code_implementation
+strategy: sequential
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Transforms are composable and execute in order. Works with the data
+  format from csv_reader. Type casting handles errors gracefully.
+  Computed columns support basic arithmetic. Tests cover chained
+  transforms and edge cases.
+budget_limit: 2.00
+max_rounds: 5
+eval_timeout_s: 1200

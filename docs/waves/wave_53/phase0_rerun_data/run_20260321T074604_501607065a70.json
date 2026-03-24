@@ -1,0 +1,646 @@
+{
+  "conditions": {
+    "suite_id": "phase0",
+    "task_order": [
+      "email-validator",
+      "json-transformer",
+      "haiku-writer",
+      "csv-analyzer",
+      "markdown-parser",
+      "rate-limiter",
+      "api-design",
+      "data-pipeline"
+    ],
+    "strategy": "sequential",
+    "model_mix": {},
+    "budget_per_task": 2.0,
+    "max_rounds_per_task": 5,
+    "escalation_policy": "none",
+    "knowledge_mode": "accumulate",
+    "foraging_policy": "disabled",
+    "random_seed": null,
+    "run_id": "501607065a70",
+    "workspace_id": "seq-phase0-501607065a70",
+    "started_at": "2026-03-21T07:39:47.351331+00:00",
+    "config_hash": "b196acb0969b5529",
+    "git_commit": "",
+    "task_profiles": {
+      "email-validator": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.0,
+        "max_rounds": 3,
+        "fast_path": true,
+        "model_mix": {}
+      },
+      "json-transformer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.0,
+        "max_rounds": 3,
+        "fast_path": true,
+        "model_mix": {}
+      },
+      "haiku-writer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "light",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 0.5,
+        "max_rounds": 3,
+        "fast_path": true,
+        "model_mix": {}
+      },
+      "csv-analyzer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "light",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.5,
+        "max_rounds": 5,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "markdown-parser": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 2.0,
+        "max_rounds": 5,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "rate-limiter": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "stigmergic",
+        "budget_limit": 2.0,
+        "max_rounds": 8,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "api-design": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "researcher",
+            "tier": "light",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "stigmergic",
+        "budget_limit": 2.0,
+        "max_rounds": 8,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "data-pipeline": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 2
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "stigmergic",
+        "budget_limit": 2.5,
+        "max_rounds": 8,
+        "fast_path": false,
+        "model_mix": {}
+      }
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "email-validator",
+      "sequence_index": 0,
+      "colony_id": "colony-36bcf16f",
+      "status": "completed",
+      "quality_score": 0.9036,
+      "cost": 0.0,
+      "wall_time_s": 26.26,
+      "rounds_completed": 1,
+      "entries_extracted": 1,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:40:11.977874+00:00"
+    },
+    {
+      "task_id": "json-transformer",
+      "sequence_index": 1,
+      "colony_id": "colony-b7c2dfd2",
+      "status": "completed",
+      "quality_score": 0.9036,
+      "cost": 0.0,
+      "wall_time_s": 45.55,
+      "rounds_completed": 1,
+      "entries_extracted": 1,
+      "entries_accessed": 1,
+      "knowledge_used": [
+        "c87116b2-da17-572c-add5-540a21545f4e"
+      ],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "c87116b2-da17-572c-add5-540a21545f4e",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "c87116b2-da17-572c-add5-540a21545f4e"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:40:55.339943+00:00"
+    },
+    {
+      "task_id": "haiku-writer",
+      "sequence_index": 2,
+      "colony_id": "colony-e4efa666",
+      "status": "completed",
+      "quality_score": 0.9036,
+      "cost": 0.0,
+      "wall_time_s": 2.02,
+      "rounds_completed": 1,
+      "entries_extracted": 1,
+      "entries_accessed": 5,
+      "knowledge_used": [
+        "690a007b-91b5-57af-9773-d82f288099c1",
+        "6513a3c4-59dc-5985-8577-b2c702503f99",
+        "c87116b2-da17-572c-add5-540a21545f4e",
+        "e087e8fb-d75c-578f-979a-a50613c2e16d",
+        "4e5ff28c-6747-50be-a3c8-5d9fb2482e63"
+      ],
+      "skills_extracted": 1,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "690a007b-91b5-57af-9773-d82f288099c1",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "6513a3c4-59dc-5985-8577-b2c702503f99",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "c87116b2-da17-572c-add5-540a21545f4e",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "e087e8fb-d75c-578f-979a-a50613c2e16d",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "4e5ff28c-6747-50be-a3c8-5d9fb2482e63",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "690a007b-91b5-57af-9773-d82f288099c1",
+          "6513a3c4-59dc-5985-8577-b2c702503f99",
+          "c87116b2-da17-572c-add5-540a21545f4e",
+          "e087e8fb-d75c-578f-979a-a50613c2e16d",
+          "4e5ff28c-6747-50be-a3c8-5d9fb2482e63"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:40:57.357556+00:00"
+    },
+    {
+      "task_id": "csv-analyzer",
+      "sequence_index": 3,
+      "colony_id": "colony-df941201",
+      "status": "completed",
+      "quality_score": 0.2268,
+      "cost": 0.0,
+      "wall_time_s": 78.57,
+      "rounds_completed": 5,
+      "entries_extracted": 3,
+      "entries_accessed": 5,
+      "knowledge_used": [
+        "690a007b-91b5-57af-9773-d82f288099c1",
+        "4e5ff28c-6747-50be-a3c8-5d9fb2482e63",
+        "209e6aae-f5c8-5c3c-a70f-c7e2a2545841",
+        "e087e8fb-d75c-578f-979a-a50613c2e16d",
+        "6513a3c4-59dc-5985-8577-b2c702503f99"
+      ],
+      "skills_extracted": 3,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "690a007b-91b5-57af-9773-d82f288099c1",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "4e5ff28c-6747-50be-a3c8-5d9fb2482e63",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "209e6aae-f5c8-5c3c-a70f-c7e2a2545841",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "e087e8fb-d75c-578f-979a-a50613c2e16d",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "6513a3c4-59dc-5985-8577-b2c702503f99",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "690a007b-91b5-57af-9773-d82f288099c1",
+          "4e5ff28c-6747-50be-a3c8-5d9fb2482e63",
+          "209e6aae-f5c8-5c3c-a70f-c7e2a2545841",
+          "e087e8fb-d75c-578f-979a-a50613c2e16d",
+          "6513a3c4-59dc-5985-8577-b2c702503f99"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:42:09.202642+00:00"
+    },
+    {
+      "task_id": "markdown-parser",
+      "sequence_index": 4,
+      "colony_id": "colony-8c3f6fd2",
+      "status": "completed",
+      "quality_score": 0.2085,
+      "cost": 0.0,
+      "wall_time_s": 49.7,
+      "rounds_completed": 5,
+      "entries_extracted": 0,
+      "entries_accessed": 5,
+      "knowledge_used": [
+        "690a007b-91b5-57af-9773-d82f288099c1",
+        "d497e98f-01da-558d-b01c-4a3896e31f06",
+        "44377b35-8795-50bb-b657-736a382b177d",
+        "6513a3c4-59dc-5985-8577-b2c702503f99",
+        "e087e8fb-d75c-578f-979a-a50613c2e16d"
+      ],
+      "skills_extracted": 0,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "690a007b-91b5-57af-9773-d82f288099c1",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "d497e98f-01da-558d-b01c-4a3896e31f06",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "44377b35-8795-50bb-b657-736a382b177d",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "6513a3c4-59dc-5985-8577-b2c702503f99",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "e087e8fb-d75c-578f-979a-a50613c2e16d",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "690a007b-91b5-57af-9773-d82f288099c1",
+          "d497e98f-01da-558d-b01c-4a3896e31f06",
+          "44377b35-8795-50bb-b657-736a382b177d",
+          "6513a3c4-59dc-5985-8577-b2c702503f99",
+          "e087e8fb-d75c-578f-979a-a50613c2e16d"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:42:54.340821+00:00"
+    },
+    {
+      "task_id": "rate-limiter",
+      "sequence_index": 5,
+      "colony_id": "colony-cb2e1099",
+      "status": "completed",
+      "quality_score": 0.2471,
+      "cost": 0.0,
+      "wall_time_s": 129.86,
+      "rounds_completed": 8,
+      "entries_extracted": 6,
+      "entries_accessed": 5,
+      "knowledge_used": [
+        "9690c276-b09f-525b-8e85-2d2af45fd14e",
+        "e5d271ef-805c-5091-891d-60e80576b334",
+        "44377b35-8795-50bb-b657-736a382b177d",
+        "690a007b-91b5-57af-9773-d82f288099c1",
+        "ab577bf3-9ed1-5cbe-b573-2c14b0788350"
+      ],
+      "skills_extracted": 6,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "9690c276-b09f-525b-8e85-2d2af45fd14e",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "e5d271ef-805c-5091-891d-60e80576b334",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "44377b35-8795-50bb-b657-736a382b177d",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "690a007b-91b5-57af-9773-d82f288099c1",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "9690c276-b09f-525b-8e85-2d2af45fd14e",
+          "e5d271ef-805c-5091-891d-60e80576b334",
+          "44377b35-8795-50bb-b657-736a382b177d",
+          "690a007b-91b5-57af-9773-d82f288099c1",
+          "ab577bf3-9ed1-5cbe-b573-2c14b0788350"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:44:55.200268+00:00"
+    },
+    {
+      "task_id": "api-design",
+      "sequence_index": 6,
+      "colony_id": "colony-4eed6fc7",
+      "status": "completed",
+      "quality_score": 0.2708,
+      "cost": 0.0,
+      "wall_time_s": 46.36,
+      "rounds_completed": 8,
+      "entries_extracted": 4,
+      "entries_accessed": 5,
+      "knowledge_used": [
+        "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+        "690a007b-91b5-57af-9773-d82f288099c1",
+        "6513a3c4-59dc-5985-8577-b2c702503f99",
+        "74ad631a-1c00-5cd0-be01-e9f536a92ce0",
+        "5f9633a1-4d12-56ba-9455-9b68e6e8cfb4"
+      ],
+      "skills_extracted": 4,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "690a007b-91b5-57af-9773-d82f288099c1",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "6513a3c4-59dc-5985-8577-b2c702503f99",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "74ad631a-1c00-5cd0-be01-e9f536a92ce0",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "5f9633a1-4d12-56ba-9455-9b68e6e8cfb4",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+          "690a007b-91b5-57af-9773-d82f288099c1",
+          "6513a3c4-59dc-5985-8577-b2c702503f99",
+          "74ad631a-1c00-5cd0-be01-e9f536a92ce0",
+          "5f9633a1-4d12-56ba-9455-9b68e6e8cfb4"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:45:39.283622+00:00"
+    },
+    {
+      "task_id": "data-pipeline",
+      "sequence_index": 7,
+      "colony_id": "colony-4ecbbe30",
+      "status": "completed",
+      "quality_score": 0.1908,
+      "cost": 0.0,
+      "wall_time_s": 27.23,
+      "rounds_completed": 8,
+      "entries_extracted": 10,
+      "entries_accessed": 5,
+      "knowledge_used": [
+        "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+        "d497e98f-01da-558d-b01c-4a3896e31f06",
+        "690a007b-91b5-57af-9773-d82f288099c1",
+        "24f8eff8-cd9a-53fd-a87e-75066f0b01d2",
+        "85ffa0c1-43ed-548d-8668-62fb630e9a70"
+      ],
+      "skills_extracted": 10,
+      "knowledge_attribution": {
+        "used": [
+          {
+            "id": "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "d497e98f-01da-558d-b01c-4a3896e31f06",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "690a007b-91b5-57af-9773-d82f288099c1",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "24f8eff8-cd9a-53fd-a87e-75066f0b01d2",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          },
+          {
+            "id": "85ffa0c1-43ed-548d-8668-62fb630e9a70",
+            "title": "",
+            "source_task": null,
+            "source_colony": null,
+            "source_seq": null
+          }
+        ],
+        "produced": [],
+        "used_ids": [
+          "ab577bf3-9ed1-5cbe-b573-2c14b0788350",
+          "d497e98f-01da-558d-b01c-4a3896e31f06",
+          "690a007b-91b5-57af-9773-d82f288099c1",
+          "24f8eff8-cd9a-53fd-a87e-75066f0b01d2",
+          "85ffa0c1-43ed-548d-8668-62fb630e9a70"
+        ],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T07:46:04.312755+00:00"
+    }
+  ],
+  "total_cost": 0.0,
+  "total_wall_time_s": 405.57,
+  "completed_at": "2026-03-21T07:46:04.313294+00:00",
+  "manifest_path": ""
+}

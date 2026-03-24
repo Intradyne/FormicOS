@@ -1,0 +1,638 @@
+# FormicOS System Configuration
+# Modify these values for your deployment. Workspace-level overrides take precedence.
+#
+# DEFAULT STACK (RTX 5090 / 32GB VRAM):
+#   LLM: Qwen3-30B-A3B via llama.cpp (--alias gpt-4), 80k ctx default
+#   Embedding: Qwen3-Embedding-0.6B via llama.cpp sidecar (GPU)
+#   ~27 GB VRAM total with Blackwell image. ~5 GB headroom.
+#
+# The provider prefix (before /) routes to the correct adapter:
+#   "llama-cpp/*"    → OpenAI-compatible adapter → http://llm:8080/v1
+#   "ollama/*"       → OpenAI-compatible adapter → http://ollama:11434/v1
+#   "anthropic/*"    → Anthropic Messages API    → https://api.anthropic.com
+#   "openai/*"       → OpenAI API               → https://api.openai.com/v1
+#   "gemini/*"       → Gemini API               → https://generativelanguage.googleapis.com/v1beta
+#   "deepseek/*"     → OpenAI-compatible adapter → https://api.deepseek.com
+#   "minimax/*"      → OpenAI-compatible adapter → https://api.minimax.io/v1
+#   "mistral/*"      → OpenAI-compatible adapter → https://api.mistral.ai/v1
+#   "groq/*"         → OpenAI-compatible adapter → https://api.groq.com/openai/v1
+#
+# For cloud models, set defaults to "anthropic/claude-sonnet-4-6" and set ANTHROPIC_API_KEY.
+
+system:
+  host: "0.0.0.0"
+  port: 8080
+  data_dir: "${FORMICOS_DATA_DIR:./data}"
+
+models:
+  # Default model assignments per caste (nullable cascade: thread → workspace → system)
+  # Queen needs strong tool-calling capability — Qwen3-30B-A3B is ideal.
+  # The "gpt-4" alias matches --alias gpt-4 in the llama.cpp server command.
+  defaults:
+    queen: "llama-cpp/gpt-4"
+    coder: "llama-cpp/gpt-4"
+    reviewer: "llama-cpp/gpt-4"
+    researcher: "llama-cpp/gpt-4"
+    # archivist: "llama-cpp/gpt-4"  # Wave 57: local self-extraction
+    # archivist: "ollama-cloud/qwen3-coder:480b"  # Wave 58: ollama cloud (pending)
+    # archivist: "gemini/gemini-2.5-flash"  # DISABLED: Gemini tokens exhausted
+    archivist: "ollama-cloud/qwen3-coder:480b"
+
+  # Model registry — available models and their endpoints
+  # cost_per_input_token / cost_per_output_token: USD per token.
+  # Local models are 0.0 (hardware is a sunk cost). Cloud models use actual rates.
+  # Last verified: March 24, 2026.
+  registry:
+    # --- llama.cpp server (default, GPU) ---
+    # context_window must match docker-compose.yml LLM_CONTEXT_SIZE (default 80000).
+    # The runtime also reads the live value from llama.cpp /props at startup.
+    - address: "llama-cpp/gpt-4"
+      endpoint: "${LLM_HOST:http://localhost:8008}"
+      context_window: 80000
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0
+      cost_per_output_token: 0.0
+      max_output_tokens: 8192
+      time_multiplier: 1.0
+      tool_call_multiplier: 1.0
+
+    # --- OpenAI models (require OPENAI_API_KEY) ---
+    - address: "openai/gpt-5.4"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 1050000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000025    # $2.50 per 1M input tokens
+      cost_per_output_token: 0.000015    # $15.00 per 1M output tokens
+      max_output_tokens: 128000
+      time_multiplier: 3.0
+      tool_call_multiplier: 2.0
+    - address: "openai/gpt-5.4-mini"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 400000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000075   # $0.75 per 1M input tokens
+      cost_per_output_token: 0.0000045   # $4.50 per 1M output tokens
+      max_output_tokens: 128000
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "openai/gpt-5.4-nano"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 400000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000002    # $0.20 per 1M input tokens
+      cost_per_output_token: 0.00000125  # $1.25 per 1M output tokens
+      max_output_tokens: 128000
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "openai/gpt-4.1"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000002     # $2.00 per 1M input tokens
+      cost_per_output_token: 0.000008    # $8.00 per 1M output tokens
+      max_output_tokens: 32768
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "openai/gpt-4.1-mini"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000004    # $0.40 per 1M input tokens
+      cost_per_output_token: 0.0000016   # $1.60 per 1M output tokens
+      max_output_tokens: 32768
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "openai/gpt-4.1-nano"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000001    # $0.10 per 1M input tokens
+      cost_per_output_token: 0.0000004   # $0.40 per 1M output tokens
+      max_output_tokens: 32768
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+    - address: "openai/o3"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000002     # $2.00 per 1M input tokens
+      cost_per_output_token: 0.000008    # $8.00 per 1M output tokens
+      max_output_tokens: 100000
+      time_multiplier: 3.0
+      tool_call_multiplier: 2.0
+    - address: "openai/o4-mini"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000011    # $1.10 per 1M input tokens
+      cost_per_output_token: 0.0000044   # $4.40 per 1M output tokens
+      max_output_tokens: 100000
+      time_multiplier: 3.0
+      tool_call_multiplier: 2.0
+    - address: "openai/o3-pro"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00002      # $20.00 per 1M input tokens
+      cost_per_output_token: 0.00008     # $80.00 per 1M output tokens
+      max_output_tokens: 100000
+      time_multiplier: 5.0
+      tool_call_multiplier: 2.0
+    # Legacy OpenAI models (still active)
+    - address: "openai/gpt-4o"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 128000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000025    # $2.50 per 1M input tokens
+      cost_per_output_token: 0.00001     # $10.00 per 1M output tokens
+      max_output_tokens: 16384
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "openai/gpt-4o-mini"
+      endpoint: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
+      context_window: 128000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000015   # $0.15 per 1M input tokens
+      cost_per_output_token: 0.0000006   # $0.60 per 1M output tokens
+      max_output_tokens: 16384
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+
+    # --- Anthropic models (require ANTHROPIC_API_KEY) ---
+    - address: "anthropic/claude-opus-4-6"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 1000000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000005     # $5.00 per 1M input tokens
+      cost_per_output_token: 0.000025    # $25.00 per 1M output tokens
+      max_output_tokens: 128000
+      time_multiplier: 3.0
+      tool_call_multiplier: 2.0
+    - address: "anthropic/claude-sonnet-4-6"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 1000000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000003     # $3.00 per 1M input tokens
+      cost_per_output_token: 0.000015    # $15.00 per 1M output tokens
+      max_output_tokens: 64000
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "anthropic/claude-haiku-4-5"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000001     # $1.00 per 1M input tokens
+      cost_per_output_token: 0.000005    # $5.00 per 1M output tokens
+      max_output_tokens: 64000
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "anthropic/claude-opus-4-5"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000005     # $5.00 per 1M input tokens
+      cost_per_output_token: 0.000025    # $25.00 per 1M output tokens
+      max_output_tokens: 64000
+      time_multiplier: 3.0
+      tool_call_multiplier: 2.0
+    - address: "anthropic/claude-sonnet-4-5"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000003     # $3.00 per 1M input tokens
+      cost_per_output_token: 0.000015    # $15.00 per 1M output tokens
+      max_output_tokens: 64000
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "anthropic/claude-sonnet-4"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000003     # $3.00 per 1M input tokens
+      cost_per_output_token: 0.000015    # $15.00 per 1M output tokens
+      max_output_tokens: 8192
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "anthropic/claude-3-5-haiku-20241022"
+      endpoint: "https://api.anthropic.com"
+      api_key_env: "ANTHROPIC_API_KEY"
+      context_window: 200000
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000008    # $0.80 per 1M input tokens
+      cost_per_output_token: 0.000004    # $4.00 per 1M output tokens
+      max_output_tokens: 8192
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+
+    # --- Gemini models (require GEMINI_API_KEY) ---
+    - address: "gemini/gemini-3.1-pro-preview"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.000002     # $2.00 per 1M input tokens
+      cost_per_output_token: 0.000012    # $12.00 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "gemini/gemini-3-flash-preview"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000005    # $0.50 per 1M input tokens
+      cost_per_output_token: 0.000003    # $3.00 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.5
+    - address: "gemini/gemini-3.1-flash-lite-preview"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000025   # $0.25 per 1M input tokens
+      cost_per_output_token: 0.0000015   # $1.50 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+    - address: "gemini/gemini-2.5-pro"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000125   # $1.25 per 1M input tokens
+      cost_per_output_token: 0.00001     # $10.00 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "gemini/gemini-2.5-flash"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000003    # $0.30 per 1M input tokens
+      cost_per_output_token: 0.0000025   # $2.50 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.5
+    - address: "gemini/gemini-2.5-flash-lite"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000001    # $0.10 per 1M input tokens
+      cost_per_output_token: 0.0000004   # $0.40 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+
+    # --- DeepSeek models (require DEEPSEEK_API_KEY) ---
+    - address: "deepseek/deepseek-chat"
+      endpoint: "https://api.deepseek.com"
+      api_key_env: "DEEPSEEK_API_KEY"
+      context_window: 128000
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.00000028   # $0.28 per 1M input tokens
+      cost_per_output_token: 0.00000042  # $0.42 per 1M output tokens
+      max_output_tokens: 8192
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "deepseek/deepseek-reasoner"
+      endpoint: "https://api.deepseek.com"
+      api_key_env: "DEEPSEEK_API_KEY"
+      context_window: 128000
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.00000028   # $0.28 per 1M input tokens
+      cost_per_output_token: 0.00000042  # $0.42 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 3.0
+      tool_call_multiplier: 1.5
+
+    # --- MiniMax models (require MINIMAX_API_KEY) ---
+    - address: "minimax/MiniMax-M2.7"
+      endpoint: "https://api.minimax.io/v1"
+      api_key_env: "MINIMAX_API_KEY"
+      context_window: 205000
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0000003    # $0.30 per 1M input tokens
+      cost_per_output_token: 0.0000012   # $1.20 per 1M output tokens
+      max_output_tokens: 128000
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.5
+    - address: "minimax/MiniMax-M2.5"
+      endpoint: "https://api.minimax.io/v1"
+      api_key_env: "MINIMAX_API_KEY"
+      context_window: 197000
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0000003    # $0.30 per 1M input tokens
+      cost_per_output_token: 0.0000012   # $1.20 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.5
+
+    # --- Mistral models (require MISTRAL_API_KEY) ---
+    - address: "mistral/codestral-2508"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0000003    # $0.30 per 1M input tokens
+      cost_per_output_token: 0.0000009   # $0.90 per 1M output tokens
+      max_output_tokens: 262144
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "mistral/devstral-2512"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000004    # $0.40 per 1M input tokens
+      cost_per_output_token: 0.000002    # $2.00 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "mistral/labs-devstral-small-2512"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000001    # $0.10 per 1M input tokens
+      cost_per_output_token: 0.0000003   # $0.30 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "mistral/mistral-small-2603"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000015   # $0.15 per 1M input tokens
+      cost_per_output_token: 0.0000006   # $0.60 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+    - address: "mistral/mistral-large-2512"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000005    # $0.50 per 1M input tokens
+      cost_per_output_token: 0.0000015   # $1.50 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 2.5
+      tool_call_multiplier: 1.5
+    - address: "mistral/ministral-8b-2512"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000015   # $0.15 per 1M input tokens
+      cost_per_output_token: 0.00000015  # $0.15 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+    - address: "mistral/ministral-3b-2512"
+      endpoint: "https://api.mistral.ai/v1"
+      api_key_env: "MISTRAL_API_KEY"
+      context_window: 131072
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.0000001    # $0.10 per 1M input tokens
+      cost_per_output_token: 0.0000001   # $0.10 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+
+    # --- Groq models (require GROQ_API_KEY) ---
+    - address: "groq/openai/gpt-oss-20b"
+      endpoint: "https://api.groq.com/openai/v1"
+      api_key_env: "GROQ_API_KEY"
+      context_window: 131072
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.000000075  # $0.075 per 1M input tokens
+      cost_per_output_token: 0.0000003   # $0.30 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 1.0
+      tool_call_multiplier: 1.0
+    - address: "groq/openai/gpt-oss-120b"
+      endpoint: "https://api.groq.com/openai/v1"
+      api_key_env: "GROQ_API_KEY"
+      context_window: 131072
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.00000015   # $0.15 per 1M input tokens
+      cost_per_output_token: 0.0000006   # $0.60 per 1M output tokens
+      max_output_tokens: 65536
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+    - address: "groq/llama-3.3-70b-versatile"
+      endpoint: "https://api.groq.com/openai/v1"
+      api_key_env: "GROQ_API_KEY"
+      context_window: 131072
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.00000059   # $0.59 per 1M input tokens
+      cost_per_output_token: 0.00000079  # $0.79 per 1M output tokens
+      max_output_tokens: 32768
+      time_multiplier: 1.5
+      tool_call_multiplier: 1.0
+    - address: "groq/llama-3.1-8b-instant"
+      endpoint: "https://api.groq.com/openai/v1"
+      api_key_env: "GROQ_API_KEY"
+      context_window: 131072
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.00000005   # $0.05 per 1M input tokens
+      cost_per_output_token: 0.00000008  # $0.08 per 1M output tokens
+      max_output_tokens: 131072
+      time_multiplier: 1.0
+      tool_call_multiplier: 1.0
+    - address: "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+      endpoint: "https://api.groq.com/openai/v1"
+      api_key_env: "GROQ_API_KEY"
+      context_window: 131072
+      supports_tools: true
+      supports_vision: true
+      cost_per_input_token: 0.00000011   # $0.11 per 1M input tokens
+      cost_per_output_token: 0.00000034  # $0.34 per 1M output tokens
+      max_output_tokens: 8192
+      time_multiplier: 1.0
+      tool_call_multiplier: 1.0
+    - address: "groq/moonshotai/kimi-k2-instruct-0905"
+      endpoint: "https://api.groq.com/openai/v1"
+      api_key_env: "GROQ_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.000001     # $1.00 per 1M input tokens
+      cost_per_output_token: 0.000003    # $3.00 per 1M output tokens
+      max_output_tokens: 16384
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.0
+
+    # --- Ollama models (local, if using Ollama instead of llama.cpp) ---
+    - address: "ollama/qwen3:30b"
+      endpoint: "${OLLAMA_HOST:http://localhost:11434}"
+      context_window: 8192
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0
+      cost_per_output_token: 0.0
+      max_output_tokens: 4096
+      time_multiplier: 1.0
+      tool_call_multiplier: 1.0
+
+    # --- Ollama Cloud (free tier, knowledge extraction archivist) ---
+    - address: "ollama-cloud/qwen3-coder:480b"
+      endpoint: "https://ollama.com/v1"
+      api_key_env: "OLLAMA_API_KEY"
+      context_window: 262144
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0
+      cost_per_output_token: 0.0
+      max_output_tokens: 16384
+      time_multiplier: 3.0
+      tool_call_multiplier: 1.5
+
+embedding:
+  model: "qwen3-embedding-0.6b"
+  endpoint: "${EMBED_URL:http://localhost:8200}/v1/embeddings"
+  dimensions: 1024
+  instruction: "Given a skill description, retrieve the matching agent capability"
+
+governance:
+  max_rounds_per_colony: 25
+  stall_detection_window: 3       # identical outputs for N rounds triggers warning
+  convergence_threshold: 0.95     # cosine similarity between rounds
+  default_budget_per_colony: 1.00 # USD
+  max_redirects_per_colony: 1     # Queen can redirect at most N times per colony
+
+routing:
+  default_strategy: "stigmergic"  # or "sequential"
+  tau_threshold: 0.35             # cosine similarity cutoff for DyTopo routing
+  k_in_cap: 5                    # max inbound connections per agent
+  pheromone_decay_rate: 0.1       # exponential decay per round
+  pheromone_reinforce_rate: 0.3   # reinforcement on successful communication
+
+  # Caste×Phase compute routing table (ADR-012).
+  # Keys are phase names; values are per-caste model overrides.
+  # Missing phases/castes inherit the cascade default.
+  model_routing:
+    execute:
+      queen: "llama-cpp/gpt-4"
+      coder: "llama-cpp/gpt-4"                    # local GPU, free, fast code gen
+      reviewer: "openai/gpt-4o"                    # heavy cloud, best review quality
+      researcher: "openai/gpt-4o-mini"             # lighter cloud, good for research
+      archivist: "ollama-cloud/qwen3-coder:480b"   # free tier, async extraction
+    goal:
+      queen: "llama-cpp/gpt-4"
+    # Heavy-tier goal phase: use Opus for maximum reasoning capability.
+    # Activate by setting workspace queen model to anthropic/claude-opus-4.6.
+    # Not wired as default — operator must explicitly select Opus.
+
+# Vector store backend (ADR-013).
+# Qdrant is the sole vector backend (LanceDB removed in Wave 13).
+vector:
+  qdrant_url: "${QDRANT_URL:http://localhost:6333}"
+  qdrant_prefer_grpc: true
+  collection_name: "skill_bank_v2"
+
+# Skill bank confidence tuning (ADR-017).
+skill_bank:
+  confidence_prior_strength: 10.0   # initial alpha+beta sum for migration
+  ucb_exploration_weight: 0.1       # c parameter in UCB formula
+  dedup_exact_threshold: 0.98       # Band 1: cosine >= this → silent skip
+  dedup_semantic_threshold: 0.82    # Band 2: cosine >= this → LLM classify
+
+# Knowledge graph storage (Wave 13 A-T3).
+# Archivist TKG tuples are persisted to SQLite adjacency tables.
+knowledge_graph:
+  entity_similarity_threshold: 0.85   # cosine threshold for entity dedup
+  predicates:
+    - DEPENDS_ON
+    - ENABLES
+    - IMPLEMENTS
+    - VALIDATES
+    - MIGRATED_TO
+    - FAILED_ON
+    - SUPERSEDES
+    - DERIVED_FROM
+    - RELATED_TO
+
+# Tiered context assembly budgets (ADR-008).
+# Controls how much of the context window each content tier can use.
+# Scaling formula: total_budget_tokens = min(effective_ctx * 0.4, 65536).
+# At 80k context: 80000 * 0.4 = 32000.
+# Tiers scaled proportionally from the 8k-context baseline.
+context:
+  total_budget_tokens: 32000
+  tier_budgets:
+    goal: 2400
+    routed_outputs: 12800
+    max_per_source: 3600
+    merge_summaries: 3600
+    prev_round_summary: 3600
+    skill_bank: 6000
+  compaction_threshold: 2400
+
+# Effector configuration (Wave 25).
+# Gated execution tools for colonies to produce outcomes, not just text.
+effectors:
+  http_fetch:
+    allowed_domains: ["*"]      # ["*"] for open, or list of specific domains
+    max_bytes: 50000
+    timeout_seconds: 10

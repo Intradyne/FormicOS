@@ -1,0 +1,102 @@
+schema_version: "0.9.0"
+
+profiles:
+  local_trusted:
+    runtime: runc
+    isolation: cgroups
+    readonly_rootfs: false
+    network_access: true
+    memory_limit_mb: 2048
+    cpu_limit_cores: 2.0
+    pids_limit: 512
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: false
+    notes: "Fast local execution with cgroup limits only."
+
+  local_sandboxed:
+    runtime: runsc
+    isolation: gvisor
+    readonly_rootfs: false
+    network_access: false
+    memory_limit_mb: 512
+    cpu_limit_cores: 1.0
+    pids_limit: 128
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: false
+    notes: "Default local isolation with gVisor sandboxing and no network."
+
+  peer_strict:
+    runtime: runsc
+    isolation: gvisor
+    readonly_rootfs: true
+    network_access: false
+    memory_limit_mb: 256
+    cpu_limit_cores: 0.5
+    pids_limit: 64
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: false
+    notes: "Stricter profile for cross-node spillover payloads (RO rootfs)."
+
+  wan_maximum:
+    runtime: runsc
+    isolation: gvisor
+    readonly_rootfs: true
+    network_access: false
+    memory_limit_mb: 128
+    cpu_limit_cores: 0.25
+    pids_limit: 48
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: true
+    notes: "Reserved for future WAN threat model; not enabled in current runtime."
+
+  # ── Auto-Escalation Tiers (v0.12.5 Phase 5) ──────────────────────────
+
+  harness:
+    runtime: ""
+    isolation: local_harness
+    readonly_rootfs: false
+    network_access: false
+    memory_limit_mb: 512
+    cpu_limit_cores: 1.0
+    pids_limit: 128
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: false
+    notes: "Fast local harness execution for test-flight and dev. No Docker runtime."
+
+  sandboxed:
+    runtime: runsc
+    isolation: gvisor
+    readonly_rootfs: false
+    network_access: false
+    memory_limit_mb: 512
+    cpu_limit_cores: 1.0
+    pids_limit: 128
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: false
+    notes: "Default worker profile. gVisor enforcement (replaced by v0.12.6 runtime)."
+
+  queen_sandbox:
+    runtime: ""
+    isolation: local_harness
+    readonly_rootfs: false
+    network_access: true
+    memory_limit_mb: 2048
+    cpu_limit_cores: 2.0
+    pids_limit: 512
+    allow_privileged: false
+    seccomp_profile: default
+    apparmor_profile: null
+    future: false
+    notes: "Elevated Queen profile. Local harness, network allowed, extended timeout."

@@ -1,0 +1,110 @@
+{
+  "conditions": {
+    "suite_id": "smoke-scaffold",
+    "task_order": [
+      "csv-analyzer",
+      "markdown-parser"
+    ],
+    "strategy": "sequential",
+    "model_mix": {},
+    "budget_per_task": 2.0,
+    "max_rounds_per_task": 5,
+    "escalation_policy": "none",
+    "knowledge_mode": "accumulate",
+    "foraging_policy": "disabled",
+    "random_seed": null,
+    "run_id": "37f961d886ec",
+    "workspace_id": "seq-smoke-scaffold-37f961d886ec",
+    "started_at": "2026-03-21T18:44:01.427400+00:00",
+    "config_hash": "8385fe75a168404e",
+    "git_commit": "",
+    "task_profiles": {
+      "csv-analyzer": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "light",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 1.5,
+        "max_rounds": 5,
+        "fast_path": false,
+        "model_mix": {}
+      },
+      "markdown-parser": {
+        "castes": [
+          {
+            "caste": "coder",
+            "tier": "standard",
+            "count": 1
+          },
+          {
+            "caste": "reviewer",
+            "tier": "standard",
+            "count": 1
+          }
+        ],
+        "strategy": "sequential",
+        "budget_limit": 2.0,
+        "max_rounds": 5,
+        "fast_path": false,
+        "model_mix": {}
+      }
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "csv-analyzer",
+      "sequence_index": 0,
+      "colony_id": "colony-53f04d39",
+      "status": "completed",
+      "quality_score": 0.2553,
+      "cost": 0.0,
+      "wall_time_s": 256.03,
+      "rounds_completed": 5,
+      "entries_extracted": 0,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 0,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T18:48:20.834525+00:00"
+    },
+    {
+      "task_id": "markdown-parser",
+      "sequence_index": 1,
+      "colony_id": "colony-83a38e0f",
+      "status": "completed",
+      "quality_score": 0.1735,
+      "cost": 0.0,
+      "wall_time_s": 71.64,
+      "rounds_completed": 5,
+      "entries_extracted": 0,
+      "entries_accessed": 0,
+      "knowledge_used": [],
+      "skills_extracted": 0,
+      "knowledge_attribution": {
+        "used": [],
+        "produced": [],
+        "used_ids": [],
+        "produced_ids": []
+      },
+      "timestamp": "2026-03-21T18:49:32.471376+00:00"
+    }
+  ],
+  "total_cost": 0.0,
+  "total_wall_time_s": 327.66,
+  "completed_at": "2026-03-21T18:49:32.472420+00:00",
+  "manifest_path": ""
+}

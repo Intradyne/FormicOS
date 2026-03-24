@@ -1,0 +1,22 @@
+template_id: "builtin-rapid-prototype"
+name: "Rapid Prototype"
+description: "Heavy-tier coder for fast, high-quality prototyping with cloud model routing."
+version: 1
+castes:
+  - caste: coder
+    tier: heavy
+    count: 1
+strategy: "stigmergic"
+budget_limit: 5.0
+max_rounds: 8
+tags:
+  - prototype
+  - fast
+  - heavy-tier
+source_colony_id: null
+created_at: "2026-03-14T00:00:00Z"
+use_count: 0
+input_description: "Feature idea or concept to prototype"
+output_description: "Working prototype code"
+expected_output_types: ["code"]
+completion_hint: "Prototype demonstrates the concept"

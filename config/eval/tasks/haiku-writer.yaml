@@ -1,0 +1,18 @@
+id: haiku-writer
+description: >
+  Write five original haiku poems about the changing seasons. Each haiku
+  must follow the 5-7-5 syllable structure strictly. Include a brief
+  commentary on the imagery used in each poem. Output as structured
+  markdown with poem and commentary clearly separated.
+difficulty: simple
+castes:
+  - caste: coder
+    tier: light
+    count: 1
+strategy: sequential
+fast_path: true
+success_rubric: >
+  Five haiku produced, each with correct 5-7-5 syllable count. Commentary
+  is present and relevant. Markdown formatting is clean.
+budget_limit: 0.50
+max_rounds: 3

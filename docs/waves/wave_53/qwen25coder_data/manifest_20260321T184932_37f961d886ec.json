@@ -1,0 +1,25 @@
+{
+  "run_id": "37f961d886ec",
+  "suite_id": "smoke-scaffold",
+  "started_at": "2026-03-21T18:44:01.427400+00:00",
+  "completed_at": "2026-03-21T18:49:32.472420+00:00",
+  "git_commit": "",
+  "config_hash": "8385fe75a168404e",
+  "knowledge_mode": "accumulate",
+  "foraging_policy": "disabled",
+  "strategy": "sequential",
+  "workspace_id": "seq-smoke-scaffold-37f961d886ec",
+  "tasks_run": 2,
+  "total_cost": 0.0,
+  "total_wall_time_s": 327.66,
+  "task_ids": [
+    "csv-analyzer",
+    "markdown-parser"
+  ],
+  "statuses": [
+    "completed",
+    "completed"
+  ],
+  "total_knowledge_used": 0,
+  "total_knowledge_produced": 0
+}

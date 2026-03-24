@@ -1,0 +1,28 @@
+id: p1-pipeline-orchestrator
+description: >
+  Write a Python module `pipeline.py` that orchestrates our csv_reader,
+  data_validator, and data_transformer modules into a configurable
+  pipeline. The pipeline accepts a YAML config file specifying: input
+  file path, delimiter (or auto), validation rules per column, and a
+  list of transformations. Execute the pipeline: read -> validate ->
+  transform -> write output. If validation fails, write an error report
+  and skip the transform step. Include a sample config file and at
+  least 6 test cases covering success, validation failure, and
+  malformed config.
+difficulty: moderate
+category: code_implementation
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Pipeline integrates all three modules. YAML config is clean and
+  documented. Error handling is graceful. Tests cover the full
+  success path plus failure modes.
+budget_limit: 2.00
+max_rounds: 5
+eval_timeout_s: 1200

@@ -1,0 +1,22 @@
+id: csv-analyzer
+description: >
+  Write a Python module that reads a CSV file and computes summary
+  statistics: column types (numeric, categorical, datetime), missing
+  value counts, mean/median/mode for numeric columns, and unique value
+  counts for categorical columns. Output a structured report dict.
+  Include test cases with edge cases (empty file, mixed types, quoted
+  commas).
+difficulty: moderate
+category: language_breadth
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: light
+    count: 1
+success_rubric: >
+  Module correctly identifies column types, computes accurate statistics,
+  handles edge cases without crashing. Report dict has consistent shape.
+budget_limit: 1.50
+max_rounds: 5

@@ -1,0 +1,155 @@
+# ============================================================================
+# FormicOS Experimentable Parameters — Whitelist
+# Wave 17
+# ============================================================================
+#
+# Only parameters listed here can be mutated by the Queen's CONFIG_UPDATE tool
+# (shipping in a future wave). Each entry specifies the dot-path into
+# caste_recipes.yaml, the value type, and valid bounds.
+#
+# Paths use the live schema: castes.{caste_key}.{field}
+# ============================================================================
+
+experimentable_params:
+
+  # ── Temperature (per caste) ────────────────────────────────────────────────
+  - path: "castes.queen.temperature"
+    type: float
+    min: 0.0
+    max: 1.0
+
+  - path: "castes.coder.temperature"
+    type: float
+    min: 0.0
+    max: 1.0
+
+  - path: "castes.reviewer.temperature"
+    type: float
+    min: 0.0
+    max: 0.5
+
+  - path: "castes.researcher.temperature"
+    type: float
+    min: 0.0
+    max: 1.0
+
+  - path: "castes.archivist.temperature"
+    type: float
+    min: 0.0
+    max: 0.5
+
+  # ── max_tokens (context assembly budget, legacy) ───────────────────────────
+  - path: "castes.coder.max_tokens"
+    type: int
+    min: 500
+    max: 32768
+
+  - path: "castes.reviewer.max_tokens"
+    type: int
+    min: 500
+    max: 16000
+
+  - path: "castes.researcher.max_tokens"
+    type: int
+    min: 500
+    max: 16000
+
+  - path: "castes.archivist.max_tokens"
+    type: int
+    min: 500
+    max: 8000
+
+  # ── Iteration caps ─────────────────────────────────────────────────────────
+  - path: "castes.coder.max_iterations"
+    type: int
+    min: 1
+    max: 50
+
+  - path: "castes.reviewer.max_iterations"
+    type: int
+    min: 1
+    max: 20
+
+  - path: "castes.researcher.max_iterations"
+    type: int
+    min: 1
+    max: 20
+
+  - path: "castes.archivist.max_iterations"
+    type: int
+    min: 1
+    max: 10
+
+  # ── Base execution time (seconds, multiplied by model time_multiplier) ─────
+  - path: "castes.coder.max_execution_time_s"
+    type: int
+    min: 30
+    max: 600
+
+  - path: "castes.reviewer.max_execution_time_s"
+    type: int
+    min: 30
+    max: 300
+
+  - path: "castes.researcher.max_execution_time_s"
+    type: int
+    min: 30
+    max: 600
+
+  - path: "castes.archivist.max_execution_time_s"
+    type: int
+    min: 30
+    max: 300
+
+  # ── Base tool calls per iteration (multiplied by model tool_call_multiplier)
+  - path: "castes.coder.base_tool_calls_per_iteration"
+    type: int
+    min: 1
+    max: 50
+
+  - path: "castes.reviewer.base_tool_calls_per_iteration"
+    type: int
+    min: 1
+    max: 20
+
+  - path: "castes.researcher.base_tool_calls_per_iteration"
+    type: int
+    min: 1
+    max: 25
+
+  - path: "castes.archivist.base_tool_calls_per_iteration"
+    type: int
+    min: 1
+    max: 15
+
+  # ── Governance tuning ──────────────────────────────────────────────────────
+  - path: "governance.stall_detection_window"
+    type: int
+    min: 2
+    max: 10
+
+  - path: "governance.convergence_threshold"
+    type: float
+    min: 0.70
+    max: 0.99
+
+  - path: "governance.default_budget_per_colony"
+    type: float
+    min: 0.10
+    max: 10.00
+
+  # ── Routing tuning ────────────────────────────────────────────────────────
+  - path: "routing.tau_threshold"
+    type: float
+    min: 0.10
+    max: 0.90
+
+  - path: "routing.pheromone_decay_rate"
+    type: float
+    min: 0.01
+    max: 0.50
+
+  - path: "routing.pheromone_reinforce_rate"
+    type: float
+    min: 0.05
+    max: 0.80

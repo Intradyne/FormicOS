@@ -1,0 +1,565 @@
+2026-03-21 13:43:24 [info     ] sqlite_store.opening           path=data\eval_events.db
+2026-03-21 13:43:24 [info     ] sqlite_store.pragmas_applied   busy_timeout=15000 cache_size=-64000 journal_mode=WAL mmap_size=268435456 synchronous=NORMAL wal_autocheckpoint=1000
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:43:25 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:43:25 [info     ] memory_store.rebuilt           entries=19
+2026-03-21 13:43:25 [info     ] eval.memory_store_rebuilt      entries=19
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9 seq=652 type=WorkspaceCreated
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9 seq=653 type=ThreadCreated
+2026-03-21 13:43:25 [info     ] sequential.task_start          fast_path=False knowledge_mode=accumulate max_rounds=5 of=2 sequence=1 strategy=sequential suite=smoke-scaffold task_id=csv-analyzer
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=654 type=ColonySpawned
+2026-03-21 13:43:25 [info     ] colony_manager.started         colony_id=colony-a337c23f
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:25 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=5
+2026-03-21 13:43:25 [debug    ] code_analysis.done             companions=1 edges=0 files=10
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=655 type=RoundStarted
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=656 type=ColonyChatMessage
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=657 type=PhaseEntered
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=658 type=PhaseEntered
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=659 type=PhaseEntered
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=660 type=PhaseEntered
+2026-03-21 13:43:25 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:43:25 [info     ] compute_router.route           budget_remaining=1.5 caste=coder phase=execute reason=adapter_fallback round_num=1 selected=llama-cpp/gpt-4
+2026-03-21 13:43:25 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=661 type=AgentTurnStarted
+2026-03-21 13:43:25 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:25 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:26 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:26 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:27 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:27 [info     ] workspace.execute              command='ls -R csv_analyzer/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:28 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:28 [info     ] workspace.execute              command='ls -R csv_analyzer/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:29 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:29 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:29 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:30 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:31 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:31 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:31 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:32 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:32 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:33 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:33 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:33 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:34 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=662 type=AgentTurnCompleted
+2026-03-21 13:43:34 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=663 type=TokensConsumed
+2026-03-21 13:43:34 [info     ] compute_router.route           budget_remaining=1.5 caste=reviewer phase=execute reason=routing_table round_num=1 selected=llama-cpp/gpt-4
+2026-03-21 13:43:34 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=664 type=AgentTurnStarted
+2026-03-21 13:43:34 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:34 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:34 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=665 type=AgentTurnCompleted
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=666 type=TokensConsumed
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=667 type=PhaseEntered
+2026-03-21 13:43:36 [debug    ] qwen3_embed.ok                 count=2 dim=1024 is_query=False
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=668 type=RoundCompleted
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=669 type=RoundStarted
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=670 type=ColonyChatMessage
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=671 type=PhaseEntered
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=672 type=PhaseEntered
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=673 type=PhaseEntered
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=674 type=PhaseEntered
+2026-03-21 13:43:36 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:43:36 [info     ] compute_router.route           budget_remaining=1.5 caste=coder phase=execute reason=adapter_fallback round_num=2 selected=llama-cpp/gpt-4
+2026-03-21 13:43:36 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=675 type=AgentTurnStarted
+2026-03-21 13:43:36 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:36 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:36 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:36 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:37 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:37 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:37 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:38 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:38 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:39 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:39 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:39 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:40 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:40 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:40 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:41 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:41 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:42 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:42 [info     ] workspace.execute              command='ls -la csv_analyzer/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:43 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:43 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:44 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:44 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=676 type=AgentTurnCompleted
+2026-03-21 13:43:44 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=677 type=TokensConsumed
+2026-03-21 13:43:44 [info     ] compute_router.route           budget_remaining=1.5 caste=reviewer phase=execute reason=routing_table round_num=2 selected=llama-cpp/gpt-4
+2026-03-21 13:43:44 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=678 type=AgentTurnStarted
+2026-03-21 13:43:45 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:45 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:45 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=679 type=AgentTurnCompleted
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=680 type=TokensConsumed
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=681 type=PhaseEntered
+2026-03-21 13:43:46 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=682 type=RoundCompleted
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=683 type=RoundStarted
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=684 type=ColonyChatMessage
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=685 type=PhaseEntered
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=686 type=PhaseEntered
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=687 type=PhaseEntered
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=688 type=PhaseEntered
+2026-03-21 13:43:46 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:43:46 [info     ] compute_router.route           budget_remaining=1.5 caste=coder phase=execute reason=adapter_fallback round_num=3 selected=llama-cpp/gpt-4
+2026-03-21 13:43:46 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=689 type=AgentTurnStarted
+2026-03-21 13:43:46 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:46 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:47 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:47 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:47 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:48 [info     ] workspace.execute              command='ls -la csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:48 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:49 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:49 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:49 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:50 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:50 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:51 [info     ] workspace.execute              command='ls -la csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:52 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:52 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:53 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:53 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:54 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:55 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:55 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:56 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:56 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=690 type=AgentTurnCompleted
+2026-03-21 13:43:56 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=691 type=TokensConsumed
+2026-03-21 13:43:56 [info     ] compute_router.route           budget_remaining=1.5 caste=reviewer phase=execute reason=routing_table round_num=3 selected=llama-cpp/gpt-4
+2026-03-21 13:43:56 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=692 type=AgentTurnStarted
+2026-03-21 13:43:56 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:56 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:57 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=693 type=AgentTurnCompleted
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=694 type=TokensConsumed
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=695 type=PhaseEntered
+2026-03-21 13:43:58 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=696 type=ColonyChatMessage
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=697 type=RoundCompleted
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=698 type=RoundStarted
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=699 type=ColonyChatMessage
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=700 type=PhaseEntered
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=701 type=PhaseEntered
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=702 type=PhaseEntered
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=703 type=PhaseEntered
+2026-03-21 13:43:58 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:43:58 [info     ] compute_router.route           budget_remaining=1.5 caste=coder phase=execute reason=adapter_fallback round_num=4 selected=llama-cpp/gpt-4
+2026-03-21 13:43:58 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=704 type=AgentTurnStarted
+2026-03-21 13:43:58 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:43:58 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:43:59 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:59 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:43:59 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:00 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:00 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:00 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:01 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:01 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:02 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:02 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:02 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:03 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:03 [info     ] workspace.execute              command='ls -la csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:04 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:04 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:05 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:05 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:06 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:06 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:07 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:07 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=705 type=AgentTurnCompleted
+2026-03-21 13:44:07 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=706 type=TokensConsumed
+2026-03-21 13:44:07 [info     ] compute_router.route           budget_remaining=1.5 caste=reviewer phase=execute reason=routing_table round_num=4 selected=llama-cpp/gpt-4
+2026-03-21 13:44:07 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=707 type=AgentTurnStarted
+2026-03-21 13:44:07 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:07 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:08 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=708 type=AgentTurnCompleted
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=709 type=TokensConsumed
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=710 type=PhaseEntered
+2026-03-21 13:44:09 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=711 type=ColonyChatMessage
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=712 type=ColonyChatMessage
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=713 type=RoundCompleted
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=714 type=RoundStarted
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=715 type=ColonyChatMessage
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=716 type=PhaseEntered
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=717 type=PhaseEntered
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=718 type=PhaseEntered
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=719 type=PhaseEntered
+2026-03-21 13:44:09 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:44:09 [info     ] compute_router.route           budget_remaining=1.5 caste=coder phase=execute reason=adapter_fallback round_num=5 selected=llama-cpp/gpt-4
+2026-03-21 13:44:09 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=720 type=AgentTurnStarted
+2026-03-21 13:44:09 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:09 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:09 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:10 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:10 [info     ] workspace.execute              command='mkdir -p csv_analyzer && cd csv_analyzer && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:10 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:11 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:11 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:12 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:12 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:12 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:13 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:13 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:14 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:14 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:14 [info     ] workspace.execute              command='mkdir -p csv_analyzer && touch csv_analyzer/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:15 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:15 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:16 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:16 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:16 [info     ] workspace.execute              command='ls -R csv_analyzer' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:17 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=721 type=AgentTurnCompleted
+2026-03-21 13:44:17 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=722 type=TokensConsumed
+2026-03-21 13:44:17 [info     ] compute_router.route           budget_remaining=1.5 caste=reviewer phase=execute reason=routing_table round_num=5 selected=llama-cpp/gpt-4
+2026-03-21 13:44:17 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=723 type=AgentTurnStarted
+2026-03-21 13:44:18 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:18 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:18 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=724 type=AgentTurnCompleted
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=725 type=TokensConsumed
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=726 type=PhaseEntered
+2026-03-21 13:44:19 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=727 type=ColonyChatMessage
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=728 type=ColonyChatMessage
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=729 type=RoundCompleted
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=730 type=ColonyCompleted
+2026-03-21 13:44:19 [info     ] colony_observation             castes=[{'caste': 'coder', 'tier': <SubcasteTier.standard: 'standard'>, 'count': 1}, {'caste': 'reviewer', 'tier': <SubcasteTier.light: 'light'>, 'count': 1}] colony_id=colony-a337c23f governance_warnings=2 quality_score=0.1541 rounds_completed=5 skills_extracted=0 skills_retrieved=[] stall_rounds=3 strategy=sequential task='Write a Python module that reads a CSV file and computes summary statistics: column types (numeric, categorical, datetime), missing value counts, mean/median/mode for numeric columns, and unique value' total_cost=0.0
+2026-03-21 13:44:19 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=731 type=MemoryExtractionCompleted
+2026-03-21 13:44:19 [info     ] transcript_harvest.complete    colony_id=colony-a337c23f entries_harvested=0 turns_scanned=10
+2026-03-21 13:44:20 [info     ] sequential.task_complete       cost=0.0 entries_accessed=0 entries_extracted=0 quality=0.1541 rounds=5 sequence=1 status=completed suite=smoke-scaffold task_id=csv-analyzer
+2026-03-21 13:44:20 [info     ] sequential.task_start          fast_path=False knowledge_mode=accumulate max_rounds=5 of=2 sequence=2 strategy=sequential suite=smoke-scaffold task_id=markdown-parser
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=732 type=ColonySpawned
+2026-03-21 13:44:20 [info     ] colony_manager.started         colony_id=colony-dbdbb33f
+2026-03-21 13:44:20 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:20 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:20 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:20 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:20 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:20 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=5
+2026-03-21 13:44:20 [debug    ] code_analysis.done             companions=1 edges=0 files=11
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=733 type=RoundStarted
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=734 type=ColonyChatMessage
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=735 type=PhaseEntered
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=736 type=PhaseEntered
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=737 type=PhaseEntered
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=738 type=PhaseEntered
+2026-03-21 13:44:20 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:44:20 [info     ] compute_router.route           budget_remaining=2.0 caste=coder phase=execute reason=adapter_fallback round_num=1 selected=llama-cpp/gpt-4
+2026-03-21 13:44:20 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=739 type=AgentTurnStarted
+2026-03-21 13:44:20 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:20 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:20 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:21 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:21 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:22 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:22 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:23 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:23 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:24 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:24 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:24 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:25 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:25 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:26 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:26 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:26 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:27 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:27 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:28 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:28 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:29 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:29 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:30 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=740 type=AgentTurnCompleted
+2026-03-21 13:44:30 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=741 type=TokensConsumed
+2026-03-21 13:44:30 [info     ] compute_router.route           budget_remaining=2.0 caste=reviewer phase=execute reason=routing_table round_num=1 selected=llama-cpp/gpt-4
+2026-03-21 13:44:30 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=742 type=AgentTurnStarted
+2026-03-21 13:44:30 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:30 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:30 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=743 type=AgentTurnCompleted
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=744 type=TokensConsumed
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=745 type=PhaseEntered
+2026-03-21 13:44:32 [debug    ] qwen3_embed.ok                 count=2 dim=1024 is_query=False
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=746 type=RoundCompleted
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=747 type=RoundStarted
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=748 type=ColonyChatMessage
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=749 type=PhaseEntered
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=750 type=PhaseEntered
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=751 type=PhaseEntered
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=752 type=PhaseEntered
+2026-03-21 13:44:32 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:44:32 [info     ] compute_router.route           budget_remaining=2.0 caste=coder phase=execute reason=adapter_fallback round_num=2 selected=llama-cpp/gpt-4
+2026-03-21 13:44:32 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=753 type=AgentTurnStarted
+2026-03-21 13:44:32 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:32 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:32 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=754 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=755 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=756 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=757 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=758 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=759 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=760 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=761 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=762 type=MemoryEntryCreated
+2026-03-21 13:44:33 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=763 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=764 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=765 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=766 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=767 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=768 type=MemoryEntryCreated
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=769 type=MemoryEntryStatusChanged
+2026-03-21 13:44:33 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=False
+2026-03-21 13:44:33 [debug    ] qdrant.upserted                collection=institutional_memory count=1 hybrid=True
+2026-03-21 13:44:33 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-a337c23f seq=770 type=MemoryExtractionCompleted
+2026-03-21 13:44:33 [info     ] memory_extraction.complete     colony_id=colony-a337c23f entries_emitted=8 entries_extracted=8
+2026-03-21 13:44:34 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:34 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:34 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:35 [info     ] workspace.execute              command='ls -la markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:35 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:36 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:37 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:37 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:37 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:38 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:39 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:40 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:40 [info     ] workspace.execute              command='mkdir -p markdown_parser && touch markdown_parser/__init__.py markdown_parser/parser.py markdown_parser/test_parser.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:41 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:41 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:42 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=771 type=AgentTurnCompleted
+2026-03-21 13:44:42 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=772 type=TokensConsumed
+2026-03-21 13:44:42 [info     ] compute_router.route           budget_remaining=2.0 caste=reviewer phase=execute reason=routing_table round_num=2 selected=llama-cpp/gpt-4
+2026-03-21 13:44:42 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=773 type=AgentTurnStarted
+2026-03-21 13:44:42 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:42 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:42 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=774 type=AgentTurnCompleted
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=775 type=TokensConsumed
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=776 type=PhaseEntered
+2026-03-21 13:44:43 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=777 type=RoundCompleted
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=778 type=RoundStarted
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=779 type=ColonyChatMessage
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=780 type=PhaseEntered
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=781 type=PhaseEntered
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=782 type=PhaseEntered
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=783 type=PhaseEntered
+2026-03-21 13:44:43 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:44:43 [info     ] compute_router.route           budget_remaining=2.0 caste=coder phase=execute reason=adapter_fallback round_num=3 selected=llama-cpp/gpt-4
+2026-03-21 13:44:43 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=784 type=AgentTurnStarted
+2026-03-21 13:44:43 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:43 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:44 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:44 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:45 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:45 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:45 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:46 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:46 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:47 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:47 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:47 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:48 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:48 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:49 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:49 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:49 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:50 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:50 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:51 [info     ] workspace.execute              command='mkdir -p markdown_parser && touch markdown_parser/__init__.py markdown_parser/parser.py markdown_parser/test_parser.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:51 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:52 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=785 type=AgentTurnCompleted
+2026-03-21 13:44:52 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=786 type=TokensConsumed
+2026-03-21 13:44:52 [info     ] compute_router.route           budget_remaining=2.0 caste=reviewer phase=execute reason=routing_table round_num=3 selected=llama-cpp/gpt-4
+2026-03-21 13:44:52 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=787 type=AgentTurnStarted
+2026-03-21 13:44:52 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:52 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:52 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=788 type=AgentTurnCompleted
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=789 type=TokensConsumed
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=790 type=PhaseEntered
+2026-03-21 13:44:54 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=791 type=ColonyChatMessage
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=792 type=RoundCompleted
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=793 type=RoundStarted
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=794 type=ColonyChatMessage
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=795 type=PhaseEntered
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=796 type=PhaseEntered
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=797 type=PhaseEntered
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=798 type=PhaseEntered
+2026-03-21 13:44:54 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:44:54 [info     ] compute_router.route           budget_remaining=2.0 caste=coder phase=execute reason=adapter_fallback round_num=4 selected=llama-cpp/gpt-4
+2026-03-21 13:44:54 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=799 type=AgentTurnStarted
+2026-03-21 13:44:54 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:44:54 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:44:54 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:54 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:55 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:55 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:55 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:56 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:57 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:57 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:57 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:58 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:58 [info     ] workspace.execute              command='ls -la markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:59 [info     ] workspace.execute              command='mkdir -p markdown_parser && touch markdown_parser/__init__.py markdown_parser/parser.py markdown_parser/test_parser.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:59 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:44:59 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:00 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:00 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:01 [info     ] workspace.execute              command='ls -la markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:01 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:02 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:02 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:03 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=800 type=AgentTurnCompleted
+2026-03-21 13:45:03 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=801 type=TokensConsumed
+2026-03-21 13:45:03 [info     ] compute_router.route           budget_remaining=2.0 caste=reviewer phase=execute reason=routing_table round_num=4 selected=llama-cpp/gpt-4
+2026-03-21 13:45:03 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=802 type=AgentTurnStarted
+2026-03-21 13:45:03 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:45:03 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:45:03 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=803 type=AgentTurnCompleted
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=804 type=TokensConsumed
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=805 type=PhaseEntered
+2026-03-21 13:45:04 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=806 type=ColonyChatMessage
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=807 type=ColonyChatMessage
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=808 type=RoundCompleted
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=809 type=RoundStarted
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=810 type=ColonyChatMessage
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=811 type=PhaseEntered
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=812 type=PhaseEntered
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=813 type=PhaseEntered
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=814 type=PhaseEntered
+2026-03-21 13:45:04 [debug    ] compute_router.unavailable_provider fallback=llama-cpp/gpt-4 prefix=anthropic selected=anthropic/claude-sonnet-4.6
+2026-03-21 13:45:04 [info     ] compute_router.route           budget_remaining=2.0 caste=coder phase=execute reason=adapter_fallback round_num=5 selected=llama-cpp/gpt-4
+2026-03-21 13:45:04 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=815 type=AgentTurnStarted
+2026-03-21 13:45:04 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:45:04 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:45:05 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:05 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:06 [info     ] workspace.execute              command='mkdir -p markdown_parser && cd markdown_parser && touch __init__.py parser.py tests.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:06 [info     ] workspace.execute              command='ls -la' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:06 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:07 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:07 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:08 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:09 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:09 [info     ] workspace.execute              command='ls -R markdown_parser/' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:22 [info     ] workspace.execute              command='mkdir -p markdown_parser && touch markdown_parser/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:23 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:26 [info     ] workspace.execute              command='mkdir -p markdown_parser && touch markdown_parser/__init__.py' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:27 [info     ] workspace.execute              command='ls -R' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:27 [info     ] workspace.execute              command='ls -R markdown_parser' isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:27 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=816 type=AgentTurnCompleted
+2026-03-21 13:45:27 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=817 type=TokensConsumed
+2026-03-21 13:45:27 [info     ] compute_router.route           budget_remaining=2.0 caste=reviewer phase=execute reason=routing_table round_num=5 selected=llama-cpp/gpt-4
+2026-03-21 13:45:27 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=818 type=AgentTurnStarted
+2026-03-21 13:45:28 [debug    ] qwen3_embed.ok                 count=1 dim=1024 is_query=True
+2026-03-21 13:45:28 [debug    ] qdrant.hybrid_search           collection=skill_bank_v2 hits=0 top_k=8
+2026-03-21 13:45:28 [info     ] workspace.execute              command="git status --porcelain=v1 && echo '---' && git status --short --branch" isolated=False working_dir=data\workspaces\seq-smoke-scaffold-e9aeb600c9d9\files
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=819 type=AgentTurnCompleted
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=820 type=TokensConsumed
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=821 type=PhaseEntered
+2026-03-21 13:45:29 [debug    ] qwen3_embed.ok                 count=3 dim=1024 is_query=False
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=822 type=ColonyChatMessage
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=823 type=ColonyChatMessage
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=824 type=RoundCompleted
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=825 type=ColonyCompleted
+2026-03-21 13:45:29 [info     ] colony_observation             castes=[{'caste': 'coder', 'tier': <SubcasteTier.standard: 'standard'>, 'count': 1}, {'caste': 'reviewer', 'tier': <SubcasteTier.standard: 'standard'>, 'count': 1}] colony_id=colony-dbdbb33f governance_warnings=2 quality_score=0.1542 rounds_completed=5 skills_extracted=0 skills_retrieved=[] stall_rounds=3 strategy=sequential task='Write a Python function that parses a subset of Markdown into an AST. Support headers (h1-h3), bold, italic, code blocks (fenced), unordered lists, and paragraphs. Return a list of typed AST nodes. In' total_cost=0.0
+2026-03-21 13:45:29 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=826 type=MemoryExtractionCompleted
+2026-03-21 13:45:29 [info     ] memory_extraction.complete     colony_id=colony-dbdbb33f entries_emitted=0 entries_extracted=0
+2026-03-21 13:45:30 [debug    ] sqlite_store.appended          address=seq-smoke-scaffold-e9aeb600c9d9/seq-smoke-scaffold-e9aeb600c9d9/colony-dbdbb33f seq=827 type=MemoryExtractionCompleted
+2026-03-21 13:45:30 [info     ] transcript_harvest.complete    colony_id=colony-dbdbb33f entries_harvested=0 turns_scanned=10
+2026-03-21 13:45:30 [info     ] sequential.task_complete       cost=0.0 entries_accessed=0 entries_extracted=0 quality=0.1542 rounds=5 sequence=2 status=completed suite=smoke-scaffold task_id=markdown-parser
+2026-03-21 13:45:30 [info     ] sequential.complete            manifest=data\eval\sequential\smoke-scaffold\manifest_20260321T194530_e9aeb600c9d9.json run_id=e9aeb600c9d9 saved=data\eval\sequential\smoke-scaffold\run_20260321T194530_e9aeb600c9d9.json suite=smoke-scaffold tasks_run=2 total_cost=0.0 total_wall_time_s=125.04

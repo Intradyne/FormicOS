@@ -1,0 +1,21 @@
+task_class: code_implementation
+castes: [coder]
+workflow: "Read target -> Write implementation -> Test -> Iterate on failures"
+steps:
+  - "Read the target file with read_workspace_file (once)"
+  - "Write your complete implementation with write_workspace_file"
+  - "Verify with code_execute or workspace_execute"
+  - "Fix failures with patch_file, then re-test"
+productive_tools: [write_workspace_file, patch_file, code_execute, workspace_execute]
+observation_tools: [list_workspace_files, read_workspace_file, memory_search]
+observation_limit: 2
+example:
+  name: write_workspace_file
+  arguments:
+    file_path: "src/solver.py"
+    content: |
+      def solve(data):
+          result = []
+          for item in data:
+              result.append(item * 2)
+          return result

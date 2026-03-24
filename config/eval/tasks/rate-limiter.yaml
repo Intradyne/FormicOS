@@ -1,0 +1,24 @@
+id: rate-limiter
+description: >
+  Implement a token-bucket rate limiter in Python with the following
+  features: configurable rate and burst size, thread-safe operation,
+  try_acquire() that returns immediately, and wait_for_token() that
+  blocks until a token is available. Include comprehensive tests
+  covering burst behavior, refill timing, and concurrent access.
+difficulty: moderate
+category: language_breadth
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Rate limiter correctly enforces rate limits. Burst behavior works
+  as specified. Thread safety is verifiable. Tests cover timing
+  edge cases and concurrent scenarios.
+budget_limit: 2.00
+max_rounds: 8
+eval_timeout_s: 1200

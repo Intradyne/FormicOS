@@ -1,0 +1,10 @@
+# 2-task smoke: validate eval harness fixes (catalog wiring, metrics, timing).
+task_order:
+  - email-validator
+  - csv-analyzer
+
+strategy: sequential
+budget_per_task: 2.00
+max_rounds_per_task: 5
+escalation_policy: none
+model_mix: {}

@@ -1,0 +1,26 @@
+id: data-pipeline
+description: >
+  Design and implement a Python data transformation pipeline that processes
+  raw web server access logs (Apache combined format) into an analytics
+  summary. The pipeline should: parse log lines, extract fields (IP, timestamp,
+  method, path, status, bytes, referer, user-agent), aggregate by hour and
+  by path, compute top-10 paths by request count, error rate per hour,
+  and total bytes transferred. Output results as both JSON and a readable
+  markdown report. Handle malformed lines gracefully.
+difficulty: moderate
+strategy: stigmergic
+castes:
+  - caste: coder
+    tier: standard
+    count: 2
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Pipeline parses sample logs correctly, handles malformed lines without
+  crashing, aggregations are accurate, both JSON and markdown outputs
+  are produced. Code is modular with clear separation of parse/aggregate/format
+  stages.
+budget_limit: 2.50
+max_rounds: 8
+eval_timeout_s: 1200

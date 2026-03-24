@@ -1,0 +1,16 @@
+task_class: creative
+castes: [researcher]
+workflow: "Review material -> Search context -> Synthesize -> Store"
+steps:
+  - "Review any reference material with read_workspace_file"
+  - "Search for relevant context with memory_search"
+  - "Store your creative output with memory_write"
+  - "Synthesize your complete work in your response"
+productive_tools: [memory_write]
+observation_tools: [read_workspace_file, memory_search, knowledge_detail]
+observation_limit: 3
+example:
+  name: memory_write
+  arguments:
+    content: "Draft essay on the relationship between modularity and maintainability."
+    category: "finding"

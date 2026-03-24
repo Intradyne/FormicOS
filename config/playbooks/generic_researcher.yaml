@@ -1,0 +1,16 @@
+task_class: generic
+castes: [researcher]
+workflow: "Search knowledge -> Read files -> Synthesize -> Store"
+steps:
+  - "Search existing knowledge with memory_search"
+  - "Read relevant files with read_workspace_file"
+  - "Store key findings with memory_write"
+  - "Synthesize your complete analysis in your response"
+productive_tools: [memory_write]
+observation_tools: [memory_search, read_workspace_file, list_workspace_files, knowledge_detail, transcript_search]
+observation_limit: 5
+example:
+  name: memory_write
+  arguments:
+    content: "Key finding from analysis of the codebase."
+    category: "finding"

@@ -1,0 +1,10 @@
+# Universal anti-patterns — injected for all castes at context position 2.6.
+# Wave 56.5 Sub-packet A.
+#
+# Keep total token count under 40 tokens for non-coder castes.
+
+anti_patterns:
+  - id: retry_without_diagnosis
+    rule: "Do NOT retry a failed action without diagnosing why it failed first."
+  - id: artifact_before_deadline
+    rule: "Produce your main artifact BEFORE the final round — use the last round only for polish."

@@ -1,0 +1,9 @@
+# Smoke suite: single-task validation of stack truth.
+task_order:
+  - email-validator
+
+strategy: sequential
+budget_per_task: 2.00
+max_rounds_per_task: 3
+escalation_policy: none
+model_mix: {}

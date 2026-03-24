@@ -1,0 +1,22 @@
+id: p1-data-validator
+description: >
+  Write a Python module `data_validator.py` that validates CSV data loaded
+  by our csv_reader module. Support column-level validation rules:
+  required (non-empty), type (int, float, date, email, url), range
+  (min/max for numbers), pattern (regex for strings), and unique
+  (no duplicates in column). Return a ValidationReport with per-row
+  errors. Include at least 8 test cases covering each rule type.
+difficulty: simple
+category: code_implementation
+strategy: sequential
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+success_rubric: >
+  Validator handles all 5 rule types. Works with csv_reader output format.
+  ValidationReport is structured and testable. Tests cover each rule type
+  plus combinations.
+budget_limit: 1.00
+max_rounds: 3
+eval_timeout_s: 900

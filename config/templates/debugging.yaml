@@ -1,0 +1,25 @@
+template_id: "builtin-debugging"
+name: "Debugging"
+description: "Coder + Reviewer pair focused on diagnosing and fixing bugs."
+version: 1
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+strategy: "stigmergic"
+budget_limit: 4.0
+max_rounds: 10
+tags:
+  - debugging
+  - bugfix
+  - diagnostics
+source_colony_id: null
+created_at: "2026-03-14T00:00:00Z"
+use_count: 0
+input_description: "Bug report or failing test case"
+output_description: "Fix with explanation and updated tests"
+expected_output_types: ["code", "test"]
+completion_hint: "Bug is fixed and tests pass"

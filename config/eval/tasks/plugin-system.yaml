@@ -1,0 +1,27 @@
+id: plugin-system
+description: >
+  Design and implement a multi-file plugin system in Python. Create:
+  (1) a plugin registry module that discovers and loads plugins from a
+  directory, (2) a base plugin class with lifecycle hooks (init, execute,
+  cleanup), (3) two example plugins (a logging plugin and a metrics
+  plugin), and (4) a plugin manager that orchestrates execution order
+  based on declared dependencies. Include tests for discovery, lifecycle,
+  and dependency ordering.
+difficulty: complex
+category: multifile_depth
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: researcher
+    tier: light
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+success_rubric: >
+  Multi-file structure is clean and importable. Plugin discovery works.
+  Lifecycle hooks fire in correct order. Dependency ordering is
+  topologically sorted. Example plugins demonstrate the API.
+budget_limit: 3.00
+max_rounds: 18

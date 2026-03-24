@@ -1,0 +1,14 @@
+task_class: generic
+castes: [reviewer]
+workflow: "Read context -> Analyze -> Report findings"
+steps:
+  - "Read relevant files with read_workspace_file to understand the task"
+  - "Check status with git_status and git_diff"
+  - "Search for relevant context with memory_search"
+  - "Synthesize your complete analysis in your response"
+productive_tools: [git_diff, git_status]
+observation_tools: [read_workspace_file, list_workspace_files, memory_search, knowledge_detail]
+observation_limit: 4
+example:
+  name: git_diff
+  arguments: {}

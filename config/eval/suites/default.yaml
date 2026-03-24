@@ -1,0 +1,25 @@
+# Default sequential evaluation suite for compounding-curve measurement.
+#
+# Tasks are ordered from simple to complex. Knowledge extracted from
+# earlier tasks should be available to later ones.
+#
+# IMPORTANT: Do not reorder tasks without recording the change — task
+# order is a locked experiment condition.
+
+task_order:
+  - email-validator
+  - json-transformer
+  - haiku-writer
+  - api-design
+  - data-pipeline
+  - notification-system
+  - refactor-plan
+
+strategy: stigmergic
+budget_per_task: 2.00
+max_rounds_per_task: 10
+escalation_policy: none
+
+# Model mix: leave empty to use system defaults.
+# Populating this locks the models used and prevents drift.
+model_mix: {}

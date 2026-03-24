@@ -1,0 +1,32 @@
+id: notification-system
+description: >
+  Design a notification system architecture for a SaaS application with
+  100K daily active users. Requirements: support email, push, and in-app
+  notification channels; user preference management (per-channel opt-in/out,
+  quiet hours, frequency caps); template system for notification content;
+  delivery tracking with retry logic; batching for digest-style notifications.
+  Produce: system architecture diagram (as structured text), component
+  descriptions, data model, API contracts for the notification service,
+  and a failure mode analysis covering at least 5 failure scenarios with
+  mitigations.
+difficulty: complex
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: researcher
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+  - caste: archivist
+    tier: light
+    count: 1
+success_rubric: >
+  Architecture covers all required channels and features. Data model is
+  normalized and handles preferences correctly. API contracts are complete.
+  Failure analysis is realistic with concrete mitigations. Archivist
+  produces a coherent summary. Components are justified, not just listed.
+budget_limit: 3.50
+max_rounds: 20

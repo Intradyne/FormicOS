@@ -1,0 +1,20 @@
+id: p1-csv-reader
+description: >
+  Write a Python module `csv_reader.py` that reads CSV files with automatic
+  delimiter detection (comma, semicolon, tab, pipe). Support both headed
+  and headerless files. Return data as a list of dicts (headed) or list of
+  lists (headerless). Handle common encoding issues (UTF-8 BOM, Latin-1
+  fallback). Include at least 5 test cases.
+difficulty: simple
+category: code_implementation
+strategy: sequential
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+success_rubric: >
+  Module reads CSV files correctly with auto-detection. Handles BOM and
+  encoding. Tests cover headed, headerless, and edge cases.
+budget_limit: 1.00
+max_rounds: 3
+eval_timeout_s: 900

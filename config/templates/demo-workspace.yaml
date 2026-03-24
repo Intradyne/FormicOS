@@ -1,0 +1,164 @@
+# FormicOS Demo Workspace Template
+# Creates a pre-seeded workspace for the guided demo flow.
+# 10 knowledge entries across two domains, one deliberate contradiction,
+# maintenance configured for auto_notify on contradictions.
+
+template_id: "builtin-demo-workspace"
+name: "Demo Workspace"
+description: "Seeded workspace for the guided FormicOS demo flow."
+version: 1
+castes:
+  - caste: coder
+    tier: standard
+    count: 1
+  - caste: reviewer
+    tier: standard
+    count: 1
+strategy: "stigmergic"
+budget_limit: 3.0
+max_rounds: 6
+tags:
+  - demo
+  - seeded
+  - showcase
+
+workspace_name: "FormicOS Demo"
+
+maintenance_policy:
+  autonomy_level: "auto_notify"
+  auto_actions:
+    - contradiction
+    - confidence_decline
+  max_maintenance_colonies: 3
+  daily_maintenance_budget: 2.00
+
+federation:
+  enabled: false
+
+seeded_entries:
+  # --- Domain 1: Python API Patterns (5 entries) ---
+  - entry_id: "demo-skill-001"
+    category: "skill"
+    sub_type: "technique"
+    title: "FastAPI dependency injection for database sessions"
+    content: "Use FastAPI Depends() with async context managers to provide database sessions. Each request gets its own session that auto-commits on success and rolls back on exception. This prevents connection leaks and ensures transactional consistency."
+    domains: ["python", "fastapi", "database"]
+    decay_class: "stable"
+    confidence:
+      alpha: 18.0
+      beta: 2.0
+    status: "verified"
+
+  - entry_id: "demo-skill-002"
+    category: "skill"
+    sub_type: "pattern"
+    title: "Pydantic v2 model serialization for API responses"
+    content: "Use model_dump(mode='json') for API serialization instead of .dict(). The mode='json' flag handles datetime, UUID, and Decimal conversion automatically. Pydantic v2 is 5-17x faster than v1 for validation."
+    domains: ["python", "pydantic", "api"]
+    decay_class: "stable"
+    confidence:
+      alpha: 22.0
+      beta: 3.0
+    status: "verified"
+
+  - entry_id: "demo-exp-001"
+    category: "experience"
+    sub_type: "convention"
+    title: "Structured logging with structlog over print"
+    content: "All production Python code should use structlog for logging. Never use print() for operational output. Structured logs enable machine parsing, correlation IDs, and log aggregation. Configure with JSON renderer in production, console renderer in development."
+    domains: ["python", "logging", "operations"]
+    decay_class: "permanent"
+    confidence:
+      alpha: 30.0
+      beta: 1.0
+    status: "verified"
+
+  - entry_id: "demo-exp-002"
+    category: "experience"
+    sub_type: "learning"
+    title: "Async HTTP clients should use connection pooling"
+    content: "When using httpx or aiohttp, always create a shared client instance with connection pooling rather than creating new clients per request. Connection setup (TLS handshake, TCP) adds 50-200ms latency per request without pooling."
+    domains: ["python", "http", "performance"]
+    decay_class: "ephemeral"
+    confidence:
+      alpha: 8.0
+      beta: 3.0
+    status: "observed"
+
+  - entry_id: "demo-skill-003"
+    category: "skill"
+    sub_type: "anti_pattern"
+    title: "Avoid synchronous ORM calls inside async handlers"
+    content: "SQLAlchemy synchronous session.query() inside an async FastAPI handler blocks the event loop. Use async_session with await session.execute() or run sync operations in a thread pool via asyncio.to_thread()."
+    domains: ["python", "fastapi", "database"]
+    decay_class: "ephemeral"
+    confidence:
+      alpha: 5.0
+      beta: 2.0
+    status: "observed"
+
+  # --- Domain 2: Authentication (5 entries, includes contradiction) ---
+  - entry_id: "demo-skill-004"
+    category: "skill"
+    sub_type: "technique"
+    title: "Use JWT tokens for stateless API authentication"
+    content: "JWT (JSON Web Tokens) provide stateless authentication ideal for distributed systems and microservices. Store minimal claims (sub, exp, iss), use RS256 for production, and keep token lifetime short (15 min access, 7 day refresh). No server-side session storage needed."
+    domains: ["authentication", "jwt", "api"]
+    decay_class: "stable"
+    confidence:
+      alpha: 20.0
+      beta: 2.0
+    status: "verified"
+
+  # DELIBERATE CONTRADICTION with demo-skill-004:
+  # Both are high-confidence verified entries with opposing recommendations.
+  # Proactive intelligence should flag this as a contradiction insight.
+  - entry_id: "demo-skill-005"
+    category: "skill"
+    sub_type: "technique"
+    title: "Use server-side sessions for security-sensitive authentication"
+    content: "Server-side sessions with httpOnly secure cookies are more secure than JWT for security-sensitive applications. JWTs cannot be revoked without a blocklist (defeating statelessness), leak claims if intercepted, and grow large with embedded permissions. Session cookies prevent XSS token theft entirely."
+    domains: ["authentication", "sessions", "security"]
+    decay_class: "stable"
+    confidence:
+      alpha: 19.0
+      beta: 2.0
+    status: "verified"
+
+  - entry_id: "demo-exp-003"
+    category: "experience"
+    sub_type: "decision"
+    title: "OAuth2 PKCE flow for single-page applications"
+    content: "SPAs must use the Authorization Code flow with PKCE (Proof Key for Code Exchange), not the Implicit flow. The Implicit flow exposes tokens in URL fragments and is deprecated by OAuth 2.1. PKCE prevents authorization code interception attacks."
+    domains: ["authentication", "oauth", "frontend"]
+    decay_class: "ephemeral"
+    confidence:
+      alpha: 12.0
+      beta: 2.0
+    status: "verified"
+
+  - entry_id: "demo-exp-004"
+    category: "experience"
+    sub_type: "bug"
+    title: "Rate limiting on auth endpoints prevents brute force"
+    content: "Always implement rate limiting on login, registration, and password reset endpoints. Without it, attackers can brute-force credentials. Use sliding window counters (e.g., 5 attempts per minute per IP+username). Return 429 with Retry-After header."
+    domains: ["authentication", "security", "api"]
+    decay_class: "ephemeral"
+    confidence:
+      alpha: 7.0
+      beta: 4.0
+    status: "observed"
+
+  - entry_id: "demo-exp-005"
+    category: "experience"
+    sub_type: "convention"
+    title: "Store password hashes with bcrypt cost factor 12"
+    content: "Use bcrypt with a minimum cost factor of 12 for password hashing. Argon2id is the newer recommendation but bcrypt remains widely supported and secure. Never use MD5, SHA-1, or SHA-256 alone for passwords — they are too fast for brute-force resistance."
+    domains: ["authentication", "security", "cryptography"]
+    decay_class: "permanent"
+    confidence:
+      alpha: 25.0
+      beta: 1.0
+    status: "verified"
+
+suggested_demo_task: "Build me an email validator library with unit tests"
