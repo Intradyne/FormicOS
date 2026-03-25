@@ -206,8 +206,20 @@ class LLMRouter:
         best_cost = float("inf")
         for rec in registry:
             if adapters is not None:
+                # Wave 64: adapter keys are now provider:endpoint
                 prefix = rec.address.split("/", 1)[0]
-                if prefix not in adapters:
+                adapter_key = (
+                    f"{prefix}:{rec.endpoint or 'default'}"
+                    if hasattr(rec, "endpoint")
+                    else f"{prefix}:default"
+                )
+                if (
+                    adapter_key not in adapters
+                    and prefix not in adapters
+                    and not any(
+                        k.startswith(f"{prefix}:") for k in adapters
+                    )
+                ):
                     continue
             cost = rec.cost_per_input_token if rec.cost_per_input_token is not None else 0.0
             if cost < best_cost:
@@ -395,24 +407,48 @@ class LLMRouter:
             yield chunk
 
     def provider_health(self) -> dict[str, str]:
-        """Return current health status per provider prefix.
+        """Return current health status per adapter key.
 
-        Exposes cooldown state (ADR-024) for operator visibility.
+        Wave 64: keys are now provider:endpoint. Cooldown still tracks
+        by provider prefix (provider-level, not endpoint-level).
         """
         result: dict[str, str] = {}
-        for provider in self._adapters:
+        for adapter_key in self._adapters:
+            provider = adapter_key.split(":")[0]
             if self._cooldown.is_cooled_down(provider):
-                result[provider] = "cooldown"
+                result[adapter_key] = "cooldown"
             else:
-                result[provider] = "ok"
+                result[adapter_key] = "ok"
         return result
 
     def _resolve(self, model: str) -> LLMPort:
         prefix = model.split("/", 1)[0]
+        # Wave 64: look up by (provider:endpoint) key first, then fall
+        # back to provider-only prefix for backward compatibility.
+        # Check if any key starts with "prefix:" — use the endpoint from
+        # the model registry to build the full key.
+        rec = self._registry_map.get(model)
+        if rec is not None:
+            adapter_key = (
+                f"{rec.provider}:{rec.endpoint or 'default'}"
+            )
+            adapter = self._adapters.get(adapter_key)
+            if adapter is not None:
+                return adapter
+        # Fallback: try prefix:default, then bare prefix (backward compat),
+        # then any key starting with prefix:
+        adapter = self._adapters.get(f"{prefix}:default")
+        if adapter is not None:
+            return adapter
         adapter = self._adapters.get(prefix)
-        if adapter is None:
-            raise ValueError(f"No adapter registered for provider '{prefix}'")
-        return adapter
+        if adapter is not None:
+            return adapter
+        for key, adp in self._adapters.items():
+            if key.startswith(f"{prefix}:"):
+                return adp
+        raise ValueError(
+            f"No adapter registered for provider '{prefix}'"
+        )
 
 
 # ---------------------------------------------------------------------------

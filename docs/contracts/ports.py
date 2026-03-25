@@ -76,6 +76,7 @@ EventTypeName = Literal[
     "MemoryConfidenceUpdated",
     "WorkflowStepDefined",
     "WorkflowStepCompleted",
+    "WorkflowStepUpdated",
     "CRDTCounterIncremented",
     "CRDTTimestampUpdated",
     "CRDTSetElementAdded",
@@ -93,6 +94,9 @@ EventTypeName = Literal[
     "ColonyEscalated",
     "QueenNoteSaved",
     "MemoryEntryRefined",
+    "AddonLoaded",
+    "AddonUnloaded",
+    "ServiceTriggerFired",
 ]
 
 PheromoneWeights = Mapping[tuple[str, str], float]

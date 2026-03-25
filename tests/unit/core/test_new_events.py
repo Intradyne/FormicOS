@@ -118,7 +118,7 @@ class TestUnionSize:
         annotated_args = get_args(FormicOSEvent)
         union_type = annotated_args[0]
         members = get_args(union_type)
-        assert len(members) == 65, (
-            f"Expected 65 event types, got {len(members)}: "
+        assert len(members) == 69, (
+            f"Expected 69 event types, got {len(members)}: "
             f"{[m.__name__ for m in members]}"
         )

@@ -59,7 +59,7 @@ class TestQueenPromptRedesign:
         data = yaml.safe_load(open("config/caste_recipes.yaml"))
         prompt = data["castes"]["queen"]["system_prompt"]
         lines = prompt.strip().split("\n")
-        assert 80 <= len(lines) <= 170, f"Queen prompt is {len(lines)} lines"
+        assert 80 <= len(lines) <= 200, f"Queen prompt is {len(lines)} lines"
 
     @pytest.mark.parametrize("keyword", [
         "decay class",

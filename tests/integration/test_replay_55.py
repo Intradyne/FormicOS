@@ -29,8 +29,8 @@ class TestReplay55Events:
 
     def test_event_union_has_55_types(self) -> None:
         """EVENT_TYPE_NAMES contains exactly 55 entries."""
-        assert len(EVENT_TYPE_NAMES) == 65, (
-            f"Expected 65 event types, found {len(EVENT_TYPE_NAMES)}"
+        assert len(EVENT_TYPE_NAMES) == 69, (
+            f"Expected 66 event types, found {len(EVENT_TYPE_NAMES)}"
         )
 
     def test_parallel_plan_created_in_union(self) -> None:

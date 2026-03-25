@@ -1,0 +1,64 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: proverb\n\nINSTRUCTIONS:\n# Instructions\n\
+  \nFor want of a horseshoe nail, a kingdom was lost, or so the saying goes.\n\nGiven a list of inputs, generate the relevant\
+  \ proverb.\nFor example, given the list `[\"nail\", \"shoe\", \"horse\", \"rider\", \"message\", \"battle\", \"kingdom\"\
+  ]`, you will output the full text of this proverbial rhyme:\n\n```text\nFor want of a nail the shoe was lost.\nFor want\
+  \ of a shoe the horse was lost.\nFor want of a horse the rider was lost.\nFor want of a rider the message was lost.\nFor\
+  \ want of a message the battle was lost.\nFor want of a battle the kingdom was lost.\nAnd all for the want of a nail.\n\
+  ```\n\nNote that the list of inputs may vary; your solution should be able to handle lists of arbitrary length and content.\n\
+  No line of the output text should be a static, unchanging string; all should vary according to the input given.\n\n\n# Instructions\
+  \ append\n\nIn [concept:python/unpacking-and-multiple-assignment](https://github.com/exercism/python/tree/main/concepts/unpacking-and-multiple-assignment),\
+  \ you learned multiple techniques for working with `lists`/`tuples` of arbitrary length as well as function arguments of\
+  \ arbitrary length.\nThis exercise would be a great place to practice those techniques.\n\n## How this exercise is implemented\
+  \ for Python\n\nThe test cases for this track add an additional keyword argument called `qualifier`.\nYou should use this\
+  \ keyword arguments value to modify the final verse of your Proverb.\n\nSTARTER CODE:\nFILE: proverb.py\n```\ndef proverb():\n\
+  \    pass\n\n```\n\nTEST FILE:\nFILE: proverb_test.py\n```\n# These tests are auto-generated with test data from:\n# https://github.com/exercism/problem-specifications/tree/main/exercises/proverb/canonical-data.json\n\
+  # File last updated on 2023-07-19\n\nimport unittest\n\nfrom proverb import (\n    proverb,\n)\n\n# PLEASE TAKE NOTE: Expected\
+  \ result lists for these test cases use **implicit line joining.**\n# A new line in a result list below **does not** always\
+  \ equal a new list element.\n# Check comma placement carefully!\n\n\nclass ProverbTest(unittest.TestCase):\n    def test_zero_pieces(self):\n\
+  \        input_data = []\n        self.assertEqual(proverb(*input_data, qualifier=None), [])\n\n    def test_one_piece(self):\n\
+  \        input_data = [\"nail\"]\n        self.assertEqual(\n            proverb(*input_data, qualifier=None), [\"And all\
+  \ for the want of a nail.\"]\n        )\n\n    def test_two_pieces(self):\n        input_data = [\"nail\", \"shoe\"]\n \
+  \       self.assertEqual(\n            proverb(*input_data, qualifier=None),\n            [\n                \"For want\
+  \ of a nail the shoe was lost.\",\n                \"And all for the want of a nail.\",\n            ],\n        )\n\n \
+  \   def test_three_pieces(self):\n        input_data = [\"nail\", \"shoe\", \"horse\"]\n        self.assertEqual(\n    \
+  \        proverb(*input_data, qualifier=None),\n            [\n                \"For want of a nail the shoe was lost.\"\
+  ,\n                \"For want of a shoe the horse was lost.\",\n                \"And all for the want of a nail.\",\n \
+  \           ],\n        )\n\n    def test_full_proverb(self):\n        input_data = [\"nail\", \"shoe\", \"horse\", \"rider\"\
+  , \"message\", \"battle\", \"kingdom\"]\n        self.assertEqual(\n            proverb(*input_data, qualifier=None),\n\
+  \            [\n                \"For want of a nail the shoe was lost.\",\n                \"For want of a shoe the horse\
+  \ was lost.\",\n                \"For want of a horse the rider was lost.\",\n                \"For want of a rider the\
+  \ message was lost.\",\n                \"For want of a message the battle was lost.\",\n                \"For want of a\
+  \ battle the kingdom was lost.\",\n                \"And all for the want of a nail.\",\n            ],\n        )\n\n \
+  \   def test_four_pieces_modernized(self):\n        input_data = [\"pin\", \"gun\", \"soldier\", \"battle\"]\n        self.assertEqual(\n\
+  \            proverb(*input_data, qualifier=None),\n            [\n                \"For want of a pin the gun was lost.\"\
+  ,\n                \"For want of a gun the soldier was lost.\",\n                \"For want of a soldier the battle was\
+  \ lost.\",\n                \"And all for the want of a pin.\",\n            ],\n        )\n\n    # Track-specific tests\n\
+  \n    def test_an_optional_qualifier_can_be_added(self):\n        input_data = [\"nail\"]\n        self.assertEqual(\n \
+  \           proverb(*input_data, qualifier=\"horseshoe\"),\n            [\"And all for the want of a horseshoe nail.\"],\n\
+  \        )\n\n    def test_an_optional_qualifier_in_the_final_consequences(self):\n        input_data = [\"nail\", \"shoe\"\
+  , \"horse\", \"rider\", \"message\", \"battle\", \"kingdom\"]\n        self.assertEqual(\n            proverb(*input_data,\
+  \ qualifier=\"horseshoe\"),\n            [\n                \"For want of a nail the shoe was lost.\",\n               \
+  \ \"For want of a shoe the horse was lost.\",\n                \"For want of a horse the rider was lost.\",\n          \
+  \      \"For want of a rider the message was lost.\",\n                \"For want of a message the battle was lost.\",\n\
+  \                \"For want of a battle the kingdom was lost.\",\n                \"And all for the want of a horseshoe\
+  \ nail.\",\n            ],\n        )\n\n```\n\nYour task: Edit the starter code file(s) so ALL tests pass.\nUse write_workspace_file\
+  \ to write your solution, then use\nworkspace_execute to run the tests.\n\nTEST COMMAND: python -m unittest proverb_test.py\
+  \ -v 2>&1\n\nIf tests fail, read the error output carefully, fix your code,\nand run the tests again.\n\nWrite your solution\
+  \ in the starter file. The test file imports from the solution module. Run tests with workspace_execute.\n\nUse any Available\
+  \ Knowledge entries — they contain patterns\nfrom prior exercises that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-proverb
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest proverb_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/proverb

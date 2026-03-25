@@ -517,8 +517,8 @@ class TestSmoke18FullReplay:
         annotated_args = get_args(FormicOSEvent)
         union_type = annotated_args[0]
         members = get_args(union_type)
-        assert len(members) == 65
-        assert len(EVENT_TYPE_NAMES) == 65
+        assert len(members) == 69
+        assert len(EVENT_TYPE_NAMES) == 69
 
     def test_crdt_events_in_union(self) -> None:
         from formicos.core.events import EVENT_TYPE_NAMES
@@ -545,7 +545,7 @@ class TestSmoke19CIClean:
         from formicos.core import events
         assert hasattr(events, "FormicOSEvent")
         assert hasattr(events, "EVENT_TYPE_NAMES")
-        assert len(events.EVENT_TYPE_NAMES) == 65
+        assert len(events.EVENT_TYPE_NAMES) == 69
 
     def test_import_crdt(self) -> None:
         from formicos.core.crdt import GCounter, LWWRegister, GSet, ObservationCRDT

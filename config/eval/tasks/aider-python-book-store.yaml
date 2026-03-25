@@ -1,0 +1,63 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: book-store\n\nINSTRUCTIONS:\n#\
+  \ Instructions\n\nTo try and encourage more sales of different books from a popular 5 book series, a bookshop has decided\
+  \ to offer discounts on multiple book purchases.\n\nOne copy of any of the five books costs $8.\n\nIf, however, you buy\
+  \ two different books, you get a 5% discount on those two books.\n\nIf you buy 3 different books, you get a 10% discount.\n\
+  \nIf you buy 4 different books, you get a 20% discount.\n\nIf you buy all 5, you get a 25% discount.\n\nNote that if you\
+  \ buy four books, of which 3 are different titles, you get a 10% discount on the 3 that form part of a set, but the fourth\
+  \ book still costs $8.\n\nYour mission is to write code to calculate the price of any conceivable shopping basket (containing\
+  \ only books of the same series), giving as big a discount as possible.\n\nFor example, how much does this basket of books\
+  \ cost?\n\n- 2 copies of the first book\n- 2 copies of the second book\n- 2 copies of the third book\n- 1 copy of the fourth\
+  \ book\n- 1 copy of the fifth book\n\nOne way of grouping these 8 books is:\n\n- 1 group of 5 (1st, 2nd,3rd, 4th, 5th)\n\
+  - 1 group of 3 (1st, 2nd, 3rd)\n\nThis would give a total of:\n\n- 5 books at a 25% discount\n- 3 books at a 10% discount\n\
+  \nResulting in:\n\n- 5 × (100% - 25%) × $8 = 5 × $6.00 = $30.00, plus\n- 3 × (100% - 10%) × $8 = 3 × $7.20 = $21.60\n\n\
+  Which equals $51.60.\n\nHowever, a different way to group these 8 books is:\n\n- 1 group of 4 books (1st, 2nd, 3rd, 4th)\n\
+  - 1 group of 4 books (1st, 2nd, 3rd, 5th)\n\nThis would give a total of:\n\n- 4 books at a 20% discount\n- 4 books at a\
+  \ 20% discount\n\nResulting in:\n\n- 4 × (100% - 20%) × $8 = 4 × $6.40 = $25.60, plus\n- 4 × (100% - 20%) × $8 = 4 × $6.40\
+  \ = $25.60\n\nWhich equals $51.20.\n\nAnd $51.20 is the price with the biggest discount.\n\nSTARTER CODE:\nFILE: book_store.py\n\
+  ```\ndef total(basket):\n    pass\n\n```\n\nTEST FILE:\nFILE: book_store_test.py\n```\n# These tests are auto-generated\
+  \ with test data from:\n# https://github.com/exercism/problem-specifications/tree/main/exercises/book-store/canonical-data.json\n\
+  # File last updated on 2023-07-20\n\nimport unittest\n\nfrom book_store import (\n    total,\n)\n\n\nclass BookStoreTest(unittest.TestCase):\n\
+  \    def test_only_a_single_book(self):\n        basket = [1]\n        self.assertEqual(total(basket), 800)\n\n    def test_two_of_the_same_book(self):\n\
+  \        basket = [2, 2]\n        self.assertEqual(total(basket), 1600)\n\n    def test_empty_basket(self):\n        basket\
+  \ = []\n        self.assertEqual(total(basket), 0)\n\n    def test_two_different_books(self):\n        basket = [1, 2]\n\
+  \        self.assertEqual(total(basket), 1520)\n\n    def test_three_different_books(self):\n        basket = [1, 2, 3]\n\
+  \        self.assertEqual(total(basket), 2160)\n\n    def test_four_different_books(self):\n        basket = [1, 2, 3, 4]\n\
+  \        self.assertEqual(total(basket), 2560)\n\n    def test_five_different_books(self):\n        basket = [1, 2, 3, 4,\
+  \ 5]\n        self.assertEqual(total(basket), 3000)\n\n    def test_two_groups_of_four_is_cheaper_than_group_of_five_plus_group_of_three(self):\n\
+  \        basket = [1, 1, 2, 2, 3, 3, 4, 5]\n        self.assertEqual(total(basket), 5120)\n\n    def test_two_groups_of_four_is_cheaper_than_groups_of_five_and_three(self):\n\
+  \        basket = [1, 1, 2, 3, 4, 4, 5, 5]\n        self.assertEqual(total(basket), 5120)\n\n    def test_group_of_four_plus_group_of_two_is_cheaper_than_two_groups_of_three(self):\n\
+  \        basket = [1, 1, 2, 2, 3, 4]\n        self.assertEqual(total(basket), 4080)\n\n    def test_two_each_of_first_four_books_and_one_copy_each_of_rest(self):\n\
+  \        basket = [1, 1, 2, 2, 3, 3, 4, 4, 5]\n        self.assertEqual(total(basket), 5560)\n\n    def test_two_copies_of_each_book(self):\n\
+  \        basket = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]\n        self.assertEqual(total(basket), 6000)\n\n    def test_three_copies_of_first_book_and_two_each_of_remaining(self):\n\
+  \        basket = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 1]\n        self.assertEqual(total(basket), 6800)\n\n    def test_three_each_of_first_two_books_and_two_each_of_remaining_books(self):\n\
+  \        basket = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 1, 2]\n        self.assertEqual(total(basket), 7520)\n\n    def test_four_groups_of_four_are_cheaper_than_two_groups_each_of_five_and_three(\n\
+  \        self,\n    ):\n        basket = [1, 1, 2, 2, 3, 3, 4, 5, 1, 1, 2, 2, 3, 3, 4, 5]\n        self.assertEqual(total(basket),\
+  \ 10240)\n\n    def test_check_that_groups_of_four_are_created_properly_even_when_there_are_more_groups_of_three_than_groups_of_five(\n\
+  \        self,\n    ):\n        basket = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 5, 5]\n        self.assertEqual(total(basket),\
+  \ 14560)\n\n    def test_one_group_of_one_and_four_is_cheaper_than_one_group_of_two_and_three(self):\n        basket = [1,\
+  \ 1, 2, 3, 4]\n        self.assertEqual(total(basket), 3360)\n\n    def test_one_group_of_one_and_two_plus_three_groups_of_four_is_cheaper_than_one_group_of_each_size(\n\
+  \        self,\n    ):\n        basket = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5]\n        self.assertEqual(total(basket),\
+  \ 10000)\n\n    # Additional tests for this track\n\n    def test_two_groups_of_four_and_a_group_of_five(self):\n      \
+  \  basket = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5]\n        self.assertEqual(total(basket), 8120)\n\n    def test_shuffled_book_order(self):\n\
+  \        basket = [1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3]\n        self.assertEqual(total(basket), 8120)\n\n```\n\nYour\
+  \ task: Edit the starter code file(s) so ALL tests pass.\nUse write_workspace_file to write your solution, then use\nworkspace_execute\
+  \ to run the tests.\n\nTEST COMMAND: python -m unittest book_store_test.py -v 2>&1\n\nIf tests fail, read the error output\
+  \ carefully, fix your code,\nand run the tests again.\n\nWrite your solution in the starter file. The test file imports\
+  \ from the solution module. Run tests with workspace_execute.\n\nUse any Available Knowledge entries — they contain patterns\n\
+  from prior exercises that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-book-store
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest book_store_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/book-store

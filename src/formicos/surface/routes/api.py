@@ -944,6 +944,68 @@ def routes(
             "new_confidence": round(new_alpha / (new_alpha + new_beta), 4),
         })
 
+    # --- Wave 61 Track 5: workspace budget control panel ---
+
+    async def get_workspace_budget(request: Request) -> JSONResponse:
+        """Return detailed budget snapshot for a workspace."""
+        workspace_id = request.path_params["workspace_id"]
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+
+        budget = ws.budget
+        limit = ws.budget_limit
+        utilization_pct = (
+            round(budget.total_cost / limit * 100, 2) if limit > 0 else 0.0
+        )
+
+        colony_list: list[dict[str, Any]] = []
+        for colony in runtime.projections.workspace_colonies(workspace_id):
+            colony_list.append({
+                "colony_id": colony.id,
+                "name": colony.display_name or colony.id[:12],
+                "status": colony.status,
+                "cost": round(colony.budget_truth.total_cost, 6),
+                "rounds": colony.round_number,
+            })
+
+        return JSONResponse({
+            "workspace_id": workspace_id,
+            "total_cost": round(budget.total_cost, 6),
+            "budget_limit": limit,
+            "utilization_pct": utilization_pct,
+            "total_input_tokens": budget.total_input_tokens,
+            "total_output_tokens": budget.total_output_tokens,
+            "total_reasoning_tokens": budget.total_reasoning_tokens,
+            "total_cache_read_tokens": budget.total_cache_read_tokens,
+            "model_usage": dict(budget.model_usage),
+            "colonies": colony_list,
+        })
+
+    # --- Wave 64 Track 5: provider health endpoint ---
+
+    async def get_provider_health(_request: Request) -> JSONResponse:
+        """Return per-provider health status and model availability."""
+        health = runtime.llm_router.provider_health()
+        # Build per-provider summary from model registry
+        providers: dict[str, dict[str, Any]] = {}
+        for rec in runtime.settings.models.registry:
+            key = rec.provider
+            if key not in providers:
+                providers[key] = {
+                    "status": health.get(
+                        f"{key}:{rec.endpoint or 'default'}", "ok"
+                    ),
+                    "models": [],
+                    "endpoint": rec.endpoint,
+                }
+            providers[key]["models"].append({
+                "address": rec.address,
+                "status": rec.status,
+                "max_concurrent": rec.max_concurrent,
+            })
+        return JSONResponse({"providers": providers})
+
     # --- Playbook listing (Wave 55, Team 3) ---
 
     async def get_playbooks(_request: Request) -> JSONResponse:
@@ -952,6 +1014,271 @@ def routes(
 
         playbooks = load_all_playbooks()
         return JSONResponse({"playbooks": playbooks})
+
+    # --- Wave 63 Track 6: Knowledge CRUD ---
+
+    async def update_knowledge_entry(request: Request) -> JSONResponse:
+        """Update a knowledge entry's content, title, tags, or domain."""
+        from formicos.core.events import MemoryEntryRefined  # noqa: PLC0415
+
+        entry_id = request.path_params["entry_id"]
+        entry = runtime.projections.memory_entries.get(entry_id)
+        if entry is None:
+            return _err_response(
+                "KNOWLEDGE_ITEM_NOT_FOUND",
+                message=f"Entry {entry_id} not found",
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        old_content = str(entry.get("content", ""))
+        new_content = str(body.get("content", old_content))
+        new_title = str(body.get("title", ""))
+
+        ws_id = str(entry.get("workspace_id", ""))
+        await runtime.emit_and_broadcast(MemoryEntryRefined(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=f"{ws_id}/knowledge_edit",
+            entry_id=entry_id,
+            workspace_id=ws_id,
+            old_content=old_content,
+            new_content=new_content,
+            new_title=new_title,
+            refinement_source="operator",
+            source_colony_id="",
+        ))
+
+        # Apply tag/domain updates directly to projection
+        if "primary_domain" in body:
+            entry["primary_domain"] = str(body["primary_domain"])
+        if "sub_type" in body:
+            entry["sub_type"] = str(body["sub_type"])
+        if "tags" in body and isinstance(body["tags"], list):
+            entry["tags"] = [str(t) for t in body["tags"]]
+
+        return JSONResponse({
+            "entry_id": entry_id,
+            "updated": True,
+        })
+
+    async def delete_knowledge_entry(request: Request) -> JSONResponse:
+        """Soft-delete a knowledge entry (set deprecated, kill confidence)."""
+        from formicos.core.events import MemoryConfidenceUpdated  # noqa: PLC0415
+
+        entry_id = request.path_params["entry_id"]
+        entry = runtime.projections.memory_entries.get(entry_id)
+        if entry is None:
+            return _err_response(
+                "KNOWLEDGE_ITEM_NOT_FOUND",
+                message=f"Entry {entry_id} not found",
+            )
+
+        old_alpha = float(entry.get("conf_alpha", 5.0))
+        old_beta = float(entry.get("conf_beta", 5.0))
+        ws_id = str(entry.get("workspace_id", ""))
+
+        # Kill confidence: alpha ~0, beta=100
+        await runtime.emit_and_broadcast(MemoryConfidenceUpdated(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=f"{ws_id}/knowledge_delete",
+            entry_id=entry_id,
+            old_alpha=old_alpha,
+            old_beta=old_beta,
+            new_alpha=0.01,
+            new_beta=100.0,
+            new_confidence=0.0001,
+            workspace_id=ws_id,
+            reason="operator_delete",
+        ))
+
+        # Mark as deprecated in projection
+        entry["status"] = "deprecated"
+
+        return JSONResponse({
+            "entry_id": entry_id,
+            "deleted": True,
+        })
+
+    async def create_knowledge_entry(request: Request) -> JSONResponse:
+        """Create a knowledge entry from operator input."""
+        from formicos.core.events import MemoryEntryCreated  # noqa: PLC0415
+
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        title = str(body.get("title", "")).strip()
+        content = str(body.get("content", "")).strip()
+        if not title or not content:
+            return _err_response(
+                "VALIDATION_ERROR",
+                message="title and content are required",
+            )
+
+        workspace_id = request.path_params.get("workspace_id", "")
+        import uuid  # noqa: PLC0415
+
+        entry_id = f"op-{uuid.uuid4().hex[:12]}"
+        entry_dict: dict[str, Any] = {
+            "id": entry_id,
+            "category": body.get("category", "experience"),
+            "sub_type": body.get("sub_type", "convention"),
+            "title": title,
+            "content": content,
+            "primary_domain": body.get("primary_domain", ""),
+            "domains": [body.get("primary_domain", "")] if body.get("primary_domain") else [],
+            "tags": body.get("tags", []),
+            "status": "verified",  # operator-authored = trusted
+            "decay_class": "stable",
+            "conf_alpha": 3.0,  # slightly positive prior
+            "conf_beta": 2.0,
+            "workspace_id": workspace_id,
+            "source_system": "institutional_memory",
+            "source": "operator",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
+        await runtime.emit_and_broadcast(MemoryEntryCreated(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=f"{workspace_id}/knowledge_create",
+            entry=entry_dict,
+            workspace_id=workspace_id,
+        ))
+
+        return JSONResponse({"entry_id": entry_id, "created": True}, status_code=201)
+
+    # --- Wave 63 Track 7: Workflow step CRUD ---
+
+    async def list_workflow_steps(request: Request) -> JSONResponse:
+        """List workflow steps for a thread."""
+        workspace_id = request.path_params["workspace_id"]
+        thread_id = request.path_params["thread_id"]
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+        thread = ws.threads.get(thread_id)
+        if thread is None:
+            return _err_response("THREAD_NOT_FOUND")
+        return JSONResponse({
+            "workspace_id": workspace_id,
+            "thread_id": thread_id,
+            "steps": thread.workflow_steps,
+        })
+
+    async def add_workflow_step(request: Request) -> JSONResponse:
+        """Add a workflow step to a thread."""
+        from formicos.core.events import WorkflowStepDefined  # noqa: PLC0415
+        from formicos.core.types import WorkflowStep  # noqa: PLC0415
+
+        workspace_id = request.path_params["workspace_id"]
+        thread_id = request.path_params["thread_id"]
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+        thread = ws.threads.get(thread_id)
+        if thread is None:
+            return _err_response("THREAD_NOT_FOUND")
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        description = str(body.get("description", "")).strip()
+        if not description:
+            return _err_response(
+                "VALIDATION_ERROR", message="description is required",
+            )
+
+        step_index = len(thread.workflow_steps)
+        step = WorkflowStep(
+            step_index=step_index,
+            description=description,
+            expected_outputs=body.get("expected_outputs", []),
+        )
+        await runtime.emit_and_broadcast(WorkflowStepDefined(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=f"{workspace_id}/workflow",
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            step=step,
+        ))
+        return JSONResponse({
+            "step_index": step_index,
+            "created": True,
+        }, status_code=201)
+
+    async def update_workflow_step(request: Request) -> JSONResponse:
+        """Update a workflow step (description, status, position, notes)."""
+        from formicos.core.events import WorkflowStepUpdated  # noqa: PLC0415
+
+        workspace_id = request.path_params["workspace_id"]
+        thread_id = request.path_params["thread_id"]
+        step_index = int(request.path_params["step_index"])
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+        thread = ws.threads.get(thread_id)
+        if thread is None:
+            return _err_response("THREAD_NOT_FOUND")
+        # Verify step exists
+        if not any(s.get("step_index") == step_index for s in thread.workflow_steps):
+            return _err_response(
+                "VALIDATION_ERROR", message=f"Step {step_index} not found",
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        await runtime.emit_and_broadcast(WorkflowStepUpdated(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=f"{workspace_id}/workflow",
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            step_index=step_index,
+            new_description=str(body.get("description", "")),
+            new_status=str(body.get("status", "")),
+            new_position=int(body.get("position", -1)),
+            notes=str(body.get("notes", "")),
+        ))
+        return JSONResponse({"step_index": step_index, "updated": True})
+
+    async def delete_workflow_step(request: Request) -> JSONResponse:
+        """Mark a workflow step as skipped."""
+        from formicos.core.events import WorkflowStepUpdated  # noqa: PLC0415
+
+        workspace_id = request.path_params["workspace_id"]
+        thread_id = request.path_params["thread_id"]
+        step_index = int(request.path_params["step_index"])
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+        thread = ws.threads.get(thread_id)
+        if thread is None:
+            return _err_response("THREAD_NOT_FOUND")
+        if not any(s.get("step_index") == step_index for s in thread.workflow_steps):
+            return _err_response(
+                "VALIDATION_ERROR", message=f"Step {step_index} not found",
+            )
+
+        await runtime.emit_and_broadcast(WorkflowStepUpdated(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=f"{workspace_id}/workflow",
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            step_index=step_index,
+            new_status="skipped",
+        ))
+        return JSONResponse({"step_index": step_index, "skipped": True})
 
     return [
         Route("/api/v1/knowledge-graph", get_knowledge_graph),
@@ -975,6 +1302,7 @@ def routes(
             get_workspace_templates, methods=["GET"],
         ),
         Route("/api/v1/playbooks", get_playbooks, methods=["GET"]),
+        Route("/api/v1/system/providers", get_provider_health, methods=["GET"]),
         Route("/api/v1/castes", get_castes_api, methods=["GET"]),
         Route("/api/v1/castes/{caste_id:str}", upsert_caste, methods=["PUT"]),
         Route("/api/v1/models/{address:path}", update_model_policy, methods=["PATCH"]),
@@ -1003,6 +1331,11 @@ def routes(
             "/api/v1/workspaces/{workspace_id:str}/learning-summary",
             get_learning_summary, methods=["GET"],
         ),
+        # Wave 61: budget control panel
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/budget",
+            get_workspace_budget, methods=["GET"],
+        ),
         Route("/api/v1/colonies/{colony_id:str}/audit", get_colony_audit),
         # Wave 48: thread-scoped timeline
         Route(
@@ -1025,5 +1358,35 @@ def routes(
         Route(
             "/api/v1/workspaces/{workspace_id:str}/forager/domains",
             get_domain_strategies, methods=["GET"],
+        ),
+        # Wave 63 Track 6: Knowledge CRUD
+        Route(
+            "/api/v1/knowledge/{entry_id:str}",
+            update_knowledge_entry, methods=["PUT"],
+        ),
+        Route(
+            "/api/v1/knowledge/{entry_id:str}",
+            delete_knowledge_entry, methods=["DELETE"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/knowledge",
+            create_knowledge_entry, methods=["POST"],
+        ),
+        # Wave 63 Track 7: Workflow step CRUD
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/threads/{thread_id:str}/steps",
+            list_workflow_steps, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/threads/{thread_id:str}/steps",
+            add_workflow_step, methods=["POST"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/threads/{thread_id:str}/steps/{step_index:int}",
+            update_workflow_step, methods=["PUT"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/threads/{thread_id:str}/steps/{step_index:int}",
+            delete_workflow_step, methods=["DELETE"],
         ),
     ]

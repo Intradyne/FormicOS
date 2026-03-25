@@ -612,6 +612,10 @@ class KnowledgeCatalog:
             status_bonus = _STATUS_BONUS.get(
                 str(item.get("status", "")), 0.0,
             )
+            # Wave 63 Track 4: negative signal bonus for anti-patterns and bugs
+            _sub_type = str(item.get("sub_type", ""))
+            if _sub_type in ("anti_pattern", "bug") and status_bonus < 0.15:
+                status_bonus = max(status_bonus, 0.15)
             thread_bonus = float(item.get("_thread_bonus", 0.0))
             cooc = cooc_scores.get(item.get("id", ""), 0.0)
             # Wave 59.5: graph proximity signal
@@ -727,7 +731,9 @@ class KnowledgeCatalog:
           full: ~200+ tokens/result (full content + metadata + co-occurrence)
           auto: start at summary, escalate if coverage is thin
         """
-        # Fetch 2x top_k to have escalation headroom
+        # Wave 62 Bug 1: over-fetch 4x so the 7-signal composite scorer
+        # can re-rank entries that rank low on raw cosine but high on
+        # thompson / co-occurrence / graph_proximity.
         results = await self._search_thread_boosted(
             query,
             source_system="institutional_memory",
@@ -735,7 +741,7 @@ class KnowledgeCatalog:
             workspace_id=workspace_id,
             thread_id=thread_id,
             source_colony_id=source_colony_id,
-            top_k=top_k * 2,
+            top_k=top_k * 4,
         )
 
         # Wave 41 B3: record retrieval access for compounding-curve measurement

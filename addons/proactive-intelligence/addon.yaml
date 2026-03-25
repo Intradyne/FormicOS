@@ -1,0 +1,38 @@
+name: proactive-intelligence
+version: "1.0.0"
+description: "17 deterministic briefing rules + maintenance dispatch"
+author: "formicos-core"
+
+tools:
+  - name: query_briefing
+    description: "Query proactive intelligence briefing for a workspace"
+    handler: handlers.py::handle_query_briefing
+    parameters:
+      type: object
+      properties:
+        workspace_id:
+          type: string
+          description: "Target workspace (defaults to current)"
+        categories:
+          type: array
+          items:
+            type: string
+          description: "Optional category filter"
+
+  - name: proactive_configure
+    description: "Enable or disable individual proactive rules per workspace"
+    handler: handlers.py::handle_proactive_configure
+    parameters:
+      type: object
+      properties:
+        action:
+          type: string
+          description: "'list', 'enable', or 'disable' (default 'list')"
+        rule_name:
+          type: string
+          description: "Rule to enable/disable"
+
+triggers:
+  - type: cron
+    schedule: "*/30 * * * *"
+    handler: handlers.py::on_scheduled_briefing

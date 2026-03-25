@@ -732,6 +732,31 @@ class ProjectionStore:
         self.entry_kg_nodes: dict[str, str] = {}
         self.last_seq: int = 0
 
+    def outcome_stats(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Aggregate colony outcomes by (strategy, caste_mix) for planning."""
+        outcomes = [
+            o for o in self.colony_outcomes.values()
+            if o.workspace_id == workspace_id
+        ]
+        if not outcomes:
+            return []
+        buckets: dict[tuple[str, str], list[ColonyOutcome]] = {}
+        for o in outcomes:
+            key = (o.strategy, ",".join(sorted(o.caste_composition)))
+            buckets.setdefault(key, []).append(o)
+        stats = []
+        for (strategy, caste_mix), group in buckets.items():
+            successes = sum(1 for o in group if o.succeeded)
+            stats.append({
+                "strategy": strategy,
+                "caste_mix": caste_mix,
+                "total": len(group),
+                "success_rate": successes / len(group),
+                "avg_rounds": sum(o.total_rounds for o in group) / len(group),
+                "avg_cost": sum(o.total_cost for o in group) / len(group),
+            })
+        return stats
+
     def apply(self, event: FormicOSEvent) -> None:
         """Process a single event and update projections."""
         seq: int = event.seq  # pyright: ignore[reportAttributeAccessIssue]
@@ -1696,6 +1721,43 @@ def _on_workflow_step_completed(store: ProjectionStore, event: FormicOSEvent) ->
             break
 
 
+def _on_workflow_step_updated(store: ProjectionStore, event: FormicOSEvent) -> None:
+    """Wave 63: operator directly edited a workflow step."""
+    from formicos.core.events import WorkflowStepUpdated  # noqa: PLC0415
+
+    e: WorkflowStepUpdated = event  # type: ignore[assignment]
+    ws = store.workspaces.get(e.workspace_id)
+    if ws is None:
+        return
+    thread = ws.threads.get(e.thread_id)
+    if thread is None:
+        return
+    steps = thread.workflow_steps
+    # Find the step
+    target_step: dict[str, Any] | None = None
+    for step in steps:
+        if step.get("step_index") == e.step_index:
+            target_step = step
+            break
+    if target_step is None:
+        return
+    # Apply updates
+    if e.new_description:
+        target_step["description"] = e.new_description
+    if e.new_status:
+        target_step["status"] = e.new_status
+    if e.notes:
+        target_step["notes"] = e.notes
+    # Handle reorder
+    if e.new_position >= 0 and e.new_position != e.step_index:
+        steps.remove(target_step)
+        insert_at = min(e.new_position, len(steps))
+        steps.insert(insert_at, target_step)
+        # Re-index step_index values
+        for i, s in enumerate(steps):
+            s["step_index"] = i
+
+
 # ---------------------------------------------------------------------------
 # Wave 33: CRDT state projection handlers + MemoryEntryMerged
 # ---------------------------------------------------------------------------
@@ -2028,6 +2090,7 @@ _HANDLERS: dict[str, Any] = {
     "MemoryConfidenceUpdated": _on_memory_confidence_updated,
     "WorkflowStepDefined": _on_workflow_step_defined,
     "WorkflowStepCompleted": _on_workflow_step_completed,
+    "WorkflowStepUpdated": _on_workflow_step_updated,
     "CRDTCounterIncremented": _on_crdt_counter_incremented,
     "CRDTTimestampUpdated": _on_crdt_timestamp_updated,
     "CRDTSetElementAdded": _on_crdt_set_element_added,

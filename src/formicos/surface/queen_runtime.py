@@ -10,11 +10,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from formicos.adapters.queen_intent_parser import (
+    _DELIBERATION_RE,  # pyright: ignore[reportPrivateUsage]
     intent_to_tool_call,
     parse_queen_intent,
 )
@@ -272,6 +274,9 @@ class QueenAgent:
         # Delegate tool dispatch and thread lifecycle (Wave 32 B2)
         self._tool_dispatcher = QueenToolDispatcher(runtime)
         self._thread_mgr = QueenThreadManager(runtime)
+        # Wave 63 Track 2: parallel plan aggregation tracker
+        # Maps plan_id -> {colony_id: result_meta | None}
+        self._pending_parallel: dict[str, dict[str, dict[str, Any] | None]] = {}
 
     async def name_colony(
         self,
@@ -398,8 +403,23 @@ class QueenAgent:
         else:
             cost_str = f"Cost: {tok_str} local tokens"
 
+        # Wave 63 Track 2: failure-aware follow-up
+        colony_failed = getattr(colony, "status", "completed") == "failed"
+        failure_reason = getattr(colony, "failure_reason", None)
+
+        if colony_failed:
+            summary = (
+                f"Colony **{name}** FAILED after {rounds} round(s). "
+                f"{cost_str}."
+            )
+            if failure_reason:
+                summary += f" Reason: {failure_reason}"
+            summary += (
+                "\nConsider: retry with different model, "
+                "inspect output, or abandon."
+            )
         # Quality-aware follow-up text (Wave 23 B2)
-        if quality >= 0.7:
+        elif quality >= 0.7:
             summary = (
                 f"Colony **{name}** completed well after {rounds} round(s). "
                 f"Quality: {quality:.0%}. {cost_str}."
@@ -458,15 +478,245 @@ class QueenAgent:
             result_meta["validatorVerdict"] = validator_verdict
         if contract["satisfied"] is not None:
             result_meta["contractSatisfied"] = contract["satisfied"]
+        # Wave 63 Track 2: include failure reason in meta
+        if colony_failed and failure_reason:
+            result_meta["failureReason"] = failure_reason
+
+        # Wave 63 Track 2: check parallel plan aggregation
+        completed_plan_id = self._check_parallel_aggregation(colony_id, result_meta)
+        if completed_plan_id is not None:
+            # Last colony in plan — emit aggregated summary instead
+            await self._emit_parallel_summary(
+                completed_plan_id, workspace_id, thread_id,
+            )
+            log.info(
+                "queen.parallel_plan_complete",
+                plan_id=completed_plan_id,
+                colony_id=colony_id,
+            )
+        elif any(colony_id in members for members in self._pending_parallel.values()):
+            # Part of a plan but not the last — suppress individual card
+            log.info(
+                "queen.follow_up_deferred",
+                colony_id=colony_id, reason="parallel_plan_pending",
+            )
+        else:
+            # Not part of a parallel plan — emit individual card
+            await self._emit_queen_message(
+                workspace_id, thread_id, summary,
+                intent="notify", render="result_card", meta=result_meta,
+            )
+            log.info(
+                "queen.follow_up_sent",
+                colony_id=colony_id, workspace_id=workspace_id,
+                thread_id=thread_id,
+            )
+
+    def register_parallel_plan(
+        self, plan_id: str, colony_ids: list[str],
+    ) -> None:
+        """Wave 63 Track 2: register colony IDs for parallel aggregation."""
+        self._pending_parallel[plan_id] = {cid: None for cid in colony_ids}
+
+    def _check_parallel_aggregation(
+        self,
+        colony_id: str,
+        result_meta: dict[str, Any],
+    ) -> str | None:
+        """Wave 63 Track 2: check if colony belongs to a parallel plan.
+
+        Returns plan_id if this colony is the last to complete, else None.
+        Stores result_meta for aggregated summary.
+        """
+        for plan_id, members in self._pending_parallel.items():
+            if colony_id in members:
+                members[colony_id] = result_meta
+                # Check if all colonies in plan have reported
+                if all(v is not None for v in members.values()):
+                    return plan_id
+                return None  # Still waiting
+        return None  # Not part of any plan
+
+    async def _emit_parallel_summary(
+        self,
+        plan_id: str,
+        workspace_id: str,
+        thread_id: str,
+    ) -> None:
+        """Wave 63 Track 2: emit aggregated result card for a completed parallel plan."""
+        members = self._pending_parallel.pop(plan_id, {})
+        if not members:
+            return
+
+        succeeded = sum(
+            1 for m in members.values()
+            if m and m.get("status") != "failed"
+        )
+        total = len(members)
+        total_cost = sum(
+            (m or {}).get("cost", 0.0) for m in members.values()
+        )
+
+        lines = [f"Parallel plan complete: {succeeded}/{total} succeeded."]
+        for cid, meta in members.items():
+            meta = meta or {}
+            name = meta.get("displayName", cid)
+            status = meta.get("status", "unknown")
+            icon = "OK" if status != "failed" else "FAILED"
+            lines.append(f"  [{icon}] {name}: {status}")
+
+        summary = "\n".join(lines)
+        if total_cost > 0:
+            summary += f"\nTotal cost: ${total_cost:.4f}"
+
+        group_meta: dict[str, Any] = {
+            "planId": plan_id,
+            "groupResults": {
+                cid: m for cid, m in members.items()
+            },
+            "succeeded": succeeded,
+            "total": total,
+            "totalCost": total_cost,
+            "threadId": thread_id,
+            "workspaceId": workspace_id,
+        }
 
         await self._emit_queen_message(
             workspace_id, thread_id, summary,
-            intent="notify", render="result_card", meta=result_meta,
+            intent="notify", render="result_card", meta=group_meta,
         )
-        log.info(
-            "queen.follow_up_sent",
-            colony_id=colony_id, workspace_id=workspace_id,
-            thread_id=thread_id,
+
+    _CONFIRM_WORDS = {"apply", "confirm", "yes", "go ahead", "do it", "approve"}
+
+    async def _apply_pending_action(
+        self, thread: Any, workspace_id: str, thread_id: str,
+    ) -> QueenResponse | None:
+        """Wave 63 Track 3: detect operator confirmation and apply pending edit/delete.
+
+        Returns a QueenResponse if a pending action was applied, None otherwise.
+        """
+        # Find last operator message
+        last_op = ""
+        for qm in reversed(thread.queen_messages):
+            if qm.role == "operator":
+                last_op = qm.content.strip().lower()
+                break
+        if not last_op or last_op not in self._CONFIRM_WORDS:
+            return None
+
+        # Find most recent queen message with a pending edit/delete preview
+        for qm in reversed(thread.queen_messages):
+            if qm.role != "queen":
+                continue
+            meta = qm.meta if hasattr(qm, "meta") else None
+            if not isinstance(meta, dict):
+                continue
+            if not meta.get("preview"):
+                continue
+
+            tool = meta.get("tool")
+            if tool == "edit_file":
+                return await self._apply_edit(meta, workspace_id, thread_id)
+            if tool == "delete_file":
+                return await self._apply_delete(meta, workspace_id, thread_id)
+            break  # Only check the most recent preview
+        return None
+
+    async def _apply_edit(
+        self,
+        meta: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> QueenResponse:
+        """Apply a confirmed edit_file action."""
+        path_str = meta.get("path", "")
+        old_text = meta.get("old_text", "")
+        new_text = meta.get("new_text", "")
+
+        target, err = self._tool_dispatcher._resolve_workspace_path(workspace_id, path_str)  # pyright: ignore[reportPrivateUsage]
+        if target is None:
+            reply = f"Cannot apply edit: {err}"
+            await self._emit_queen_message(workspace_id, thread_id, reply)
+            return QueenResponse(reply=reply)
+
+        try:
+            content = target.read_text(encoding="utf-8")
+        except OSError as exc:
+            reply = f"Cannot read file: {exc}"
+            await self._emit_queen_message(workspace_id, thread_id, reply)
+            return QueenResponse(reply=reply)
+
+        if old_text not in content:
+            reply = (
+                "Cannot apply edit: the file has changed since the proposal. "
+                "The old_text no longer matches."
+            )
+            await self._emit_queen_message(workspace_id, thread_id, reply)
+            return QueenResponse(reply=reply)
+
+        # Backup before writing
+        backup_dir = target.parent / ".formicos" / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{target.name}.{ts}"
+        backup_path.write_text(content, encoding="utf-8")
+
+        new_content = content.replace(old_text, new_text, 1)
+        target.write_text(new_content, encoding="utf-8")
+
+        reply = f"Edit applied to `{path_str}`. Backup saved to `{backup_path.name}`."
+        await self._emit_queen_message(
+            workspace_id, thread_id, reply,
+            intent="notify", render="result_card",
+            meta={"tool": "edit_file", "path": path_str, "applied": True},
+        )
+        return QueenResponse(
+            reply=reply,
+            actions=[{"tool": "edit_file", "path": path_str, "applied": True}],
+        )
+
+    async def _apply_delete(
+        self,
+        meta: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> QueenResponse:
+        """Apply a confirmed delete_file action."""
+        path_str = meta.get("path", "")
+
+        target, err = self._tool_dispatcher._resolve_workspace_path(workspace_id, path_str)  # pyright: ignore[reportPrivateUsage]
+        if target is None:
+            reply = f"Cannot delete: {err}"
+            await self._emit_queen_message(workspace_id, thread_id, reply)
+            return QueenResponse(reply=reply)
+
+        if not target.exists():
+            reply = f"File already gone: {path_str}"
+            await self._emit_queen_message(workspace_id, thread_id, reply)
+            return QueenResponse(reply=reply)
+
+        # Backup before deleting
+        backup_dir = target.parent / ".formicos" / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{target.name}.{ts}"
+        try:
+            backup_path.write_bytes(target.read_bytes())
+            target.unlink()
+        except OSError as exc:
+            reply = f"Delete failed: {exc}"
+            await self._emit_queen_message(workspace_id, thread_id, reply)
+            return QueenResponse(reply=reply)
+
+        reply = f"Deleted `{path_str}`. Backup saved to `{backup_path.name}`."
+        await self._emit_queen_message(
+            workspace_id, thread_id, reply,
+            intent="notify", render="result_card",
+            meta={"tool": "delete_file", "path": path_str, "applied": True},
+        )
+        return QueenResponse(
+            reply=reply,
+            actions=[{"tool": "delete_file", "path": path_str, "applied": True}],
         )
 
     async def _emit_queen_message(
@@ -506,6 +756,11 @@ class QueenAgent:
             await self._emit_queen_message(workspace_id, thread_id, msg)
             return QueenResponse(reply=msg)
 
+        # Wave 63 Track 3: check for pending edit/delete confirmation
+        pending_result = await self._apply_pending_action(thread, workspace_id, thread_id)
+        if pending_result is not None:
+            return pending_result
+
         queen_model = self._resolve_queen_model(workspace_id)
         messages = self._build_messages(thread)
         tools = self._queen_tools()
@@ -536,6 +791,28 @@ class QueenAgent:
                     "role": "system",
                     "content": memory_block,
                 })
+
+        # Wave 63 Track 8: inject project context from workspace
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir, str) and _data_dir:
+                _pc_path = Path(_data_dir) / ".formicos" / "project_context.md"
+                if _pc_path.is_file():
+                    _pc_text = _pc_path.read_text(encoding="utf-8")[:2000]
+                    if _pc_text:
+                        _pc_insert = 0
+                        for _pi, _pm in enumerate(messages):
+                            if _pm.get("role") != "system":
+                                _pc_insert = _pi
+                                break
+                        else:
+                            _pc_insert = len(messages)
+                        messages.insert(_pc_insert, {
+                            "role": "system",
+                            "content": f"# Project Context\n{_pc_text}",
+                        })
+        except (AttributeError, TypeError, OSError):
+            pass
 
         # Wave 29: inject thread workflow context
         thread_ctx = self._build_thread_context(thread_id, workspace_id)
@@ -621,6 +898,72 @@ class QueenAgent:
         except Exception:
             log.debug("queen.briefing_injection_failed", workspace_id=workspace_id)
 
+        # Wave 64 Track 4: heuristic cloud routing expansion
+        # Extends Wave 62 propose_plan check with complexity heuristics,
+        # @cloud tag, and auto-escalation on parse failure.
+        _cloud_retry_used = False
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        _planning_model = (
+            ws.config.get("queen_planning_model") if ws else None
+        )
+        if _planning_model:
+            use_cloud = False
+
+            # (A) Message complexity heuristic
+            _msg_tokens = len(last_operator_msg) // 4
+            _thread_depth = sum(
+                1 for m in messages if m.get("role") == "user"
+            )
+            _total_colonies = len(
+                self._runtime.projections.list_colonies(workspace_id)
+            ) if hasattr(self._runtime.projections, "list_colonies") else 0
+
+            if _msg_tokens > 500:
+                use_cloud = True
+            if _thread_depth > 10 and _total_colonies > 3:
+                use_cloud = True
+
+            # (B) Explicit @cloud tag
+            if "@cloud" in last_operator_msg:
+                use_cloud = True
+
+            # (C) Existing propose_plan check (Wave 62)
+            _last_assistant = None
+            for m in reversed(messages):
+                if m.get("role") == "assistant":
+                    _last_assistant = m
+                    break
+            if _last_assistant:
+                _tc: list[dict[str, Any]] = (
+                    _last_assistant.get("tool_calls") or []
+                )  # type: ignore[assignment]
+                if any(
+                    tc.get("name") == "propose_plan" for tc in _tc
+                ):
+                    use_cloud = True
+
+            # (E) Context assembly size — project context + tool memory
+            _sys_tokens = sum(
+                len(m.get("content", "")) // 4
+                for m in messages
+                if m.get("role") == "system"
+            )
+            if _sys_tokens > 2000:
+                use_cloud = True
+
+            if use_cloud:
+                queen_model = _planning_model
+
+        # Strip @cloud from operator message before sending to LLM
+        if "@cloud" in last_operator_msg:
+            for m in messages:
+                if m.get("role") == "user" and "@cloud" in m.get(
+                    "content", ""
+                ):
+                    m["content"] = m["content"].replace(
+                        "@cloud", ""
+                    ).strip()
+
         try:
             for _iteration in range(_MAX_TOOL_ITERATIONS):
                 try:
@@ -649,6 +992,28 @@ class QueenAgent:
 
                 if not response.tool_calls:
                     break
+
+                # Wave 61: safety net — if the operator's message looks
+                # deliberative, convert spawn_colony / spawn_parallel to
+                # propose_plan so the operator always sees a plan first.
+                if last_operator_msg and _DELIBERATION_RE.search(last_operator_msg):
+                    for _tc_idx, _tc_raw in enumerate(response.tool_calls):
+                        _tc_d: dict[str, Any] = _tc_raw  # pyright: ignore[reportAssignmentType]
+                        _tc_name = _tc_d.get("name", "")
+                        if _tc_name in ("spawn_colony", "spawn_parallel"):
+                            _tc_inputs = self._runtime.parse_tool_input(_tc_d)
+                            _task_text = _tc_inputs.get("task", "")
+                            if not _task_text and _tc_inputs.get("tasks"):
+                                tasks_list = _tc_inputs["tasks"]
+                                if isinstance(tasks_list, list) and tasks_list:
+                                    _task_text = tasks_list[0].get("task", "")
+                            log.warning(
+                                "queen.deliberation_safety_net",
+                                original_tool=_tc_name,
+                                operator_msg=last_operator_msg[:100],
+                            )
+                            _tc_d["name"] = "propose_plan"
+                            _tc_d["input"] = {"summary": _task_text or "Plan pending"}
 
                 # Execute tool calls
                 tool_results: list[str] = []
@@ -693,6 +1058,63 @@ class QueenAgent:
                             action["via"] = f"intent_parser:{via}"
                             actions.append(action)
 
+            # Wave 64 Track 4 (C): auto-escalation on parse failure.
+            # If local model produced no tool calls, no intent, short
+            # response, and the operator's message was complex — retry
+            # once with the cloud model.
+            if (
+                not actions
+                and response
+                and not _cloud_retry_used
+                and _planning_model
+                and queen_model != _planning_model
+                and len(response.content or "") < 50
+                and len(last_operator_msg) > 200
+            ):
+                _cloud_retry_used = True
+                queen_model = _planning_model
+                log.info(
+                    "queen.cloud_escalation",
+                    reason="parse_failure_short_response",
+                    workspace_id=workspace_id,
+                )
+                # Re-run a single LLM call with cloud model
+                try:
+                    response = await self._runtime.llm_router.complete(
+                        model=queen_model,
+                        messages=messages,  # type: ignore[arg-type]
+                        tools=tools,  # type: ignore[arg-type]
+                        temperature=self._queen_temperature(),
+                        max_tokens=self._queen_max_tokens(workspace_id),
+                    )
+                    # Process any tool calls from cloud response
+                    if response.tool_calls:
+                        for tc in response.tool_calls:
+                            tc_dict = tc  # pyright: ignore[reportAssignmentType]
+                            result, action = await self._execute_tool(
+                                tc_dict, workspace_id, thread_id,
+                            )
+                            if action:
+                                actions.append(action)
+                except Exception:
+                    log.exception(
+                        "queen.cloud_escalation_failed",
+                        workspace_id=workspace_id,
+                    )
+
+            # Wave 63 Track 1: collect tool memory for cross-turn persistence
+            tool_memory: list[dict[str, str]] = []
+            for m in messages:
+                content = m.get("content", "")
+                if not isinstance(content, str):
+                    continue
+                match = _QUEEN_TOOL_HEADER_RE.match(content)
+                if match:
+                    tool_memory.append({
+                        "tool": match.group(1),
+                        "summary": content[match.end():][:500].strip(),
+                    })
+
             # Emit Queen response — guard against empty content from small models
             reply = (response.content.strip() if response else "") or "I processed your request."
 
@@ -723,6 +1145,17 @@ class QueenAgent:
                 }
                 msg_meta["threadId"] = thread_id
                 msg_meta["workspaceId"] = workspace_id
+
+            # Wave 63 Track 1: persist tool memory in QueenMessage meta
+            if tool_memory:
+                if msg_meta is None:
+                    msg_meta = {}
+                msg_meta["tool_memory"] = tool_memory[:10]  # cap entries
+
+            # Wave 64 Track 4 (D): routing indicator in meta
+            if msg_meta is None:
+                msg_meta = {}
+            msg_meta["model_used"] = queen_model
 
             await self._emit_queen_message(
                 workspace_id, thread_id, reply,
@@ -798,6 +1231,38 @@ class QueenAgent:
                     "content": (
                         "Your saved notes (operator preferences and memory):\n"
                         + "\n".join(note_lines)
+                    ),
+                })
+
+        # Wave 63 Track 1: inject prior-turn tool memory (last 3 turns)
+        if hasattr(thread, "queen_messages") and thread.queen_messages:
+            tool_mem_lines: list[str] = []
+            turns_seen = 0
+            for qm in reversed(thread.queen_messages):
+                if turns_seen >= 3:
+                    break
+                if qm.role != "queen":
+                    continue
+                meta = qm.meta if hasattr(qm, "meta") else None
+                if not isinstance(meta, dict):
+                    continue
+                tm = meta.get("tool_memory")
+                if not tm:
+                    continue
+                turns_seen += 1
+                for entry in tm:
+                    tool_mem_lines.append(
+                        f"[{entry.get('tool', '?')}] {entry.get('summary', '')[:300]}"
+                    )
+            if tool_mem_lines:
+                # Cap total to ~1500 tokens (~6000 chars)
+                joined = "\n".join(tool_mem_lines)
+                if len(joined) > 6000:
+                    joined = joined[:6000] + "\n...(truncated)"
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "# Prior tool results (recent turns)\n" + joined
                     ),
                 })
 

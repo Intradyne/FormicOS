@@ -2,7 +2,7 @@
 
 Open-source Python system: AI agents coordinate through shared environmental
 signals (pheromones), not direct messaging. Tree-structured data model.
-Event-sourced (65 events, closed union). Single operator. Local-first with
+Event-sourced (69 events, closed union). Single operator. Local-first with
 cloud model support. Bayesian knowledge metabolism with Thompson Sampling
 retrieval. Federated knowledge exchange via Computational CRDTs.
 Multi-colony orchestration via DelegationPlan DAG parallelism.

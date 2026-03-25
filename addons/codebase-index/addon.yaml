@@ -1,0 +1,40 @@
+name: codebase-index
+version: "1.0.0"
+description: "Semantic code search via embedding index"
+author: "formicos-core"
+
+tools:
+  - name: semantic_search_code
+    description: "Search codebase by meaning, not just text"
+    handler: search.py::handle_semantic_search
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: "Natural language search query"
+        top_k:
+          type: integer
+          description: "Number of results to return (default 10)"
+        file_pattern:
+          type: string
+          description: "Optional glob pattern to filter files (e.g. '*.py')"
+
+  - name: reindex_codebase
+    description: "Rebuild or incrementally update the semantic code index"
+    handler: search.py::handle_reindex
+    parameters:
+      type: object
+      properties:
+        changed_files:
+          type: array
+          items:
+            type: string
+          description: "Optional list of relative file paths to reindex. Omit for full reindex."
+
+triggers:
+  - type: cron
+    schedule: "0 3 * * *"
+    handler: indexer.py::on_scheduled_reindex
+  - type: manual
+    handler: indexer.py::incremental_reindex

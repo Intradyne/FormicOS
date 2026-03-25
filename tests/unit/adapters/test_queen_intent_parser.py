@@ -338,3 +338,64 @@ class TestParseQueenIntent:
         assert intent is not None
         assert intent["action"] == "DELIBERATE"
         assert via == "regex"
+
+    @pytest.mark.anyio()
+    async def test_deliberation_showcase_question(self) -> None:
+        """Wave 61: open-ended showcase question returns DELIBERATE."""
+        text = "What about building a project showcase? Here are some ideas."
+
+        intent, via = await parse_queen_intent(text)
+
+        assert intent is not None
+        assert intent["action"] == "DELIBERATE"
+        assert via == "regex"
+
+    @pytest.mark.anyio()
+    async def test_direct_command_does_not_deliberate(self) -> None:
+        """Wave 61: a direct build command should NOT return DELIBERATE."""
+        text = "Build me a CSV parser that handles quoted fields"
+
+        intent, via = await parse_queen_intent(text, runtime=None)
+
+        # Should either be None (no intent) or SPAWN — never DELIBERATE
+        if intent is not None:
+            assert intent["action"] != "DELIBERATE"
+
+
+# ---------------------------------------------------------------------------
+# Wave 62: DIRECT_WORK regex tests
+# ---------------------------------------------------------------------------
+
+
+class TestDirectWorkRegex:
+    """Tests for the _DIRECT_WORK_RE pattern (Wave 62 Track 3)."""
+
+    def test_where_is_matches(self) -> None:
+        from formicos.adapters.queen_intent_parser import _DIRECT_WORK_RE
+
+        assert _DIRECT_WORK_RE.search("where is the budget enforcer defined?")
+
+    def test_what_does_matches(self) -> None:
+        from formicos.adapters.queen_intent_parser import _DIRECT_WORK_RE
+
+        assert _DIRECT_WORK_RE.search("what does the run_round method do?")
+
+    def test_are_tests_matches(self) -> None:
+        from formicos.adapters.queen_intent_parser import _DIRECT_WORK_RE
+
+        assert _DIRECT_WORK_RE.search("are the tests passing?")
+
+    def test_show_me_matches(self) -> None:
+        from formicos.adapters.queen_intent_parser import _DIRECT_WORK_RE
+
+        assert _DIRECT_WORK_RE.search("show me the colony manager code")
+
+    def test_build_command_does_not_match(self) -> None:
+        from formicos.adapters.queen_intent_parser import _DIRECT_WORK_RE
+
+        assert _DIRECT_WORK_RE.search("build a CSV parser") is None
+
+    def test_git_status_matches(self) -> None:
+        from formicos.adapters.queen_intent_parser import _DIRECT_WORK_RE
+
+        assert _DIRECT_WORK_RE.search("git status of the repo")

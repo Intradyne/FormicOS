@@ -87,7 +87,7 @@ class TestEventUnionExpansion:
     """Verify the event union grows from 55 to 58 through exactly 3 families."""
 
     def test_event_count_is_62(self) -> None:
-        assert len(EVENT_TYPE_NAMES) == 65
+        assert len(EVENT_TYPE_NAMES) == 69
 
     def test_new_families_in_manifest(self) -> None:
         assert "KnowledgeEntryOperatorAction" in EVENT_TYPE_NAMES

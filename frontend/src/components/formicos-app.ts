@@ -21,12 +21,14 @@ import './knowledge-view.js';
 import './knowledge-browser.js';
 import './colony-creator.js';
 import './colony-chat.js';
+import './workspace-browser.js';
 
-type ViewId = 'queen' | 'tree' | 'knowledge' | 'playbook' | 'models' | 'settings';
+type ViewId = 'queen' | 'tree' | 'knowledge' | 'workspace' | 'playbook' | 'models' | 'settings';
 
 const NAV = [
   { id: 'queen' as const, label: 'Queen', icon: '\u265B' },
   { id: 'knowledge' as const, label: 'Knowledge', icon: '\u25C8' },
+  { id: 'workspace' as const, label: 'Workspace', icon: '\u2302' },
   { id: 'playbook' as const, label: 'Playbook', icon: '\u29C9' },
   { id: 'models' as const, label: 'Models', icon: '\u2B22' },
   { id: 'settings' as const, label: 'Settings', icon: '\u2699' },
@@ -55,7 +57,7 @@ export class FormicOSApp extends LitElement {
     .logo-ver { font-size: 10px; font-family: var(--f-mono); color: var(--v-fg-dim); letter-spacing: 0.05em; }
     .topbar-right { display: flex; align-items: center; gap: 14px; font-size: 12px; font-family: var(--f-mono); font-feature-settings: 'tnum'; }
     .top-nav {
-      display: inline-grid; grid-template-columns: repeat(5, minmax(72px, auto));
+      display: inline-grid; grid-template-columns: repeat(6, minmax(72px, auto));
       gap: 4px; padding: 4px; border: 1px solid var(--v-border); border-radius: 11px;
       background: rgba(13,14,22,0.78); box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
     }
@@ -506,96 +508,126 @@ export class FormicOSApp extends LitElement {
     `;
   }
 
+  // Wave 62 Track 6: component registry map (replaces switch statement)
+  private _viewRegistry: Record<string, () => typeof nothing | ReturnType<typeof html>> = {
+    'queen': () => this._renderQueen(),
+    'tree': () => this._renderTree(),
+    'knowledge': () => this._renderKnowledge(),
+    'workspace': () => this._renderWorkspace(),
+    'playbook': () => this._renderPlaybook(),
+    'models': () => this._renderModels(),
+    'settings': () => this._renderSettings(),
+  };
+
   private renderView() {
+    const renderer = this._viewRegistry[this.view];
+    return renderer ? renderer() : nothing;
+  }
+
+  private _renderQueen() {
+    const s = store.state;
+    return html`<fc-queen-overview
+      .tree=${this.tree} .approvals=${s.approvals} .localModels=${s.localModels}
+      .cloudEndpoints=${s.cloudEndpoints}
+      .queenThreads=${this.queenThreads} .activeQT=${this.activeQT} .castes=${s.castes}
+      .runtimeConfig=${s.runtimeConfig}
+      .skillBankStats=${s.skillBankStats}
+      @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
+      @approve=${(e: CustomEvent) => store.send('approve', this.activeWorkspaceId, { requestId: e.detail })}
+      @deny=${(e: CustomEvent) => store.send('deny', this.activeWorkspaceId, { requestId: e.detail })}
+      @switch-thread=${(e: CustomEvent) => { this.activeQT = e.detail; }}
+      @new-thread=${() => {
+        const name = `thread-${Date.now().toString(36)}`;
+        store.send('create_thread', this.activeWorkspaceId, { name });
+      }}
+      @send-message=${(e: CustomEvent) => {
+        const wsId = (e.detail as any).workspaceId || this.activeWorkspaceId;
+        store.send('send_queen_message', wsId, e.detail);
+      }}
+      @spawn-colony-request=${() => this._openCreator()}
+      @save-queen-note=${(e: CustomEvent) => {
+        store.send('save_queen_note', this.activeWorkspaceId, e.detail);
+      }}
+      @send-colony-message=${(e: CustomEvent) => store.send('chat_colony', this.activeWorkspaceId, e.detail)}
+      @confirm-preview=${(e: CustomEvent) => this._handleConfirmPreview(e)}
+      @open-colony-editor=${() => this._openCreator()}
+    ></fc-queen-overview>`;
+  }
+
+  private _renderTree() {
     const sel = this.selNode;
     const s = store.state;
-    switch (this.view) {
-      case 'queen':
-        return html`<fc-queen-overview
-          .tree=${this.tree} .approvals=${s.approvals} .localModels=${s.localModels}
-          .cloudEndpoints=${s.cloudEndpoints}
-          .queenThreads=${this.queenThreads} .activeQT=${this.activeQT} .castes=${s.castes}
-          .runtimeConfig=${s.runtimeConfig}
-          .skillBankStats=${s.skillBankStats}
-          @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
-          @approve=${(e: CustomEvent) => store.send('approve', this.activeWorkspaceId, { requestId: e.detail })}
-          @deny=${(e: CustomEvent) => store.send('deny', this.activeWorkspaceId, { requestId: e.detail })}
-          @switch-thread=${(e: CustomEvent) => { this.activeQT = e.detail; }}
-          @new-thread=${() => {
-            const name = `thread-${Date.now().toString(36)}`;
-            store.send('create_thread', this.activeWorkspaceId, { name });
-          }}
-          @send-message=${(e: CustomEvent) => {
-            const wsId = (e.detail as any).workspaceId || this.activeWorkspaceId;
-            store.send('send_queen_message', wsId, e.detail);
-          }}
-          @spawn-colony-request=${() => this._openCreator()}
-          @save-queen-note=${(e: CustomEvent) => {
-            store.send('save_queen_note', this.activeWorkspaceId, e.detail);
-          }}
-          @send-colony-message=${(e: CustomEvent) => store.send('chat_colony', this.activeWorkspaceId, e.detail)}
-          @confirm-preview=${(e: CustomEvent) => this._handleConfirmPreview(e)}
-          @open-colony-editor=${() => this._openCreator()}
-        ></fc-queen-overview>`;
-      case 'tree':
-        if (sel?.type === 'colony') return html`<fc-colony-detail .colony=${sel as any}
-          .queenThreads=${this.queenThreads} .activeQT=${this.activeQT}
-          @switch-thread=${(e: CustomEvent) => { this.activeQT = e.detail; }}
-          @new-thread=${() => {
-            const name = `thread-${Date.now().toString(36)}`;
-            store.send('create_thread', this.activeWorkspaceId, { name });
-          }}
-          @rename-colony=${(e: CustomEvent) => store.send('rename_colony', this.activeWorkspaceId, e.detail)}
-          @send-message=${(e: CustomEvent) => store.send('send_queen_message', this.activeWorkspaceId, e.detail)}
-          @kill-colony=${(e: CustomEvent) => store.send('kill_colony', this.activeWorkspaceId, { colonyId: e.detail })}
-          @activate-service=${(e: CustomEvent) => store.send('activate_service', this.activeWorkspaceId, e.detail)}
-          @send-colony-message=${(e: CustomEvent) => store.send('chat_colony', this.activeWorkspaceId, e.detail)}
-          @navigate-knowledge=${(e: CustomEvent) => {
-            this.knowledgeSourceColony = (e.detail as any)?.sourceColonyId ?? '';
-            this.view = 'knowledge' as ViewId;
-          }}
-        ></fc-colony-detail>`;
-        if (sel?.type === 'thread') return html`<fc-thread-view .thread=${sel} .parentWsName=${this.parentWs?.name ?? ''}
-          .merges=${this.merges}
-          @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
-          @create-merge=${(e: CustomEvent) => store.send('create_merge', this.activeWorkspaceId, e.detail)}
-          @prune-merge=${(e: CustomEvent) => store.send('prune_merge', this.activeWorkspaceId, { edgeId: e.detail })}
-          @broadcast=${(e: CustomEvent) => {
-            const d = e.detail;
-            const payload = typeof d === 'object' && d !== null ? d : { threadId: d };
-            store.send('broadcast', this.activeWorkspaceId, payload);
-          }}
-          @spawn-colony=${(e: CustomEvent) => store.send('spawn_colony', this.activeWorkspaceId, e.detail)}
-          @rename-thread=${(e: CustomEvent) => store.send('rename_thread', this.activeWorkspaceId, e.detail)}
-          @navigate-knowledge=${(e: CustomEvent) => {
-            this.knowledgeSourceColony = '';
-            this.view = 'knowledge' as ViewId;
-          }}
-        ></fc-thread-view>`;
-        if (sel?.type === 'workspace') return html`<fc-workspace-config .workspace=${sel as any}
-          .castes=${s.castes} .runtimeConfig=${s.runtimeConfig}
-          @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
-          @update-config=${(e: CustomEvent) => store.send('update_config', sel.id, e.detail)}
-        ></fc-workspace-config>`;
-        return nothing;
-      case 'knowledge':
-        return html`<fc-knowledge-browser .workspaceId=${this.activeWorkspaceId}
-          .sourceColonyId=${this.knowledgeSourceColony}></fc-knowledge-browser>`;
-      case 'playbook':
-        return html`<fc-playbook-view
-          .castes=${s.castes} .tree=${this.tree} .runtimeConfig=${s.runtimeConfig}
-          @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
-          @select-template=${(e: CustomEvent) => this._openCreator(e.detail?.id ?? '')}
-        ></fc-playbook-view>`;
-      case 'models':
-        return html`<fc-model-registry .localModels=${s.localModels}
-          .cloudEndpoints=${s.cloudEndpoints}
-          .castes=${s.castes}
-          .runtimeConfig=${s.runtimeConfig}></fc-model-registry>`;
-      case 'settings':
-        return html`<fc-settings-view .protocolStatus=${s.protocolStatus} .runtimeConfig=${s.runtimeConfig} .skillBankStats=${s.skillBankStats} .tree=${this.tree}></fc-settings-view>`;
-      default: return nothing;
-    }
+    if (sel?.type === 'colony') return html`<fc-colony-detail .colony=${sel as any}
+      .queenThreads=${this.queenThreads} .activeQT=${this.activeQT}
+      @switch-thread=${(e: CustomEvent) => { this.activeQT = e.detail; }}
+      @new-thread=${() => {
+        const name = `thread-${Date.now().toString(36)}`;
+        store.send('create_thread', this.activeWorkspaceId, { name });
+      }}
+      @rename-colony=${(e: CustomEvent) => store.send('rename_colony', this.activeWorkspaceId, e.detail)}
+      @send-message=${(e: CustomEvent) => store.send('send_queen_message', this.activeWorkspaceId, e.detail)}
+      @kill-colony=${(e: CustomEvent) => store.send('kill_colony', this.activeWorkspaceId, { colonyId: e.detail })}
+      @activate-service=${(e: CustomEvent) => store.send('activate_service', this.activeWorkspaceId, e.detail)}
+      @send-colony-message=${(e: CustomEvent) => store.send('chat_colony', this.activeWorkspaceId, e.detail)}
+      @navigate-knowledge=${(e: CustomEvent) => {
+        this.knowledgeSourceColony = (e.detail as any)?.sourceColonyId ?? '';
+        this.view = 'knowledge' as ViewId;
+      }}
+    ></fc-colony-detail>`;
+    if (sel?.type === 'thread') return html`<fc-thread-view .thread=${sel} .parentWsName=${this.parentWs?.name ?? ''}
+      .merges=${this.merges}
+      @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
+      @create-merge=${(e: CustomEvent) => store.send('create_merge', this.activeWorkspaceId, e.detail)}
+      @prune-merge=${(e: CustomEvent) => store.send('prune_merge', this.activeWorkspaceId, { edgeId: e.detail })}
+      @broadcast=${(e: CustomEvent) => {
+        const d = e.detail;
+        const payload = typeof d === 'object' && d !== null ? d : { threadId: d };
+        store.send('broadcast', this.activeWorkspaceId, payload);
+      }}
+      @spawn-colony=${(e: CustomEvent) => store.send('spawn_colony', this.activeWorkspaceId, e.detail)}
+      @rename-thread=${(e: CustomEvent) => store.send('rename_thread', this.activeWorkspaceId, e.detail)}
+      @navigate-knowledge=${(e: CustomEvent) => {
+        this.knowledgeSourceColony = '';
+        this.view = 'knowledge' as ViewId;
+      }}
+    ></fc-thread-view>`;
+    if (sel?.type === 'workspace') return html`<fc-workspace-config .workspace=${sel as any}
+      .castes=${s.castes} .runtimeConfig=${s.runtimeConfig}
+      @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
+      @update-config=${(e: CustomEvent) => store.send('update_config', sel.id, e.detail)}
+    ></fc-workspace-config>`;
+    return nothing;
+  }
+
+  private _renderKnowledge() {
+    return html`<fc-knowledge-browser .workspaceId=${this.activeWorkspaceId}
+      .sourceColonyId=${this.knowledgeSourceColony}></fc-knowledge-browser>`;
+  }
+
+  private _renderWorkspace() {
+    return html`<fc-workspace-browser .workspaceId=${this.activeWorkspaceId}></fc-workspace-browser>`;
+  }
+
+  private _renderPlaybook() {
+    const s = store.state;
+    return html`<fc-playbook-view
+      .castes=${s.castes} .tree=${this.tree} .runtimeConfig=${s.runtimeConfig}
+      @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
+      @select-template=${(e: CustomEvent) => this._openCreator(e.detail?.id ?? '')}
+    ></fc-playbook-view>`;
+  }
+
+  private _renderModels() {
+    const s = store.state;
+    return html`<fc-model-registry .localModels=${s.localModels}
+      .cloudEndpoints=${s.cloudEndpoints}
+      .castes=${s.castes}
+      .runtimeConfig=${s.runtimeConfig}></fc-model-registry>`;
+  }
+
+  private _renderSettings() {
+    const s = store.state;
+    return html`<fc-settings-view .protocolStatus=${s.protocolStatus} .runtimeConfig=${s.runtimeConfig} .skillBankStats=${s.skillBankStats} .tree=${this.tree}></fc-settings-view>`;
   }
 
   private _renderQueenChatRail() {

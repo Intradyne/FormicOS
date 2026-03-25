@@ -48,7 +48,7 @@ class TestUnionParity:
     def test_same_member_count(self) -> None:
         contract_members = _union_members(CONTRACT.FormicOSEvent)
         runtime_members = _union_members(runtime.FormicOSEvent)
-        assert len(contract_members) == len(runtime_members) == 65
+        assert len(contract_members) == len(runtime_members) == 69
 
     def test_same_member_names(self) -> None:
         contract_names = {c.__name__ for c in _union_members(CONTRACT.FormicOSEvent)}

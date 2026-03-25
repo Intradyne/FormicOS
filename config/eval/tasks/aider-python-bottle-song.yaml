@@ -1,0 +1,91 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: bottle-song\n\nINSTRUCTIONS:\n\
+  # Instructions\n\nRecite the lyrics to that popular children's repetitive song: Ten Green Bottles.\n\nNote that not all\
+  \ verses are identical.\n\n```text\nTen green bottles hanging on the wall,\nTen green bottles hanging on the wall,\nAnd\
+  \ if one green bottle should accidentally fall,\nThere'll be nine green bottles hanging on the wall.\n\nNine green bottles\
+  \ hanging on the wall,\nNine green bottles hanging on the wall,\nAnd if one green bottle should accidentally fall,\nThere'll\
+  \ be eight green bottles hanging on the wall.\n\nEight green bottles hanging on the wall,\nEight green bottles hanging on\
+  \ the wall,\nAnd if one green bottle should accidentally fall,\nThere'll be seven green bottles hanging on the wall.\n\n\
+  Seven green bottles hanging on the wall,\nSeven green bottles hanging on the wall,\nAnd if one green bottle should accidentally\
+  \ fall,\nThere'll be six green bottles hanging on the wall.\n\nSix green bottles hanging on the wall,\nSix green bottles\
+  \ hanging on the wall,\nAnd if one green bottle should accidentally fall,\nThere'll be five green bottles hanging on the\
+  \ wall.\n\nFive green bottles hanging on the wall,\nFive green bottles hanging on the wall,\nAnd if one green bottle should\
+  \ accidentally fall,\nThere'll be four green bottles hanging on the wall.\n\nFour green bottles hanging on the wall,\nFour\
+  \ green bottles hanging on the wall,\nAnd if one green bottle should accidentally fall,\nThere'll be three green bottles\
+  \ hanging on the wall.\n\nThree green bottles hanging on the wall,\nThree green bottles hanging on the wall,\nAnd if one\
+  \ green bottle should accidentally fall,\nThere'll be two green bottles hanging on the wall.\n\nTwo green bottles hanging\
+  \ on the wall,\nTwo green bottles hanging on the wall,\nAnd if one green bottle should accidentally fall,\nThere'll be one\
+  \ green bottle hanging on the wall.\n\nOne green bottle hanging on the wall,\nOne green bottle hanging on the wall,\nAnd\
+  \ if one green bottle should accidentally fall,\nThere'll be no green bottles hanging on the wall.\n```\n\nSTARTER CODE:\n\
+  FILE: bottle_song.py\n```\ndef recite(start, take=1):\n    pass\n\n```\n\nTEST FILE:\nFILE: bottle_song_test.py\n```\n#\
+  \ These tests are auto-generated with test data from:\n# https://github.com/exercism/problem-specifications/tree/main/exercises/bottle-song/canonical-data.json\n\
+  # File last updated on 2023-07-20\n\nimport unittest\n\nfrom bottle_song import (\n    recite,\n)\n\n\nclass BottleSongTest(unittest.TestCase):\n\
+  \    def test_first_generic_verse(self):\n        expected = [\n            \"Ten green bottles hanging on the wall,\",\n\
+  \            \"Ten green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally fall,\"\
+  ,\n            \"There'll be nine green bottles hanging on the wall.\",\n        ]\n        self.assertEqual(recite(start=10),\
+  \ expected)\n\n    def test_last_generic_verse(self):\n        expected = [\n            \"Three green bottles hanging on\
+  \ the wall,\",\n            \"Three green bottles hanging on the wall,\",\n            \"And if one green bottle should\
+  \ accidentally fall,\",\n            \"There'll be two green bottles hanging on the wall.\",\n        ]\n        self.assertEqual(recite(start=3),\
+  \ expected)\n\n    def test_verse_with_2_bottles(self):\n        expected = [\n            \"Two green bottles hanging on\
+  \ the wall,\",\n            \"Two green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally\
+  \ fall,\",\n            \"There'll be one green bottle hanging on the wall.\",\n        ]\n        self.assertEqual(recite(start=2),\
+  \ expected)\n\n    def test_verse_with_1_bottle(self):\n        expected = [\n            \"One green bottle hanging on\
+  \ the wall,\",\n            \"One green bottle hanging on the wall,\",\n            \"And if one green bottle should accidentally\
+  \ fall,\",\n            \"There'll be no green bottles hanging on the wall.\",\n        ]\n        self.assertEqual(recite(start=1),\
+  \ expected)\n\n    def test_first_two_verses(self):\n        expected = [\n            \"Ten green bottles hanging on the\
+  \ wall,\",\n            \"Ten green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally\
+  \ fall,\",\n            \"There'll be nine green bottles hanging on the wall.\",\n            \"\",\n            \"Nine\
+  \ green bottles hanging on the wall,\",\n            \"Nine green bottles hanging on the wall,\",\n            \"And if\
+  \ one green bottle should accidentally fall,\",\n            \"There'll be eight green bottles hanging on the wall.\",\n\
+  \        ]\n        self.assertEqual(recite(start=10, take=2), expected)\n\n    def test_last_three_verses(self):\n    \
+  \    expected = [\n            \"Three green bottles hanging on the wall,\",\n            \"Three green bottles hanging\
+  \ on the wall,\",\n            \"And if one green bottle should accidentally fall,\",\n            \"There'll be two green\
+  \ bottles hanging on the wall.\",\n            \"\",\n            \"Two green bottles hanging on the wall,\",\n        \
+  \    \"Two green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally fall,\",\n \
+  \           \"There'll be one green bottle hanging on the wall.\",\n            \"\",\n            \"One green bottle hanging\
+  \ on the wall,\",\n            \"One green bottle hanging on the wall,\",\n            \"And if one green bottle should\
+  \ accidentally fall,\",\n            \"There'll be no green bottles hanging on the wall.\",\n        ]\n        self.assertEqual(recite(start=3,\
+  \ take=3), expected)\n\n    def test_all_verses(self):\n        expected = [\n            \"Ten green bottles hanging on\
+  \ the wall,\",\n            \"Ten green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally\
+  \ fall,\",\n            \"There'll be nine green bottles hanging on the wall.\",\n            \"\",\n            \"Nine\
+  \ green bottles hanging on the wall,\",\n            \"Nine green bottles hanging on the wall,\",\n            \"And if\
+  \ one green bottle should accidentally fall,\",\n            \"There'll be eight green bottles hanging on the wall.\",\n\
+  \            \"\",\n            \"Eight green bottles hanging on the wall,\",\n            \"Eight green bottles hanging\
+  \ on the wall,\",\n            \"And if one green bottle should accidentally fall,\",\n            \"There'll be seven green\
+  \ bottles hanging on the wall.\",\n            \"\",\n            \"Seven green bottles hanging on the wall,\",\n      \
+  \      \"Seven green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally fall,\"\
+  ,\n            \"There'll be six green bottles hanging on the wall.\",\n            \"\",\n            \"Six green bottles\
+  \ hanging on the wall,\",\n            \"Six green bottles hanging on the wall,\",\n            \"And if one green bottle\
+  \ should accidentally fall,\",\n            \"There'll be five green bottles hanging on the wall.\",\n            \"\",\n\
+  \            \"Five green bottles hanging on the wall,\",\n            \"Five green bottles hanging on the wall,\",\n  \
+  \          \"And if one green bottle should accidentally fall,\",\n            \"There'll be four green bottles hanging\
+  \ on the wall.\",\n            \"\",\n            \"Four green bottles hanging on the wall,\",\n            \"Four green\
+  \ bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally fall,\",\n            \"There'll\
+  \ be three green bottles hanging on the wall.\",\n            \"\",\n            \"Three green bottles hanging on the wall,\"\
+  ,\n            \"Three green bottles hanging on the wall,\",\n            \"And if one green bottle should accidentally\
+  \ fall,\",\n            \"There'll be two green bottles hanging on the wall.\",\n            \"\",\n            \"Two green\
+  \ bottles hanging on the wall,\",\n            \"Two green bottles hanging on the wall,\",\n            \"And if one green\
+  \ bottle should accidentally fall,\",\n            \"There'll be one green bottle hanging on the wall.\",\n            \"\
+  \",\n            \"One green bottle hanging on the wall,\",\n            \"One green bottle hanging on the wall,\",\n  \
+  \          \"And if one green bottle should accidentally fall,\",\n            \"There'll be no green bottles hanging on\
+  \ the wall.\",\n        ]\n        self.assertEqual(recite(start=10, take=10), expected)\n\n```\n\nYour task: Edit the starter\
+  \ code file(s) so ALL tests pass.\nUse write_workspace_file to write your solution, then use\nworkspace_execute to run the\
+  \ tests.\n\nTEST COMMAND: python -m unittest bottle_song_test.py -v 2>&1\n\nIf tests fail, read the error output carefully,\
+  \ fix your code,\nand run the tests again.\n\nWrite your solution in the starter file. The test file imports from the solution\
+  \ module. Run tests with workspace_execute.\n\nUse any Available Knowledge entries — they contain patterns\nfrom prior exercises\
+  \ that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-bottle-song
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest bottle_song_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/bottle-song

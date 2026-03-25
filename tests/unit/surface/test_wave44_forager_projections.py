@@ -53,7 +53,7 @@ def _seeded_store() -> ProjectionStore:
 
 
 def test_event_union_has_62_types() -> None:
-    assert len(EVENT_TYPE_NAMES) == 65
+    assert len(EVENT_TYPE_NAMES) == 69
 
 
 def test_forager_events_in_manifest() -> None:

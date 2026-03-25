@@ -84,6 +84,7 @@ export type EventTypeName =
   | "MemoryConfidenceUpdated"
   | "WorkflowStepDefined"
   | "WorkflowStepCompleted"
+  | "WorkflowStepUpdated"
   | "CRDTCounterIncremented"
   | "CRDTTimestampUpdated"
   | "CRDTSetElementAdded"
@@ -100,7 +101,10 @@ export type EventTypeName =
   | "ForagerDomainOverride"
   | "ColonyEscalated"
   | "QueenNoteSaved"
-  | "MemoryEntryRefined";
+  | "MemoryEntryRefined"
+  | "AddonLoaded"
+  | "AddonUnloaded"
+  | "ServiceTriggerFired";
 
 // Configuration
 
@@ -910,6 +914,18 @@ export interface WorkflowStepCompletedEvent extends BaseEvent {
   artifactsProduced: string[];
 }
 
+// Wave 63: WorkflowStepUpdated
+export interface WorkflowStepUpdatedEvent extends BaseEvent {
+  type: "WorkflowStepUpdated";
+  workspaceId: string;
+  threadId: string;
+  stepIndex: number;
+  newDescription: string;
+  newStatus: string;
+  newPosition: number;
+  notes: string;
+}
+
 // Wave 33 events
 
 export interface CRDTCounterIncrementedEvent extends BaseEvent {
@@ -1097,6 +1113,32 @@ export interface MemoryEntryRefinedEvent extends BaseEvent {
   sourceColonyId: string;
 }
 
+/** An addon manifest was loaded and its components registered. */
+export interface AddonLoadedEvent extends BaseEvent {
+  type: "AddonLoaded";
+  addonName: string;
+  version: string;
+  tools: string[];
+  handlers: string[];
+  panels: string[];
+}
+
+/** An addon was deregistered. */
+export interface AddonUnloadedEvent extends BaseEvent {
+  type: "AddonUnloaded";
+  addonName: string;
+  reason: string;
+}
+
+/** A scheduled trigger activated a service colony. */
+export interface ServiceTriggerFiredEvent extends BaseEvent {
+  type: "ServiceTriggerFired";
+  addonName: string;
+  triggerType: string;
+  workspaceId: string;
+  details: string;
+}
+
 export type FormicOSEvent =
   | WorkspaceCreatedEvent
   | ThreadCreatedEvent
@@ -1146,6 +1188,7 @@ export type FormicOSEvent =
   | MemoryConfidenceUpdatedEvent
   | WorkflowStepDefinedEvent
   | WorkflowStepCompletedEvent
+  | WorkflowStepUpdatedEvent
   | CRDTCounterIncrementedEvent
   | CRDTTimestampUpdatedEvent
   | CRDTSetElementAddedEvent
@@ -1162,7 +1205,10 @@ export type FormicOSEvent =
   | ForagerDomainOverrideEvent
   | ColonyEscalatedEvent
   | QueenNoteSavedEvent
-  | MemoryEntryRefinedEvent;
+  | MemoryEntryRefinedEvent
+  | AddonLoadedEvent
+  | AddonUnloadedEvent
+  | ServiceTriggerFiredEvent;
 
 // WebSocket commands
 

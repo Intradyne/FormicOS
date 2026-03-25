@@ -21,9 +21,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --no-dev --frozen
 
-# Copy source and config
+# Copy source, config, and addon manifests
 COPY src/ src/
 COPY config/ config/
+COPY addons/ addons/
 
 # Copy built frontend
 COPY --from=frontend-build /app/frontend/dist/ frontend/dist/

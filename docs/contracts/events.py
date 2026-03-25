@@ -25,6 +25,10 @@ MemoryEntryScopeChanged (`new_workspace_id`). Union stays at 62.
 Wave 51: +2 events (ColonyEscalated, QueenNoteSaved). Replay safety
 for escalation (previously runtime-only) and Queen notes (previously
 YAML-only). Union: 62 -> 64.
+Wave 63: +1 event (WorkflowStepUpdated). Operator-driven step edits
+(ADR-049). Union: 65 -> 66.
+Wave 64: +3 events (AddonLoaded, AddonUnloaded, ServiceTriggerFired).
+Addon system infrastructure. Union: 66 -> 69.
 """
 
 from __future__ import annotations
@@ -902,6 +906,20 @@ class WorkflowStepCompleted(EventEnvelope):
     )
 
 
+class WorkflowStepUpdated(EventEnvelope):
+    """Operator directly edited a workflow step (Wave 63, ADR-049)."""
+    model_config = FrozenConfig
+
+    type: Literal["WorkflowStepUpdated"] = "WorkflowStepUpdated"
+    workspace_id: str = Field(...)
+    thread_id: str = Field(...)
+    step_index: int = Field(..., description="Index of the step being updated.")
+    new_description: str = Field(default="", description="Updated description. Empty = keep existing.")
+    new_status: str = Field(default="", description="Updated status: pending|skipped|in_progress. Empty = keep existing.")
+    new_position: int = Field(default=-1, description="New position index. -1 = no reorder.")
+    notes: str = Field(default="", description="Operator notes for this step.")
+
+
 # ---------------------------------------------------------------------------
 # Wave 33 events — CRDT Operations + Merge Provenance (ADR-042)
 # ---------------------------------------------------------------------------
@@ -1202,6 +1220,38 @@ class MemoryEntryRefined(EventEnvelope):
     )
 
 
+class AddonLoaded(EventEnvelope):
+    """An addon manifest was loaded and its components registered."""
+
+    model_config = FrozenConfig
+    type: Literal["AddonLoaded"] = "AddonLoaded"
+    addon_name: str = Field(..., description="Addon identifier from manifest.")
+    version: str = Field(default="", description="Addon version string.")
+    tools: list[str] = Field(default_factory=list, description="Registered tool names.")
+    handlers: list[str] = Field(default_factory=list, description="Registered event handler names.")
+    panels: list[str] = Field(default_factory=list, description="Registered frontend panel IDs.")
+
+
+class AddonUnloaded(EventEnvelope):
+    """An addon was deregistered."""
+
+    model_config = FrozenConfig
+    type: Literal["AddonUnloaded"] = "AddonUnloaded"
+    addon_name: str = Field(..., description="Addon being unloaded.")
+    reason: str = Field(default="", description="shutdown | removed | error")
+
+
+class ServiceTriggerFired(EventEnvelope):
+    """A scheduled trigger activated a service colony."""
+
+    model_config = FrozenConfig
+    type: Literal["ServiceTriggerFired"] = "ServiceTriggerFired"
+    addon_name: str = Field(..., description="Addon that owns the trigger.")
+    trigger_type: str = Field(default="", description="cron | event | webhook | manual")
+    workspace_id: str = Field(default="")
+    details: str = Field(default="", description="Human-readable trigger context.")
+
+
 FormicOSEvent: TypeAlias = Annotated[
     Union[
         WorkspaceCreated,
@@ -1252,6 +1302,7 @@ FormicOSEvent: TypeAlias = Annotated[
         MemoryConfidenceUpdated,         # Wave 30
         WorkflowStepDefined,             # Wave 30 (Track B)
         WorkflowStepCompleted,           # Wave 30 (Track B)
+        WorkflowStepUpdated,             # Wave 63 (ADR-049)
         CRDTCounterIncremented,          # Wave 33 (ADR-042)
         CRDTTimestampUpdated,            # Wave 33 (ADR-042)
         CRDTSetElementAdded,             # Wave 33 (ADR-042)
@@ -1269,6 +1320,9 @@ FormicOSEvent: TypeAlias = Annotated[
         ColonyEscalated,                 # Wave 51
         QueenNoteSaved,                  # Wave 51
         MemoryEntryRefined,              # Wave 59 (ADR-048)
+        AddonLoaded,                     # Wave 64
+        AddonUnloaded,                   # Wave 64
+        ServiceTriggerFired,             # Wave 64
     ],
     Field(discriminator="type"),
 ]
@@ -1326,6 +1380,7 @@ EVENT_TYPE_NAMES: list[str] = [
     "MemoryConfidenceUpdated",
     "WorkflowStepDefined",
     "WorkflowStepCompleted",
+    "WorkflowStepUpdated",
     "CRDTCounterIncremented",
     "CRDTTimestampUpdated",
     "CRDTSetElementAdded",
@@ -1343,6 +1398,9 @@ EVENT_TYPE_NAMES: list[str] = [
     "ColonyEscalated",
     "QueenNoteSaved",
     "MemoryEntryRefined",
+    "AddonLoaded",
+    "AddonUnloaded",
+    "ServiceTriggerFired",
 ]
 
 # Import-time self-check: manifest must match the closed union members.
@@ -1365,6 +1423,7 @@ _union_members: frozenset[str] = frozenset(
         ThreadGoalSet, ThreadStatusChanged, MemoryEntryScopeChanged,
         DeterministicServiceRegistered,
         MemoryConfidenceUpdated, WorkflowStepDefined, WorkflowStepCompleted,
+        WorkflowStepUpdated,
         CRDTCounterIncremented, CRDTTimestampUpdated, CRDTSetElementAdded,
         CRDTRegisterAssigned, MemoryEntryMerged,
         ParallelPlanCreated, KnowledgeDistilled,
@@ -1374,6 +1433,7 @@ _union_members: frozenset[str] = frozenset(
         DomainStrategyUpdated, ForagerDomainOverride,
         ColonyEscalated, QueenNoteSaved,
         MemoryEntryRefined,
+        AddonLoaded, AddonUnloaded, ServiceTriggerFired,
     )
 )
 _manifest_set = frozenset(EVENT_TYPE_NAMES)
@@ -1405,6 +1465,8 @@ def deserialize(value: str | bytes | bytearray | Mapping[str, Any]) -> FormicOSE
 
 
 __all__ = [
+    "AddonLoaded",
+    "AddonUnloaded",
     "AgentTurnCompleted",
     "AgentTurnStarted",
     "ApprovalDenied",
@@ -1453,6 +1515,7 @@ __all__ = [
     "MemoryEntryScopeChanged",
     "MemoryEntryCreated",
     "MemoryEntryMerged",
+    "MemoryEntryRefined",
     "MemoryEntryStatusChanged",
     "MemoryExtractionCompleted",
     "MergeCreated",
@@ -1470,6 +1533,7 @@ __all__ = [
     "serialize",
     "ServiceQueryResolved",
     "ServiceQuerySent",
+    "ServiceTriggerFired",
     "SkillConfidenceUpdated",
     "SkillMerged",
     "ThreadCreated",
@@ -1479,6 +1543,7 @@ __all__ = [
     "TokensConsumed",
     "WorkflowStepCompleted",
     "WorkflowStepDefined",
+    "WorkflowStepUpdated",
     "WorkspaceConfigChanged",
     "WorkspaceConfigSnapshot",
     "WorkspaceCreated",

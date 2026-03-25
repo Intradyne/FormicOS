@@ -753,3 +753,39 @@ knowledge system with cooperative UI.
 The project needs users, not waves.
 
 200 addenda. ~590 KB session memo.
+
+
+## Addendum 201: Wave 61 SHIPPED -- The Colleague Colony
+
+**Added:** Wave 61 verified and shipped.
+
+### What shipped
+
+| Track | What | Files | Tests |
+|-------|------|-------|-------|
+| 1 | propose_plan + procedural prompt + spawn guard | queen_tools.py, queen_runtime.py, queen_intent_parser.py, caste_recipes.yaml | 9 |
+| 2 | proposal-card component + queen-chat wiring | proposal-card.ts (NEW), queen-chat.ts, types.ts | -- |
+| 3 | query_outcomes, analyze_colony, query_briefing | queen_tools.py, caste_recipes.yaml | 11 |
+| 4 | workspace-browser + colony file diff + Workspace tab | workspace-browser.ts (NEW), formicos-app.ts, colony-detail.ts | -- |
+| 5 | Budget REST endpoint + budget-panel | routes/api.py, budget-panel.ts (NEW), queen-overview.ts | -- |
+
+Queen tools: 21 -> 25 (+4: propose_plan, query_outcomes, analyze_colony, query_briefing)
+20 new tests (9 Track 1 + 11 Track 3). All 5 tracks verified against codebase.
+
+### Key capabilities gained
+
+- Queen deliberates before spawning (propose_plan mandatory, two-layer safety net)
+- Operator sees proposal cards with "Go ahead" / "Let me adjust" buttons
+- Queen can analyze colony outcomes empirically (query_outcomes)
+- Queen can deep-dive specific colonies (analyze_colony)
+- Workspace file browser with colony file-change tracking
+- Budget panel with per-model spend breakdown
+- Supercolony dashboard visible
+
+### Audit corrections applied
+
+- estimated_cost runtime-computed (not LLM-hallucinated)
+- 9 tests instead of required 3 (over-delivery)
+- groq nested IDs verified at backend _resolve() level
+
+201 addenda. ~596 KB session memo.

@@ -1,0 +1,15 @@
+name: hello-world
+version: "1.0.0"
+description: "Trivial test addon — validates the addon loader pipeline"
+author: "formicos-core"
+
+tools:
+  - name: hello
+    description: "Say hello from the addon system"
+    handler: handler.py::handle_hello
+    parameters:
+      type: object
+      properties:
+        greeting:
+          type: string
+          description: "Optional custom greeting"

@@ -28,6 +28,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -291,6 +292,91 @@ def _append_partial_result(
 
 _GOVERNANCE_EXTENSION_S = 300.0  # Wave 57: extra time for productive colonies
 _IDLE_TIMEOUT_S = 180.0  # Wave 57+: kill colonies with no activity for 3 min
+
+
+# ---------------------------------------------------------------------------
+# Aider benchmark extensions: workspace seeding and pass/fail verification
+# ---------------------------------------------------------------------------
+
+
+def _seed_workspace(
+    data_dir: Path,
+    workspace_id: str,
+    seed_path: str,
+) -> None:
+    """Copy exercise files from seed_path into the workspace files directory.
+
+    Copies all non-hidden files (skips .meta, .docs, .git) from the seed
+    directory. The test file and starter code end up directly in the
+    workspace's files/ directory.
+    """
+    seed = Path(seed_path)
+    if not seed.exists():
+        log.warning("eval.seed_missing", seed_path=seed_path)
+        return
+
+    ws_files = data_dir / "workspaces" / workspace_id / "files"
+    ws_files.mkdir(parents=True, exist_ok=True)
+
+    for item in seed.iterdir():
+        if item.name.startswith("."):
+            continue  # skip .meta, .docs, .git
+        dst = ws_files / item.name
+        if item.is_file():
+            shutil.copy2(item, dst)
+        elif item.is_dir():
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(item, dst)
+
+    log.info(
+        "eval.workspace_seeded",
+        workspace_id=workspace_id,
+        seed_path=seed_path,
+        files=sorted(f.name for f in ws_files.iterdir()),
+    )
+
+
+async def _run_verify_command(
+    data_dir: Path,
+    workspace_id: str,
+    verify_command: str,
+    timeout_s: int = 60,
+) -> bool:
+    """Run a verification command in the workspace and return pass/fail.
+
+    Returns True if the command exits with code 0 (all tests pass).
+    """
+    ws_files = data_dir / "workspaces" / workspace_id / "files"
+    if not ws_files.exists():
+        log.warning("eval.verify_no_workspace", workspace_id=workspace_id)
+        return False
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            verify_command,
+            cwd=str(ws_files),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            limit=1024 * 1024,  # 1MB output limit
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        output = stdout.decode("utf-8", errors="replace")[-2000:]  # last 2KB
+        passed = proc.returncode == 0
+        log.info(
+            "eval.verify_result",
+            workspace_id=workspace_id,
+            passed=passed,
+            exit_code=proc.returncode,
+            output_tail=output[-500:],
+        )
+        return passed
+    except TimeoutError:
+        log.warning("eval.verify_timeout", workspace_id=workspace_id)
+        return False
+    except Exception:  # noqa: BLE001
+        log.exception("eval.verify_error", workspace_id=workspace_id)
+        return False
 
 
 async def _wait_for_colony(
@@ -586,6 +672,11 @@ async def run_sequential(
                 ws_id = base_ws_id
                 thread_id = base_thread_id
 
+            # ── Workspace seeding (Aider benchmark) ──
+            workspace_seed = task.get("workspace_seed")
+            if workspace_seed:
+                _seed_workspace(data_dir, ws_id, workspace_seed)
+
             colony_id = await runtime.spawn_colony(
                 workspace_id=ws_id,
                 thread_id=thread_id,
@@ -671,12 +762,22 @@ async def run_sequential(
                         any(t in _PROD_TOOLS for t in all_tools),
                     )
 
+            # ── Pass/fail verification (Aider benchmark) ──
+            quality_score = float(transcript.get("quality_score", 0.0))
+            quality_mode = task.get("quality_mode") or suite.get("quality_mode")
+            verify_command = task.get("verify_command")
+            if quality_mode == "pass_fail" and verify_command:
+                passed = await _run_verify_command(
+                    data_dir, ws_id, verify_command,
+                )
+                quality_score = 1.0 if passed else 0.0
+
             task_result = TaskResult(
                 task_id=task_id,
                 sequence_index=seq_idx,
                 colony_id=colony_id,
                 status=status,
-                quality_score=float(transcript.get("quality_score", 0.0)),
+                quality_score=quality_score,
                 cost=float(transcript.get("cost", 0.0)),
                 wall_time_s=task_wall_time,
                 rounds_completed=int(transcript.get("rounds_completed", 0)),

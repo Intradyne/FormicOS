@@ -10,11 +10,14 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
 import { voidTokens } from '../styles/shared.js';
 import { timeAgo } from '../helpers.js';
-import type { QueenThread, QueenChatMessage, EventKind, PreviewCardMeta, ResultCardMeta } from '../types.js';
+import type { QueenThread, QueenChatMessage, EventKind, PreviewCardMeta, ResultCardMeta, ProposalData, EditProposalMeta, ParallelResultMeta } from '../types.js';
 import './atoms.js';
 import './directive-panel.js';
 import './fc-preview-card.js';
 import './fc-result-card.js';
+import './proposal-card.js';
+import './edit-proposal.js';
+import './parallel-result.js';
 
 const kindColor: Record<string, string> = {
   spawn: '#2DD4A8', merge: '#3DD6F5', metric: '#A78BFA', route: '#F5B731', pheromone: '#E8581A',
@@ -87,6 +90,11 @@ export class FcQueenChat extends LitElement {
       font-size: 7.5px; font-family: var(--f-mono); padding: 1px 5px;
       border-radius: 3px; background: rgba(232,88,26,0.1); color: var(--v-accent);
       font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .model-badge {
+      font-size: 7px; font-family: var(--f-mono); padding: 1px 4px;
+      border-radius: 3px; background: rgba(100,140,255,0.12);
+      color: var(--v-fg-dim); letter-spacing: 0.04em;
     }
 
     /* Card container */
@@ -237,6 +245,26 @@ export class FcQueenChat extends LitElement {
     }
 
     if (renderType === 'result_card' && m.meta) {
+      // Wave 63: check if this is a parallel result (has plan_id)
+      const metaObj = m.meta as Record<string, unknown>;
+      if (metaObj.plan_id || metaObj.planId) {
+        const parallelResult = m.meta as unknown as ParallelResultMeta;
+        return html`
+          <div class="msg">
+            <div class="msg-header">
+              <span style="font-size:8px;color:var(--v-accent)">\u265B</span>
+              <span class="msg-role" style="color:var(--v-accent)">Queen</span>
+              <span class="msg-ts">${timeAgo(m.ts)}</span>
+            </div>
+            ${m.text ? html`<div class="msg-body" style="color:var(--v-fg);padding-left:14px;margin-bottom:8px">${m.text}</div>` : nothing}
+          </div>
+          <div class="card-wrap">
+            <fc-parallel-result
+              .result=${parallelResult}
+              @result-navigate=${this._handleResultNavigate}
+            ></fc-parallel-result>
+          </div>`;
+      }
       const result = m.meta as unknown as ResultCardMeta;
       return html`
         <div class="msg">
@@ -255,6 +283,49 @@ export class FcQueenChat extends LitElement {
         </div>`;
     }
 
+    // Wave 63: edit proposal card
+    if (renderType === 'edit_proposal' && m.meta) {
+      const editMeta = m.meta as unknown as EditProposalMeta;
+      return html`
+        <div class="msg">
+          <div class="msg-header">
+            <span style="font-size:8px;color:var(--v-accent)">\u265B</span>
+            <span class="msg-role" style="color:var(--v-accent)">Queen</span>
+            <span class="msg-ts">${timeAgo(m.ts)}</span>
+          </div>
+          ${m.text ? html`<div class="msg-body" style="color:var(--v-fg);padding-left:14px;margin-bottom:8px">${m.text}</div>` : nothing}
+        </div>
+        <div class="card-wrap">
+          <fc-edit-proposal
+            .proposal=${editMeta}
+            @edit-apply=${this._handleEditApply}
+            @edit-reject=${this._handleEditReject}
+          ></fc-edit-proposal>
+        </div>`;
+    }
+
+    if (renderType === 'proposal_card' && m.meta) {
+      const proposalData = (m.meta as Record<string, unknown>).proposal as ProposalData | undefined
+        ?? m.meta as unknown as ProposalData;
+      if (proposalData?.summary && proposalData?.options) {
+        return html`
+          <div class="msg">
+            <div class="msg-header">
+              <span style="font-size:8px;color:var(--v-accent)">\u265B</span>
+              <span class="msg-role" style="color:var(--v-accent)">Queen</span>
+              <span class="msg-ts">${timeAgo(m.ts)}</span>
+            </div>
+            ${m.text ? html`<div class="msg-body" style="color:var(--v-fg);padding-left:14px;margin-bottom:8px">${m.text}</div>` : nothing}
+          </div>
+          <div class="card-wrap">
+            <fc-proposal-card
+              .proposal=${proposalData}
+              @proposal-action=${this._onProposalAction}
+            ></fc-proposal-card>
+          </div>`;
+      }
+    }
+
     // Standard text message with ask/notify distinction
     const intent = inferIntent(m);
     const intentClass = intent === 'ask' ? 'intent-ask' : intent === 'notify' ? 'intent-notify' : '';
@@ -266,6 +337,7 @@ export class FcQueenChat extends LitElement {
         <span class="msg-ts">${timeAgo(m.ts)}</span>
         ${(m as QueenChatMessage & { parsed?: boolean }).parsed ? html`<fc-pill color="var(--v-warn)" sm>parsed from intent</fc-pill>` : nothing}
         ${intent === 'ask' ? html`<span class="ask-badge">needs input</span>` : nothing}
+        ${m.role === 'queen' && (m.meta as Record<string, unknown> | undefined)?.model_used ? html`<span class="model-badge" title="Model used">${String((m.meta as Record<string, unknown>).model_used).split('/').pop()}</span>` : nothing}
         ${m.role === 'queen' ? html`<span class="pin-btn" title="Save as preference" @click=${() => this._saveAsPreference(m.text)}>&#x1F4CC;</span>` : nothing}
       </div>
       <div class="msg-body" style="color:${m.role === 'queen' ? 'var(--v-fg)' : 'rgba(237,237,240,0.8)'};padding-left:${m.role === 'queen' ? 14 : 0}px">${m.text}</div>
@@ -294,6 +366,25 @@ export class FcQueenChat extends LitElement {
     }));
   }
 
+  // Wave 63: edit proposal handlers
+  private _handleEditApply(e: CustomEvent) {
+    const d = e.detail as { filePath: string; diff: string; colonyId?: string };
+    if (!this.activeThread) return;
+    this.dispatchEvent(new CustomEvent('send-message', {
+      detail: { threadId: this.activeThread.id, content: `Apply edit to ${d.filePath}` },
+      bubbles: true, composed: true,
+    }));
+  }
+
+  private _handleEditReject(e: CustomEvent) {
+    const d = e.detail as { filePath: string; colonyId?: string };
+    if (!this.activeThread) return;
+    this.dispatchEvent(new CustomEvent('send-message', {
+      detail: { threadId: this.activeThread.id, content: `Reject edit to ${d.filePath}` },
+      bubbles: true, composed: true,
+    }));
+  }
+
   private _handleResultNavigate(e: CustomEvent) {
     const d = e.detail as { target: string; colonyId: string; threadId?: string };
     if (d.target === 'colony' || d.target === 'audit') {
@@ -306,6 +397,26 @@ export class FcQueenChat extends LitElement {
         detail: d.threadId,
         bubbles: true, composed: true,
       }));
+    }
+  }
+
+  private _onProposalAction(e: CustomEvent) {
+    const d = e.detail as { action: string; message: string };
+    if (d.action === 'confirm') {
+      // Send the confirmation as an operator message
+      if (!this.activeThread) return;
+      this.dispatchEvent(new CustomEvent('send-message', {
+        detail: { threadId: this.activeThread.id, content: d.message },
+        bubbles: true, composed: true,
+      }));
+      this._queenPending = true;
+    } else if (d.action === 'adjust') {
+      // Pre-fill the chat input for operator adjustment
+      this.input = d.message;
+      const inputEl = this.shadowRoot?.querySelector('input');
+      if (inputEl) {
+        inputEl.focus();
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 # Implementation Specifications — Index
 
 Current-state implementation references for FormicOS subsystems. Each spec is
-code-anchored to Wave 59.5 and verified against the live codebase. These are the
+code-anchored to Wave 60.5 and verified against the live codebase. These are the
 canonical source of truth for how the system works today.
 
 For architectural *decisions* (why, not what), see `docs/decisions/`.
@@ -19,4 +19,4 @@ For code-anchored file/event inventories, see `docs/reference/architecture_map.m
 | [proactive_intelligence.md](proactive_intelligence.md) | Proactive intelligence | 17 deterministic rules, MaintenanceDispatcher, distillation, earned autonomy, forage signals |
 | [federation.md](federation.md) | Federation | CRDT primitives, push/pull replication, Bayesian peer trust, conflict resolution, vector clocks |
 | [web_foraging.md](web_foraging.md) | Web foraging | Egress gateway, fetch pipeline, content quality, search adapters, domain strategy |
-| [cost_tracking.md](cost_tracking.md) | Cost tracking | Token counting, cost_fn, budget enforcement, cost display, local-vs-cloud gap analysis |
+| [cost_tracking.md](cost_tracking.md) | Cost tracking | Token counting, reasoning/cache token accounting, cost_fn, budget enforcement, cost display, local-vs-cloud gap analysis |

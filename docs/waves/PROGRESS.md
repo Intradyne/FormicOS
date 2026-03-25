@@ -1,12 +1,264 @@
 # FormicOS v2 -- Wave Progress
 
-**Last updated:** 2026-03-23 -- Wave 59.5 landed (graph bridge + progressive disclosure fix). Phase 1 v2 running overnight with full stack. Wave 60 (cost truth + retrieval hardening) provisional, gated on v2 results.
+**Last updated:** 2026-03-25 -- Wave 65.5 landed (Addons Made Real + Polish). 3640 tests green. Addon runtime context injection, real codebase index + git control, trigger wiring, Queen autonomous agency (36 tools), addon dev guide, polish pass (porcelain parsing, forbidden ops, cron DOW, trigger loop, schema validation).
 
-**Note:** Detailed per-wave docs are on disk through Wave 59.5. Consolidated numeric metrics further down this file are still historical snapshots from earlier milestones until a dedicated metrics refresh is done.
+**Note:** Detailed per-wave docs are on disk through Wave 65. Consolidated numeric metrics further down this file are still historical snapshots from earlier milestones until a dedicated metrics refresh is done.
 
 ---
 
-## Current: Wave 59.5 -- Knowledge Graph Bridge + Progressive Disclosure Fix
+## Current: Wave 65.5 -- Addon Polish Pass
+
+Bug fixes and test hardening for the addon system shipped in Wave 65.
+No new features, events, or tools. Six fixes:
+
+1. **Fix 1 -- Git porcelain parsing:** Rewrote auto-stage file detection to
+   check worktree column (Y position), handle quoted paths with special
+   characters, and correctly skip untracked/ignored files.
+   (`addons/git_control/handlers.py`)
+2. **Fix 2 -- Forbidden ops safety:** Replaced string-join matching with
+   consecutive-arg tuple matching. `push --force` blocked, `log --format=force`
+   allowed. Added `push -f` and `clean -fd` variants.
+   (`addons/git_control/tools.py`)
+3. **Fix 3 -- Git control happy-path tests:** Expanded from 6 error-only tests
+   to 34 tests covering smart commit phases, branch analysis strategies,
+   create branch, stash operations, auto-stage, and forbidden ops.
+   (`tests/unit/addons/test_git_control.py`)
+4. **Fix 4 -- Proactive intelligence handler tests:** 13 new tests for
+   `handle_query_briefing`, `on_scheduled_briefing`, and
+   `handle_proactive_configure` — previously zero direct coverage.
+   (`tests/unit/addons/test_proactive_intelligence.py`)
+5. **Fix 5 -- Trigger loop dead code:** Removed `elif len >= 3` fallback that
+   would call cron handlers with wrong args. Replaced with warning log for
+   unsupported handler signatures. (`app.py`)
+6. **Fix 6 -- Addon loader guardrails:** Warns on unused manifest fields
+   (panels, templates, routes). Validates tool parameter schemas (must have
+   `type: object` and `properties`). (`addon_loader.py`)
+
+3640 tests passing (+36 net new). CI: ruff clean, imports clean.
+
+## Previous: Wave 65 -- Addons Made Real + Queen Agency
+
+Seven tracks across three teams. Made addon stubs into real implementations,
+wired trigger dispatch, added Queen autonomous agency tools, and shipped
+addon developer documentation.
+
+1. **Track 1 -- Addon runtime context:** `register_addon()` accepts
+   `runtime_context` dict. Tool and event handler wrappers use
+   `inspect.signature()` to detect handlers that accept it. Context includes
+   `vector_port`, `embed_fn`, `workspace_root_fn`, `event_store`, `settings`,
+   `projections`, `runtime`. (`addon_loader.py`, `app.py`)
+2. **Track 2 -- Codebase index made real:** `handle_semantic_search` calls
+   `vector_port.search()` for real results. `handle_reindex` triggers
+   incremental or full reindex. `on_scheduled_reindex` cron wrapper iterates
+   all workspaces. (`addons/codebase_index/search.py`, `indexer.py`)
+3. **Track 3 -- Git control made real:** Two-phase smart commit (inspect staged
+   diff, then execute). Real `git merge-base` branch analysis. Create branch
+   and stash tools. Auto-stage event handler uses `git status --porcelain`.
+   (`addons/git_control/tools.py`, `handlers.py`)
+4. **Track 4 -- Trigger wiring:** `TriggerDispatcher` instantiated in app
+   startup, addon triggers registered, 60s background loop fires cron
+   triggers and emits `ServiceTriggerFired` events. `trigger_addon` Queen
+   tool for manual trigger firing. Cron DOW fix (Python Mon=0 → cron Sun=0).
+   (`app.py`, `trigger_dispatch.py`, `queen_tools.py`)
+5. **Track 5 -- Queen autonomous agency:** 4 new Queen tools: `batch_command`
+   (sequential command execution, stop-on-error), `summarize_thread`
+   (structured thread overview), `draft_document` (file write with
+   overwrite/prepend/append), `list_addons` (addon tool/handler inventory).
+   MCP chaining guidance in Queen system prompt. (`queen_tools.py`)
+6. **Track 6 -- Proactive intelligence polish:** `on_scheduled_briefing` cron
+   wrapper. `handle_proactive_configure` tool for per-workspace rule
+   enable/disable via `WorkspaceConfigChanged` events.
+   (`addons/proactive_intelligence/handlers.py`)
+7. **Track 7 -- Addon dev guide + launch docs:** Complete addon development
+   guide (addons/README.md, ~300 lines). TEMPLATE addon scaffold with
+   manifest + handler examples. README.md updated with current feature list,
+   event count (69), tool count (36), and docs table.
+
+Event union: 69 (unchanged). Queen tools: 31 -> 36 (+batch_command,
++summarize_thread, +draft_document, +list_addons, +trigger_addon).
+Caste recipes synced to 36 tools. 3599 tests passing pre-polish.
+
+## Previous: Wave 64 -- Parallel Execution + Addon Infrastructure
+
+Eight tracks across three teams. Multi-provider parallel execution (Tracks
+1-5) and addon system infrastructure (Tracks 6-8).
+
+1. **Track 1 -- Generalized adapter factory + per-provider concurrency:**
+   Adapter keys changed from bare `provider` to `provider:endpoint`,
+   enabling multiple endpoints per provider. `max_concurrent` field on
+   ModelRecord controls per-model semaphore. Unknown provider prefixes
+   with endpoints auto-create OpenAI-compatible adapters.
+   (`app.py`, `runtime.py`, `llm_openai_compatible.py`, `core/types.py`)
+2. **Track 2 -- Optimistic file locking:** Content-hash locking detects
+   concurrent file modification between read and write. Atomic writes via
+   temp+`os.replace()` (cross-platform). CONFLICT error on hash mismatch.
+   (`engine/runner.py`)
+3. **Track 3 -- Queen smart fan-out:** `retry_colony` tool re-spawns failed
+   colonies with failure context and optional model/strategy override.
+   `propose_plan` enriched with per-provider model availability.
+   Colony escalation messages include model suggestion with cost estimate.
+   (`queen_tools.py`, `colony_manager.py`)
+4. **Track 4 -- Heuristic cloud routing:** Five heuristics for Queen cloud
+   routing: message complexity (>500 tokens), `@cloud` tag, propose_plan,
+   system token budget (>2000), parse failure auto-escalation. Model badge
+   in chat UI. (`queen_runtime.py`, `queen-chat.ts`)
+5. **Track 5 -- UI parallel execution dashboard:** Provider cost breakdown
+   in budget panel. Plan progress bar with colored segments (done/active/
+   pending). Provider health REST endpoint.
+   (`budget-panel.ts`, `queen-overview.ts`, `routes/api.py`)
+6. **Track 6a -- Addon loader:** 3 new events (#67-69): AddonLoaded,
+   AddonUnloaded, ServiceTriggerFired. Manifest parser, handler resolver,
+   component registration. Hello-world addon. Queen tool integration via
+   `_addon_tool_specs`. (`addon_loader.py`, `core/events.py`, `app.py`)
+7. **Track 6b -- Proactive intelligence extraction:** 1980-line module
+   extracted to `formicos/addons/proactive_intelligence/rules.py`. 52-line
+   backward-compatible shim at `surface/proactive_intelligence.py`.
+8. **Track 7 -- Trigger dispatch + codebase index:** Built-in cron parser,
+   TriggerDispatcher with double-fire prevention. Codebase index addon with
+   structural chunking and incremental reindex (search is v1 placeholder).
+   (`trigger_dispatch.py`, `addons/codebase-index/`)
+9. **Track 8 -- Git control addon:** Smart commit context, branch analysis,
+   auto-stage handler (v1 stubs). (`addons/git-control/`)
+
+Event union: 66 -> 69 (+AddonLoaded, +AddonUnloaded, +ServiceTriggerFired).
+Queen tools: 30 -> 31 (+retry_colony).
+3588 tests passing. CI: ruff clean, imports clean.
+
+## Previous: Wave 63 -- The Queen Remembers, The Operator Controls
+
+Eight tracks: cross-turn tool memory, failed colony notifications, Queen write
+tools, negative signal extraction, edit proposal cards, operator knowledge CRUD,
+operator workflow step CRUD, and project context seeding.
+
+1. **Track 1 -- Cross-turn tool memory:** Queen tool results persist across
+   conversation turns. Previously, tool outputs were lost between turns;
+   now the Queen can reference prior search results, command outputs, and
+   analysis across the full conversation.
+2. **Track 2 -- Failed colony notifications:** Failed colony outcomes surface
+   as notifications in the Queen follow-up path. Parallel aggregation collects
+   results from concurrent colonies and presents them coherently.
+3. **Track 3 -- Queen write tools:** `edit_file`, `run_tests`, and `delete_file`
+   tools let the Queen make direct codebase modifications without spawning
+   colonies. (`queen_tools.py`, `caste_recipes.yaml`)
+4. **Track 4 -- Negative signal extraction:** Anti-pattern and bug knowledge
+   entries receive a status bonus during retrieval scoring, ensuring negative
+   signals (what NOT to do) surface alongside positive patterns.
+5. **Track 5 -- Edit proposal cards + parallel result cards + failure retry:**
+   UI gains editable proposal cards, parallel result aggregation cards, and
+   failure retry buttons for re-dispatching failed colonies.
+   (`proposal-card.ts`, `queen-chat.ts`)
+6. **Track 6 -- Operator knowledge CRUD:** Full create/edit/delete lifecycle
+   for knowledge entries via REST API and UI. Operators can directly author
+   and curate the knowledge base. (`routes/api.py`, frontend components)
+7. **Track 7 -- Operator workflow step CRUD:** `WorkflowStepUpdated` event
+   (66th event type) enables step creation, editing, reordering, and deletion
+   via REST and UI. Steps are no longer immutable after creation.
+   (`core/events.py`, `routes/api.py`)
+8. **Track 8 -- Project context seeding:** `.formicos/project_context.md`
+   files are auto-detected and injected into colony context, giving operators
+   a persistent, file-based channel for project-specific instructions.
+
+Event union: 65 -> 66 (+WorkflowStepUpdated).
+Queen tools: 27 -> 30 (+edit_file, +run_tests, +delete_file).
+3486 tests passing. CI: ruff clean, imports clean, pyright unchanged.
+
+## Previous: Wave 62 -- The Working Queen
+
+Seven tracks: retrieval correctness, outcome-informed proposals, Queen direct
+work tools, three-stage intent classification, cloud routing for planning,
+stall-based escalation proposals, and registry refactor.
+
+1. **Track 1 -- Retrieval correctness (3 bugs):** Over-fetch multiplier
+   increased from 2x to 4x for composite re-ranking (`knowledge_catalog.py`).
+   Round-aware knowledge re-fetch using previous round summary as context hint
+   (`colony_manager.py`). Stricter 0.60 similarity threshold for untagged
+   entries in domain filter (`context.py`).
+2. **Track 1.5 -- Outcome-informed proposals:** `outcome_stats()` method on
+   projections aggregates colony outcomes by (strategy, caste_mix).
+   `propose_plan` now includes empirical basis section citing success rates,
+   avg rounds, and avg cost from prior colonies. (`projections.py`,
+   `queen_tools.py`)
+3. **Track 2 -- Queen direct work tools:** `search_codebase` (grep with regex
+   fallback) and `run_command` (allowlisted shell commands: git, pytest, ruff,
+   ls, cat, etc.) let the Queen answer codebase questions without spawning
+   colonies. Security: command allowlist, metacharacter blocking, no
+   shell=True. (`queen_tools.py`, `caste_recipes.yaml`)
+4. **Track 3 -- Three-stage intent classification:** Queen system prompt
+   rewritten to 3-stage flowchart (CLASSIFY -> CAN YOU ANSWER DIRECTLY ->
+   IS THIS COLONY WORK). Intent parser gains `_DIRECT_WORK_RE` category.
+   DIRECT_WORK is the preferred action mode; SPAWN is the escalation path.
+   (`caste_recipes.yaml`, `queen_intent_parser.py`)
+5. **Track 4 -- Cloud routing for planning:** `queen_planning_model` workspace
+   config routes `propose_plan` follow-up LLM calls to a cloud model. Opt-in
+   only, default stays local. (`queen_runtime.py`)
+6. **Track 5 -- Stall-based escalation proposals:** When a colony stalls (0
+   productive tool calls over multiple rounds), emits
+   `ColonyChatMessage(event_kind="escalation_proposal")` suggesting cloud
+   retry. Proposal only -- operator decides. (`colony_manager.py`)
+7. **Track 6 -- Registry refactor (Addon Phase 0):** `QueenToolDispatcher`
+   dispatch replaced 23-branch if/elif chain with `_handlers` dict registry.
+   `formicos-app.ts` `renderView()` replaced switch with `_viewRegistry`
+   component map. Net-negative LOC. (`queen_tools.py`, `formicos-app.ts`)
+
+Queen tools: 25 -> 27 (+search_codebase, +run_command). 15 new tests.
+24 files changed, +1680 / -302 lines.
+
+## Previous: Wave 61 -- Queen Deliberation + Operator Visibility
+
+Five tracks: deliberation mode, proposal cards, analytical tools, workspace
+browser, and budget panel.
+
+1. **Track 1 -- Deliberation mode:** `propose_plan` tool with runtime-computed
+   cost estimates. Safety net in `queen_runtime.py` intercepts spawn calls when
+   operator message matches `_DELIBERATION_RE`, rewrites to propose_plan.
+   (`queen_tools.py`, `queen_runtime.py`, `queen_intent_parser.py`,
+   `caste_recipes.yaml`)
+2. **Track 2 -- Proposal card UI:** `<fc-proposal-card>` component with "Go
+   ahead" / "Let me adjust" actions. `queen-chat.ts` renders on
+   `render="proposal_card"`. (`proposal-card.ts`, `queen-chat.ts`, `types.ts`)
+3. **Track 3 -- Analytical tools:** `query_outcomes` (colony outcomes with
+   filtering/sorting), `analyze_colony` (deep single-colony analysis),
+   `query_briefing` (proactive intelligence drill-down). (`queen_tools.py`,
+   `caste_recipes.yaml`)
+4. **Track 4 -- Workspace browser:** `<fc-workspace-browser>` component with
+   file tree. Workspace tab in nav. Colony detail gains "Files Changed"
+   section. (`workspace-browser.ts`, `formicos-app.ts`, `colony-detail.ts`)
+5. **Track 5 -- Budget panel:** `GET /api/v1/workspaces/{id}/budget` endpoint.
+   `<fc-budget-panel>` with per-model spend breakdown and utilization bar.
+   (`routes/api.py`, `budget-panel.ts`, `queen-overview.ts`)
+
+Queen tools: 21 -> 25 (+propose_plan, +query_outcomes, +analyze_colony,
++query_briefing). 20 new tests.
+
+## Previous: Wave 60.5 -- UX Cockpit Pass + Reasoning Token Accounting
+
+Seven UX tracks plus reasoning/cache token pipeline:
+
+1. **Queen deliberation mode** — Two-pass intent parser (regex + Gemini) gains
+   DELIBERATE category. Queen system prompt enforces deliberation-first, no
+   skip-preview escape hatch. (`queen_intent_parser.py`, `caste_recipes.yaml`)
+2. **Dashboard-first layout** — Chat rail collapsed by default with FAB toggle.
+   Dashboard is the landing surface. (`formicos-app.ts`, `queen-overview.ts`)
+3. **Colony artifact viewer** — Artifacts tab on colony detail, lazy-fetched
+   from existing REST endpoint. (`colony-detail.ts`)
+4. **Resource grid overhaul** — API Spend, Local Compute, Per-Provider
+   breakdown cards replace single-metric cards. (`queen-overview.ts`)
+5. **Settings editor** — Governance settings editable (strategy, max rounds,
+   budget, convergence, autonomy) with save to config-overrides. (`settings-view.ts`)
+6. **Provider recognition fix** — `providerOf()` expanded from 2 to 8 providers.
+   Model registry grouped by provider with collapsible sections. (`helpers.ts`,
+   `model-registry.ts`)
+7. **Model registry update** — 51 active entries across 9 providers (OpenAI,
+   Anthropic, Gemini, DeepSeek, MiniMax, Mistral, Groq, Ollama, llama-cpp)
+   with verified March 2026 pricing. (`formicos.yaml`)
+
+**Reasoning/cache token pipeline** — `reasoning_tokens` and `cache_read_tokens`
+fields added through the full stack: LLMResponse → TokensConsumed event →
+runner accumulation → BudgetSnapshot projections → REST API → dashboard.
+Covers OpenAI o-series/GPT-5.4, DeepSeek reasoner, Gemini thinking, Anthropic
+cache reads. All default=0, replay-safe.
+
+## Previous: Wave 59.5 -- Knowledge Graph Bridge + Progressive Disclosure Fix
 
 Three parallel teams: (1) entry-node bridge linking memory entries to KG
 nodes via `emit_and_broadcast()`, (2) graph-augmented retrieval with 7-signal
@@ -14,15 +266,6 @@ composite scoring (`graph_proximity` at 0.06 weight), (3) auto-inject top-1
 full content (~200 tokens) to fix Phase 1 v1's 0 `knowledge_detail` calls.
 Phase 1 v2 validates the full stack: curating archivist + graph retrieval +
 multi-provider routing. Event union stays at 65.
-
-## Planning: Wave 60 -- The Final Wave
-
-Eight tracks in three tiers. Tier 1: knowledge pipeline completion
-(temporal queries, semantic gate on REFINE, graph relationships API).
-Tier 2: platform coherence (cost truth, operator feedback loop, Thompson
-ablation). Tier 3: visibility (HumanEval benchmark, GitHub launch prep).
-~135 lines engine code + ~100 lines eval infra + docs/packaging. After
-this wave, the project needs users, not code.
 
 ---
 

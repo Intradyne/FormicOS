@@ -58,8 +58,8 @@ curl http://localhost:6333/collections
 
 ## Architecture
 
-Current repo state: the core event contract is a closed 62-event union.
-Wave 44 added 4 forager events (58 → 62).
+Current repo state: the core event contract is a closed 69-event union.
+Wave 64 added addon system events (66 -> 69).
 
 Four layers with strict inward dependency, enforced by CI:
 
@@ -73,10 +73,10 @@ Four layers with strict inward dependency, enforced by CI:
   Core      types, events, ports       imports nothing
 ```
 
-- **Core** — closed 62-event Pydantic union, shared types, CRDTs, ports, and knowledge/federation contracts
-- **Engine** — colony execution, context assembly, tool loop, stigmergic + sequential strategies
-- **Adapters** — SQLite event store, Qdrant-backed knowledge search, knowledge graph adapter, federation transport, sandbox, and LLM bindings
-- **Surface** — Starlette app, MCP/HTTP/WS/AG-UI/A2A surfaces, Queen runtime/tools, projections, maintenance services, and operator wiring
+- **Core** — closed 69-event Pydantic union, shared types, CRDTs, ports, and knowledge/federation contracts
+- **Engine** — colony execution, context assembly, tool loop, stigmergic + sequential strategies, optimistic file locking
+- **Adapters** — SQLite event store, Qdrant-backed knowledge search, knowledge graph adapter, federation transport, sandbox, multi-provider LLM bindings (OpenAI-compatible, Anthropic, Gemini) with per-endpoint concurrency
+- **Surface** — Starlette app, MCP/HTTP/WS/AG-UI/A2A surfaces, Queen runtime/tools (36 built-in), projections, maintenance services, addon loader, trigger dispatch, and operator wiring
 
 The frontend is a Lit component shell driven by WebSocket state snapshots, promoted events, and replay-safe projections.
 
@@ -100,10 +100,14 @@ Persistence is event-sourced: a single SQLite file is the source of truth. On st
 
 FormicOS currently ships with:
 
-- [x] Event-sourced persistence with replay-safe projections and a closed 62-event contract
+- [x] Event-sourced persistence with replay-safe projections and a closed 69-event contract
 - [x] Unified knowledge system with Bayesian confidence, gamma decay, co-occurrence, thread scoping, transcript harvest, outcome-weighted reinforcement, admission scoring, and bi-temporal surfacing
 - [x] Proactive intelligence, maintenance policies, deterministic self-maintenance services, and configuration recommendations grounded in outcome history
 - [x] Queen parallel planning via `spawn_parallel`, workflow threads/steps, operator directives, and colony audit surfaces
+- [x] Queen autonomous agency: 36 built-in tools including batch_command, summarize_thread, draft_document, retry_colony, and MCP-aware chaining guidance
+- [x] Addon system: YAML manifest discovery, tool/handler/trigger registration, 4 built-in addons (codebase-index, git-control, proactive-intelligence, hello-world)
+- [x] Multi-provider parallel execution: per-endpoint adapter factory, per-model concurrency control, heuristic cloud routing, optimistic file locking for concurrent agents
+- [x] Reasoning and cache token accounting through the full pipeline (adapters to dashboard)
 - [x] Federated knowledge exchange via Computational CRDTs, Bayesian peer trust hardening, and truthful A2A / Agent Card protocol surfaces
 - [x] Local-first inference plus cloud fallback, sandboxed code execution, NemoClaw-compatible external specialists, and operator steering
 - [x] Unified operator surfaces for colonies, knowledge, workflow, explainable retrieval, and local-first knowledge overlays
@@ -155,8 +159,10 @@ cd frontend && npm run build
 | [docs/contracts/](docs/contracts/) | Frozen interface definitions (events, ports, types) |
 | [docs/specs/](docs/specs/) | Executable specifications and regression scenarios |
 | [docs/waves/PROGRESS.md](docs/waves/PROGRESS.md) | Development progress log |
+| [addons/README.md](addons/README.md) | Addon development guide |
+| [FINDINGS.md](FINDINGS.md) | What 59 waves of measurement proved |
 | [frontend/CHANGELOG.md](frontend/CHANGELOG.md) | Frontend component inventory and bundle stats |
 
 ## License
 
-MIT
+AGPLv3 with a small-business and educational exception. See [LICENSE](LICENSE) for details.

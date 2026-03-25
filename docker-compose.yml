@@ -118,6 +118,8 @@ services:
       - "8080:8080"
     volumes:
       - formicos-data:/data
+      # Wave 60.5: Aider polyglot benchmark exercises (read-only)
+      - C:/Users/User/polyglot-benchmark:/benchmark:ro
       # Wave 43: No raw Docker socket mount. Use the socket proxy instead.
       # To bypass the proxy (dev only), uncomment the line below and remove
       # DOCKER_HOST, then remove the docker-proxy service dependency.

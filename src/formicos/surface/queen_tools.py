@@ -11,6 +11,10 @@ import asyncio
 import contextlib
 import hashlib
 import os
+import re as _re
+import shlex
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -156,6 +160,50 @@ class QueenToolDispatcher:
         self._nudge_cooldowns: dict[str, float] = (
             nudge_cooldowns if nudge_cooldowns is not None else {}
         )
+        # Wave 64 Track 6a: addon-registered tool specs (appended to Queen tool list)
+        self._addon_tool_specs: list[dict[str, Any]] = []
+        # Wave 62 Track 6: dict-based dispatch registry
+        # Each handler is wrapped to accept (inputs, workspace_id, thread_id).
+        self._handlers: dict[str, Callable[..., Any]] = {
+            "spawn_colony": self._spawn_colony,
+            "spawn_parallel": self._spawn_parallel,
+            "kill_colony": self._handle_kill_colony,
+            "get_status": lambda i, w, t: self._get_status(i, w),
+            "list_templates": lambda i, w, t: self._list_templates(),
+            "inspect_template": lambda i, w, t: self._inspect_template(i),
+            "inspect_colony": lambda i, w, t: self._inspect_colony(i),
+            "read_workspace_files": lambda i, w, t: self._read_workspace_files(i, w),
+            "suggest_config_change": lambda i, w, t: self._suggest_config_change(i, t),
+            "approve_config_change": self._approve_config_change,
+            "redirect_colony": self._redirect_colony,
+            "escalate_colony": lambda i, w, t: self._escalate_colony(i),
+            "read_colony_output": lambda i, w, t: self._read_colony_output(i),
+            "memory_search": self._memory_search,
+            "write_workspace_file": lambda i, w, t: self._write_workspace_file(i, w),
+            "queen_note": self._queen_note,
+            "set_thread_goal": self._handle_set_thread_goal,
+            "complete_thread": self._handle_complete_thread,
+            "query_service": self._handle_query_service,
+            "propose_plan": lambda i, w, t: self._propose_plan(i, w),
+            "query_outcomes": lambda i, w, t: self._query_outcomes(i, w),
+            "analyze_colony": lambda i, w, t: self._analyze_colony(i),
+            "query_briefing": lambda i, w, t: self._query_briefing(i, w),
+            "search_codebase": lambda i, w, t: self._search_codebase(i, w),
+            "run_command": lambda i, w, t: self._run_command(i, w),
+            # Wave 63 Track 3: write tools
+            "edit_file": lambda i, w, t: self._edit_file(i, w),
+            "run_tests": lambda i, w, t: self._run_tests(i, w),
+            "delete_file": lambda i, w, t: self._delete_file(i, w),
+            # Wave 64 Track 3: retry failed colony
+            "retry_colony": self._retry_colony,
+            # Wave 65 Track 5: autonomous agency tools
+            "batch_command": lambda i, w, t: self._batch_command(i, w),
+            "summarize_thread": lambda i, w, t: self._summarize_thread(i, w, t),
+            "draft_document": lambda i, w, t: self._draft_document(i, w),
+            "list_addons": lambda i, w, t: self._list_addons(),
+            # Wave 65 Track 4: manual addon trigger
+            "trigger_addon": lambda i, w, t: self._trigger_addon(i),
+        }
 
     def _find_colony(self, colony_id: str) -> Any:
         """Look up a colony by ID, falling back to display_name substring match."""
@@ -806,6 +854,486 @@ class QueenToolDispatcher:
                     "required": ["steps"],
                 },
             },
+            {
+                "name": "propose_plan",
+                "description": (
+                    "Present a proposed plan to the operator before executing. "
+                    "Use this as your DEFAULT first response for any non-trivial task. "
+                    "The operator reviews and confirms before resources are committed."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "One-line summary of the proposed approach.",
+                        },
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "colonies": {
+                                        "type": "integer",
+                                        "description": "Number of colonies needed.",
+                                    },
+                                },
+                                "required": ["label", "description"],
+                            },
+                            "description": "1-4 options the operator can choose from.",
+                        },
+                        "questions": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Clarifying questions for the operator.",
+                        },
+                        "recommendation": {
+                            "type": "string",
+                            "description": "Which option you recommend and why.",
+                        },
+                    },
+                    "required": ["summary"],
+                },
+            },
+            # Wave 61 Track 3: analytical tools
+            {
+                "name": "query_outcomes",
+                "description": (
+                    "Query colony outcomes to analyze performance patterns. "
+                    "Use to compare strategies, identify failure patterns, "
+                    "or assess model effectiveness."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "description": (
+                                "Time window: 1d, 7d, 30d. Default: 7d"
+                            ),
+                            "default": "7d",
+                        },
+                        "strategy": {
+                            "type": "string",
+                            "description": (
+                                "Filter by strategy (stigmergic, sequential)"
+                            ),
+                        },
+                        "succeeded": {
+                            "type": "boolean",
+                            "description": "Filter by success/failure",
+                        },
+                        "sort_by": {
+                            "type": "string",
+                            "description": (
+                                "Sort field: cost, quality, rounds, duration. "
+                                "Default: quality"
+                            ),
+                            "default": "quality",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results. Default: 10",
+                            "default": 10,
+                        },
+                    },
+                },
+            },
+            {
+                "name": "analyze_colony",
+                "description": (
+                    "Deep analysis of a colony's execution: quality trends, "
+                    "tool usage, cost breakdown, knowledge impact. Use after "
+                    "completion to understand what happened."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "colony_id": {
+                            "type": "string",
+                            "description": "Colony ID to analyze",
+                        },
+                        "include_rounds": {
+                            "type": "boolean",
+                            "description": "Show per-round progression",
+                            "default": True,
+                        },
+                        "include_tools": {
+                            "type": "boolean",
+                            "description": "Show tool call summary",
+                            "default": True,
+                        },
+                        "include_knowledge": {
+                            "type": "boolean",
+                            "description": "Show knowledge impact",
+                            "default": True,
+                        },
+                    },
+                    "required": ["colony_id"],
+                },
+            },
+            {
+                "name": "query_briefing",
+                "description": (
+                    "Query proactive intelligence insights with filters. "
+                    "Goes deeper than the automatic briefing summary."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "description": (
+                                "Filter: knowledge_health, performance, "
+                                "learning, evaporation, all. Default: all"
+                            ),
+                            "default": "all",
+                        },
+                        "rule": {
+                            "type": "string",
+                            "description": (
+                                "Specific rule name "
+                                "(e.g., contradiction, cost_outlier)"
+                            ),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max insights to return. Default: 10",
+                            "default": 10,
+                        },
+                        "include_suggested_colonies": {
+                            "type": "boolean",
+                            "description": (
+                                "Include auto-dispatch colony configs"
+                            ),
+                            "default": False,
+                        },
+                    },
+                },
+            },
+            # Wave 62 Track 2: Queen direct work tools
+            {
+                "name": "search_codebase",
+                "description": (
+                    "Search the workspace codebase for text patterns. "
+                    "Returns matching lines with file paths and line numbers. "
+                    "Use this to find definitions, usages, or patterns "
+                    "without spawning a colony."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search text or regex pattern",
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Subdirectory to search within (relative to "
+                                "workspace). Default: entire workspace"
+                            ),
+                        },
+                        "regex": {
+                            "type": "boolean",
+                            "description": "Treat query as regex. Default: false",
+                            "default": False,
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Max matching lines. Default: 20, max: 50",
+                            "default": 20,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "run_command",
+                "description": (
+                    "Run an allowlisted shell command in the workspace. "
+                    "Use for git status, test results, linting, and other "
+                    "read-only operations. Allowed: git (status/diff/log/"
+                    "blame/show/branch), pytest, ruff check, ls, cat, "
+                    "head, tail, wc, find."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": (
+                                "Command to run. Must start with an "
+                                "allowlisted program."
+                            ),
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": (
+                                "Timeout in seconds. Default: 30, max: 60"
+                            ),
+                            "default": 30,
+                        },
+                    },
+                    "required": ["command"],
+                },
+            },
+            # Wave 63 Track 3: Queen write tools
+            {
+                "name": "edit_file",
+                "description": (
+                    "Propose a file edit. Shows a diff to the operator for "
+                    "approval before applying. Use for small fixes, typos, "
+                    "or config changes that don't need a full colony."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Workspace-relative file path to edit"
+                            ),
+                        },
+                        "old_text": {
+                            "type": "string",
+                            "description": "Exact text to find and replace",
+                        },
+                        "new_text": {
+                            "type": "string",
+                            "description": "Replacement text",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Why this change is needed",
+                        },
+                    },
+                    "required": ["path", "old_text", "new_text"],
+                },
+            },
+            {
+                "name": "run_tests",
+                "description": (
+                    "Run pytest and return structured results (pass/fail "
+                    "counts, error summary). Use to verify changes or "
+                    "check project health."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": (
+                                "Test file or pattern. Default: run all tests"
+                            ),
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": (
+                                "Max seconds. Default: 120, max: 300"
+                            ),
+                            "default": 120,
+                        },
+                    },
+                },
+            },
+            {
+                "name": "delete_file",
+                "description": (
+                    "Propose deleting a workspace file. Requires operator "
+                    "approval. The file is backed up before deletion."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Workspace-relative file path to delete"
+                            ),
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": (
+                                "Why this file should be deleted"
+                            ),
+                        },
+                    },
+                    "required": ["path"],
+                },
+            },
+            # Wave 64 Track 3: retry failed colony with different settings
+            {
+                "name": "retry_colony",
+                "description": (
+                    "Retry a failed colony with different settings. "
+                    "Copies the original task, adds failure context, "
+                    "and optionally switches model or strategy."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "colony_id": {
+                            "type": "string",
+                            "description": "The failed colony to retry",
+                        },
+                        "model_override": {
+                            "type": "string",
+                            "description": (
+                                "Model address for the retry "
+                                "(e.g., openai/gpt-4o)"
+                            ),
+                        },
+                        "strategy_override": {
+                            "type": "string",
+                            "description": (
+                                "Strategy: sequential or stigmergic"
+                            ),
+                            "enum": ["sequential", "stigmergic"],
+                        },
+                        "additional_context": {
+                            "type": "string",
+                            "description": (
+                                "Extra guidance based on failure analysis"
+                            ),
+                        },
+                    },
+                    "required": ["colony_id"],
+                },
+            },
+            # Wave 65 Track 5: autonomous agency tools
+            {
+                "name": "batch_command",
+                "description": (
+                    "Run multiple allowlisted commands in sequence and "
+                    "return aggregated results. Use for multi-step checks "
+                    "like 'test + lint + git status' in one call."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "commands": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Commands to run. Each must pass the "
+                                "same allowlist as run_command."
+                            ),
+                        },
+                        "stop_on_error": {
+                            "type": "boolean",
+                            "description": (
+                                "Stop on first non-zero exit. "
+                                "Default: true"
+                            ),
+                            "default": True,
+                        },
+                    },
+                    "required": ["commands"],
+                },
+            },
+            {
+                "name": "summarize_thread",
+                "description": (
+                    "Produce a structured summary of a thread's history: "
+                    "goal, colony outcomes, knowledge extracted, total "
+                    "cost, timeline. Useful for changelogs, PR "
+                    "descriptions, and progress reports."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "thread_id": {
+                            "type": "string",
+                            "description": "Thread to summarize.",
+                        },
+                        "detail_level": {
+                            "type": "string",
+                            "description": (
+                                "'brief' or 'full'. Default: brief"
+                            ),
+                            "enum": ["brief", "full"],
+                            "default": "brief",
+                        },
+                    },
+                    "required": ["thread_id"],
+                },
+            },
+            {
+                "name": "draft_document",
+                "description": (
+                    "Write a structured document to the workspace. "
+                    "Supports overwrite, prepend (e.g. changelog), and "
+                    "append modes."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Workspace-relative file path."
+                            ),
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Document content to write.",
+                        },
+                        "mode": {
+                            "type": "string",
+                            "description": (
+                                "'overwrite', 'prepend', or 'append'. "
+                                "Default: overwrite"
+                            ),
+                            "enum": ["overwrite", "prepend", "append"],
+                            "default": "overwrite",
+                        },
+                    },
+                    "required": ["path", "content"],
+                },
+            },
+            {
+                "name": "list_addons",
+                "description": (
+                    "List installed addons with their tools, handlers, "
+                    "and version. Shows the full addon capability "
+                    "surface."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            # Wave 65 Track 4: manually fire addon triggers
+            {
+                "name": "trigger_addon",
+                "description": (
+                    "Manually fire an addon's trigger (e.g., reindex "
+                    "codebase, refresh briefing cache). Use list_addons "
+                    "to discover available triggers."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "addon_name": {
+                            "type": "string",
+                            "description": "Addon to trigger.",
+                        },
+                        "handler": {
+                            "type": "string",
+                            "description": (
+                                "Handler reference from the addon manifest "
+                                "(e.g., 'indexer.py::full_reindex')."
+                            ),
+                        },
+                    },
+                    "required": ["addon_name", "handler"],
+                },
+            },
+            # Wave 64 Track 6a: addon-registered tools appended dynamically
+            *self._addon_tool_specs,
         ]
 
     # ------------------------------------------------------------------ #
@@ -832,117 +1360,14 @@ class QueenToolDispatcher:
             if name in ("archive_thread", "define_workflow_steps"):
                 return DELEGATE_THREAD  # type: ignore[return-value]
 
-            if name == "spawn_colony":
-                return await self._spawn_colony(inputs, workspace_id, thread_id)
-
-            if name == "spawn_parallel":
-                return await self._spawn_parallel(inputs, workspace_id, thread_id)
-
-            if name == "kill_colony":
-                colony_id = inputs.get("colony_id", "")
-                if not colony_id:
-                    return ("Error: colony_id is required", None)
-                await self._runtime.kill_colony(colony_id)
-                return (
-                    f"Colony {colony_id} killed.",
-                    {"tool": "kill_colony", "colony_id": colony_id},
-                )
-
-            if name == "get_status":
-                return self._get_status(inputs, workspace_id)
-
-            if name == "list_templates":
-                return await self._list_templates()
-
-            if name == "inspect_template":
-                return await self._inspect_template(inputs)
-
-            if name == "inspect_colony":
-                return self._inspect_colony(inputs)
-
-            if name == "read_workspace_files":
-                return self._read_workspace_files(inputs, workspace_id)
-
-            if name == "suggest_config_change":
-                return self._suggest_config_change(inputs, thread_id)
-
-            if name == "approve_config_change":
-                return await self._approve_config_change(
-                    inputs, workspace_id, thread_id,
-                )
-
-            if name == "redirect_colony":
-                return await self._redirect_colony(
-                    inputs, workspace_id, thread_id,
-                )
-
-            if name == "escalate_colony":
-                return await self._escalate_colony(inputs)
-
-            if name == "read_colony_output":
-                return self._read_colony_output(inputs)
-
-            if name == "memory_search":
-                return await self._memory_search(inputs, workspace_id, thread_id)
-
-            if name == "write_workspace_file":
-                return self._write_workspace_file(inputs, workspace_id)
-
-            if name == "queen_note":
-                return await self._queen_note(inputs, workspace_id, thread_id)
-
-            # Wave 29: thread management + service tools
-            if name == "set_thread_goal":
-                goal = inputs.get("goal", "")
-                expected = inputs.get("expected_outputs", [])
-                if not goal:
-                    return ("Error: goal is required.", None)
-                await self._runtime.emit_and_broadcast(ThreadGoalSet(
-                    seq=0, timestamp=_now(),
-                    address=f"{workspace_id}/{thread_id}",
-                    workspace_id=workspace_id, thread_id=thread_id,
-                    goal=goal, expected_outputs=expected,
-                ))
-                return (f"Thread goal set: {goal}", None)
-
-            if name == "complete_thread":
-                reason = inputs.get("reason", "")
-                ws = self._runtime.projections.workspaces.get(workspace_id)
-                old_status = "active"
-                if ws is not None:
-                    thread = ws.threads.get(thread_id)
-                    if thread is not None:
-                        old_status = thread.status
-                await self._runtime.emit_and_broadcast(ThreadStatusChanged(
-                    seq=0, timestamp=_now(),
-                    address=f"{workspace_id}/{thread_id}",
-                    workspace_id=workspace_id, thread_id=thread_id,
-                    old_status=old_status, new_status="completed", reason=reason,
-                ))
-                return (f"Thread completed: {reason}", None)
-
-            if name == "query_service":
-                stype = inputs.get("service_type", "")
-                query_text = inputs.get("query", "")
-                timeout = min(inputs.get("timeout", 30), 60)
-                if not stype or not query_text:
-                    return ("Error: service_type and query are required.", None)
-                cm = self._runtime.colony_manager
-                if cm is None:
-                    return ("Error: service routing not available.", None)
-                router = cm.service_router
-                try:
-                    result = await router.query(
-                        service_type=stype, query_text=query_text,
-                        sender_colony_id=None, timeout_s=float(timeout),
-                    )
-                    return (result, None)
-                except ValueError as exc:
-                    return (f"Error: {exc}", None)
-                except TimeoutError as exc:
-                    return (f"Error: {exc}", None)
-
-            return (f"Unknown tool: {name}", None)
+            # Wave 62 Track 6: dict-based dispatch registry
+            handler = self._handlers.get(name)
+            if handler is None:
+                return (f"Unknown tool: {name}", None)
+            result = handler(inputs, workspace_id, thread_id)
+            if hasattr(result, "__await__"):
+                return await result
+            return result
         except Exception as exc:
             log.exception("queen.tool_error", tool=name)
             return (f"Tool {name} failed: {exc}", None)
@@ -950,6 +1375,88 @@ class QueenToolDispatcher:
     # ------------------------------------------------------------------ #
     # Tool handlers                                                       #
     # ------------------------------------------------------------------ #
+
+    # Wave 62: extracted inline handlers for registry dispatch
+
+    async def _handle_kill_colony(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        colony_id = inputs.get("colony_id", "")
+        if not colony_id:
+            return ("Error: colony_id is required", None)
+        await self._runtime.kill_colony(colony_id)
+        return (
+            f"Colony {colony_id} killed.",
+            {"tool": "kill_colony", "colony_id": colony_id},
+        )
+
+    async def _handle_set_thread_goal(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        goal = inputs.get("goal", "")
+        expected = inputs.get("expected_outputs", [])
+        if not goal:
+            return ("Error: goal is required.", None)
+        await self._runtime.emit_and_broadcast(ThreadGoalSet(
+            seq=0, timestamp=_now(),
+            address=f"{workspace_id}/{thread_id}",
+            workspace_id=workspace_id, thread_id=thread_id,
+            goal=goal, expected_outputs=expected,
+        ))
+        return (f"Thread goal set: {goal}", None)
+
+    async def _handle_complete_thread(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        reason = inputs.get("reason", "")
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        old_status = "active"
+        if ws is not None:
+            thread = ws.threads.get(thread_id)
+            if thread is not None:
+                old_status = thread.status
+        await self._runtime.emit_and_broadcast(ThreadStatusChanged(
+            seq=0, timestamp=_now(),
+            address=f"{workspace_id}/{thread_id}",
+            workspace_id=workspace_id, thread_id=thread_id,
+            old_status=old_status, new_status="completed", reason=reason,
+        ))
+        return (f"Thread completed: {reason}", None)
+
+    async def _handle_query_service(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        stype = inputs.get("service_type", "")
+        query_text = inputs.get("query", "")
+        timeout = min(inputs.get("timeout", 30), 60)
+        if not stype or not query_text:
+            return ("Error: service_type and query are required.", None)
+        cm = self._runtime.colony_manager
+        if cm is None:
+            return ("Error: service routing not available.", None)
+        router = cm.service_router
+        try:
+            result = await router.query(
+                service_type=stype, query_text=query_text,
+                sender_colony_id=None, timeout_s=float(timeout),
+            )
+            return (result, None)
+        except ValueError as exc:
+            return (f"Error: {exc}", None)
+        except TimeoutError as exc:
+            return (f"Error: {exc}", None)
 
     async def _spawn_colony(
         self,
@@ -1372,6 +1879,15 @@ class QueenToolDispatcher:
                 f"Group {group_idx + 1}/{len(plan.parallel_groups)}: "
                 f"spawned {', '.join(group_colonies)}"
             )
+
+        # Wave 63 Track 2: register colonies for parallel aggregation
+        if all_colony_ids:
+            queen = getattr(self._runtime, "queen", None)
+            if queen is not None:
+                import uuid  # noqa: PLC0415
+
+                plan_id = f"plan-{workspace_id[:8]}-{thread_id[:8]}-{uuid.uuid4().hex[:8]}"
+                queen.register_parallel_plan(plan_id, all_colony_ids)
 
         result_msg = "\n".join(result_lines)
         return (
@@ -1834,6 +2350,91 @@ class QueenToolDispatcher:
             },
         )
 
+    async def _retry_colony(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Wave 64 Track 3: retry a failed colony with different settings.
+
+        Spawns a standalone colony — does NOT re-register into the
+        original parallel plan's DAG.
+        """
+        colony_id = inputs.get("colony_id", "")
+        if not colony_id:
+            return ("Error: colony_id is required.", None)
+
+        colony = self._find_colony(colony_id)
+        if colony is None:
+            return (f"Colony '{colony_id}' not found.", None)
+        if colony.status not in ("completed", "failed", "stalled"):
+            return (
+                f"Colony {colony_id} is {colony.status}. "
+                "retry_colony is for completed/failed/stalled colonies.",
+                None,
+            )
+
+        model_override = inputs.get("model_override", "")
+        strategy_override = inputs.get("strategy_override", "")
+        additional_context = inputs.get("additional_context", "")
+
+        # Build retry task from original colony data
+        original_task = getattr(colony, "task", "") or ""
+        original_castes = (
+            list(colony.castes) if hasattr(colony, "castes") else []
+        )
+        original_strategy = (
+            colony.strategy if hasattr(colony, "strategy") else "sequential"
+        )
+        failure_reason = (
+            getattr(colony, "failure_reason", "")
+            or f"status={colony.status}"
+        )
+
+        # Compose retry context
+        context_parts = [
+            f"Previous attempt failed: {failure_reason}.",
+        ]
+        if additional_context:
+            context_parts.append(additional_context)
+        context_parts.append(f"\nOriginal task:\n{original_task}")
+        retry_task = "\n".join(context_parts)
+
+        strategy = strategy_override or original_strategy
+
+        # Build spawn inputs for single colony
+        spawn_inputs: dict[str, Any] = {
+            "task": retry_task,
+            "workspace_id": workspace_id,
+            "strategy": strategy,
+        }
+        if original_castes:
+            spawn_inputs["castes"] = original_castes
+        if model_override:
+            spawn_inputs["routing_override"] = model_override
+
+        result, action = await self._spawn_colony(
+            spawn_inputs, workspace_id, thread_id,
+        )
+
+        retry_action: dict[str, Any] = {
+            "tool": "retry_colony",
+            "original_colony_id": colony_id,
+            "model_override": model_override or None,
+            "strategy_override": strategy_override or None,
+        }
+        if action:
+            retry_action.update(action)
+
+        return (
+            f"Retrying colony {colony_id} with "
+            f"{'model ' + model_override if model_override else 'same model'}"
+            f"{', strategy ' + strategy if strategy_override else ''}.\n"
+            f"{result}",
+            retry_action,
+        )
+
     def _read_colony_output(
         self, inputs: dict[str, Any],
     ) -> tuple[str, dict[str, Any] | None]:
@@ -2112,6 +2713,323 @@ class QueenToolDispatcher:
 
         return (f"Error: unknown action '{action}'. Use 'save' or 'list'.", None)
 
+    # ------------------------------------------------------------------ #
+    # Wave 61 Track 3: analytical tool handlers                            #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _parse_period(period_str: str) -> timedelta:
+        """Parse a period string like '7d' into a timedelta."""
+        period_str = period_str.strip().lower()
+        if period_str.endswith("d"):
+            with contextlib.suppress(ValueError):
+                return timedelta(days=int(period_str[:-1]))
+        return timedelta(days=7)
+
+    def _query_outcomes(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Query colony outcomes with filters and sorting."""
+        period = self._parse_period(str(inputs.get("period", "7d")))
+        strategy_filter = inputs.get("strategy")
+        succeeded_filter = inputs.get("succeeded")
+        sort_by = str(inputs.get("sort_by", "quality"))
+        limit = max(1, min(int(inputs.get("limit", 10)), 50))
+
+        cutoff = datetime.now(tz=UTC) - period
+        all_outcomes = self._runtime.projections.colony_outcomes
+
+        # Filter outcomes by workspace and period
+        filtered: list[Any] = []
+        for outcome in all_outcomes.values():
+            if outcome.workspace_id != workspace_id:
+                continue
+            # Use colony's completed_at for time filtering
+            colony = self._runtime.projections.get_colony(outcome.colony_id)
+            if colony and colony.completed_at:
+                try:
+                    completed = datetime.fromisoformat(colony.completed_at)
+                    if completed < cutoff:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            # Apply filters
+            if strategy_filter and outcome.strategy != strategy_filter:
+                continue
+            if succeeded_filter is not None and outcome.succeeded != succeeded_filter:
+                continue
+            filtered.append(outcome)
+
+        if not filtered:
+            return ("No outcomes found matching filters.", None)
+
+        # Sort
+        sort_keys = {
+            "cost": lambda o: o.total_cost,
+            "quality": lambda o: o.quality_score,
+            "rounds": lambda o: o.total_rounds,
+            "duration": lambda o: o.duration_ms,
+        }
+        key_fn = sort_keys.get(sort_by, sort_keys["quality"])
+        filtered.sort(key=key_fn, reverse=(sort_by == "quality"))
+        filtered = filtered[:limit]
+
+        # Format table
+        lines = [
+            f"Colony Outcomes ({len(filtered)} results, period={inputs.get('period', '7d')}):",
+            "",
+            (
+                f"{'Colony':<20} {'Task':<60} {'OK':>3} "
+                f"{'Rnd':>4} {'Qual':>5} {'Cost':>8} "
+                f"{'Strategy':<11} {'Entries':>7}"
+            ),
+            "-" * 130,
+        ]
+        total_cost = 0.0
+        total_quality = 0.0
+        success_count = 0
+        for o in filtered:
+            colony = self._runtime.projections.get_colony(o.colony_id)
+            name = (colony.display_name if colony and colony.display_name else o.colony_id)[:20]
+            task = (colony.task if colony else "")[:60]
+            ok = "Y" if o.succeeded else "N"
+            lines.append(
+                f"{name:<20} {task:<60} {ok:>3} {o.total_rounds:>4} "
+                f"{o.quality_score:>5.2f} ${o.total_cost:>7.4f} "
+                f"{o.strategy:<11} {o.entries_extracted:>7}",
+            )
+            total_cost += o.total_cost
+            total_quality += o.quality_score
+            if o.succeeded:
+                success_count += 1
+
+        n = len(filtered)
+        lines.append("")
+        lines.append(
+            f"Aggregates: avg_quality={total_quality / n:.2f}, "
+            f"success_rate={success_count}/{n} ({100 * success_count / n:.0f}%), "
+            f"total_cost=${total_cost:.4f}",
+        )
+        return ("\n".join(lines), None)
+
+    def _analyze_colony(
+        self,
+        inputs: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Deep analysis of a single colony's execution."""
+        colony_id = inputs.get("colony_id", "")
+        if not colony_id:
+            return ("Error: colony_id is required.", None)
+
+        colony = self._find_colony(colony_id)
+        if colony is None:
+            return (f"Colony '{colony_id}' not found.", None)
+
+        include_rounds = bool(inputs.get("include_rounds", True))
+        include_tools = bool(inputs.get("include_tools", True))
+        include_knowledge = bool(inputs.get("include_knowledge", True))
+
+        outcome = self._runtime.projections.colony_outcomes.get(colony.id)
+
+        # Header
+        name = colony.display_name or colony.id
+        castes_str = ", ".join(
+            sorted({a.caste for a in colony.agents.values()}),
+        )
+        parts = [
+            f"=== Colony Analysis: {name} ===",
+            f"Status: {colony.status}",
+            f"Task: {colony.task[:300]}",
+            f"Strategy: {colony.strategy}",
+            f"Team: {castes_str or 'none'}",
+        ]
+        if outcome:
+            parts.append(
+                f"Result: {'succeeded' if outcome.succeeded else 'failed'} "
+                f"| {outcome.total_rounds} rounds "
+                f"| quality {outcome.quality_score:.2f} "
+                f"| duration {outcome.duration_ms}ms",
+            )
+
+        # Per-round progression
+        if include_rounds and colony.round_records:
+            parts.append("")
+            parts.append("--- Round Progression ---")
+            for rnd in colony.round_records:
+                parts.append(
+                    f"  Round {rnd.round_number}: "
+                    f"cost=${rnd.cost:.4f}, "
+                    f"convergence={rnd.convergence:.2f}",
+                )
+                for aid, output in rnd.agent_outputs.items():
+                    agent = colony.agents.get(aid)
+                    caste = agent.caste if agent else "unknown"
+                    parts.append(f"    {caste}: {output[:200]}")
+
+        # Tool call summary
+        if include_tools and colony.round_records:
+            tool_counts: dict[str, int] = {}
+            for rnd in colony.round_records:
+                for _aid, calls in rnd.tool_calls.items():
+                    for call in calls:
+                        tool_name = call if isinstance(call, str) else str(call)
+                        tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+            if tool_counts:
+                parts.append("")
+                parts.append("--- Tool Usage ---")
+                for tname, count in sorted(
+                    tool_counts.items(), key=lambda x: x[1], reverse=True,
+                ):
+                    parts.append(f"  {tname}: {count}")
+
+        # Knowledge impact
+        if include_knowledge:
+            parts.append("")
+            parts.append("--- Knowledge Impact ---")
+            if colony.knowledge_accesses:
+                parts.append(f"  Entries accessed: {len(colony.knowledge_accesses)}")
+                for acc in colony.knowledge_accesses[:10]:
+                    title = acc.get("title", acc.get("entry_id", "unknown"))
+                    parts.append(f"    - {title}")
+            else:
+                parts.append("  No knowledge accessed.")
+            parts.append(f"  Entries extracted: {colony.entries_extracted_count}")
+
+        # Cost breakdown
+        parts.append("")
+        parts.append("--- Cost Breakdown ---")
+        budget = colony.budget_truth
+        if budget.model_usage:
+            parts.append(f"  Total: ${budget.total_cost:.4f}")
+            for model, usage in sorted(budget.model_usage.items()):
+                model_cost = usage.get("cost", 0.0)
+                in_tok = int(usage.get("input_tokens", 0))
+                out_tok = int(usage.get("output_tokens", 0))
+                parts.append(
+                    f"  {model}: ${model_cost:.4f} "
+                    f"({in_tok} in / {out_tok} out)",
+                )
+        else:
+            parts.append(f"  Total: ${colony.cost:.4f} (no per-model breakdown)")
+
+        # Error info
+        if colony.failure_reason:
+            parts.append("")
+            parts.append("--- Failure Info ---")
+            parts.append(f"  Reason: {colony.failure_reason}")
+            if colony.failed_at_round is not None:
+                parts.append(f"  Failed at round: {colony.failed_at_round}")
+        if colony.killed_by:
+            parts.append("")
+            parts.append("--- Kill Info ---")
+            parts.append(f"  Killed by: {colony.killed_by}")
+            if colony.killed_at_round is not None:
+                parts.append(f"  Killed at round: {colony.killed_at_round}")
+
+        return ("\n".join(parts), None)
+
+    def _query_briefing(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Query proactive intelligence insights with filters."""
+        from formicos.surface.proactive_intelligence import generate_briefing
+
+        category_filter = str(inputs.get("category", "all"))
+        rule_filter = inputs.get("rule")
+        limit = max(1, min(int(inputs.get("limit", 10)), 50))
+        include_suggested = bool(inputs.get("include_suggested_colonies", False))
+
+        briefing = generate_briefing(
+            workspace_id=workspace_id,
+            projections=self._runtime.projections,
+        )
+
+        insights = briefing.insights
+
+        # Category mapping for grouping
+        knowledge_health_categories = {
+            "confidence", "contradiction", "federation",
+            "coverage", "staleness", "merge", "inbound",
+        }
+        performance_categories = {
+            "strategy_efficiency", "diminishing_rounds",
+            "cost_outlier", "knowledge_roi",
+        }
+
+        if category_filter != "all":
+            if category_filter == "knowledge_health":
+                insights = [
+                    i for i in insights
+                    if i.category in knowledge_health_categories
+                ]
+            elif category_filter == "performance":
+                insights = [
+                    i for i in insights
+                    if i.category in performance_categories
+                ]
+            elif category_filter == "evaporation":
+                insights = [
+                    i for i in insights if i.category == "evaporation"
+                ]
+            elif category_filter == "learning":
+                insights = [
+                    i for i in insights
+                    if i.category in (
+                        "earned_autonomy", "template_health",
+                        "outcome_digest", "popular_unexamined",
+                    )
+                ]
+            else:
+                insights = [
+                    i for i in insights if i.category == category_filter
+                ]
+
+        if rule_filter:
+            insights = [
+                i for i in insights if rule_filter in i.category
+            ]
+
+        insights = insights[:limit]
+
+        if not insights:
+            return (
+                f"No insights found (category={category_filter}"
+                + (f", rule={rule_filter}" if rule_filter else "")
+                + f"). Total entries: {briefing.total_entries}.",
+                None,
+            )
+
+        parts = [
+            f"Proactive Intelligence ({len(insights)} insights, "
+            f"{briefing.total_entries} entries):",
+            "",
+        ]
+        for idx, insight in enumerate(insights, 1):
+            parts.append(
+                f"{idx}. [{insight.severity.upper()}] {insight.category}: "
+                f"{insight.title}",
+            )
+            parts.append(f"   {insight.detail}")
+            if insight.suggested_action:
+                parts.append(f"   Action: {insight.suggested_action}")
+            if insight.affected_entries:
+                parts.append(
+                    f"   Affected: {', '.join(insight.affected_entries[:5])}",
+                )
+            if include_suggested and insight.suggested_colony:
+                sc = insight.suggested_colony
+                parts.append(
+                    f"   Suggested colony: {sc.caste} / {sc.strategy} "
+                    f"/ {sc.max_rounds} rounds — {sc.task[:100]}",
+                )
+            parts.append("")
+
+        return ("\n".join(parts), None)
+
     def _resolve_current_value(self, param_path: str) -> str:
         """Traverse live config to find the current value for a dot-path."""
         parts = param_path.split(".")
@@ -2133,6 +3051,805 @@ class QueenToolDispatcher:
             if val is not None:
                 return str(val)
         return "(unknown)"
+
+
+    def _propose_plan(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Handle propose_plan tool — present a plan for operator review."""
+        summary = inputs.get("summary", "")
+        if not summary:
+            return ("Error: summary is required for propose_plan", None)
+
+        options: list[dict[str, Any]] = inputs.get("options", [])
+        questions: list[str] = inputs.get("questions", [])
+        recommendation: str = inputs.get("recommendation", "")
+
+        # Estimate cost for options that specify colony counts
+        max_rounds = self._runtime.settings.governance.max_rounds_per_colony
+        est_rounds = max(1, max_rounds // 2)
+        est_tokens_per_round = 4000
+
+        # Look up default coder model cost rates
+        coder_model_name = self._runtime.settings.models.defaults.coder
+        cost_per_output = 0.0
+        for rec in self._runtime.settings.models.registry:
+            if rec.address == coder_model_name:
+                cost_per_output = rec.cost_per_output_token or 0.0
+                break
+
+        enriched_options: list[dict[str, Any]] = []
+        for opt in options:
+            enriched = dict(opt)
+            colonies = opt.get("colonies")
+            if colonies is not None and isinstance(colonies, int):
+                if cost_per_output > 0.0:
+                    est = colonies * est_rounds * est_tokens_per_round * cost_per_output
+                    enriched["estimated_cost"] = f"${est:.2f}"
+                else:
+                    enriched["estimated_cost"] = "local (free)"
+            enriched_options.append(enriched)
+
+        # Build formatted response text
+        lines = [f"## Proposed Plan\n\n{summary}"]
+
+        if enriched_options:
+            lines.append("\n### Options")
+            for i, opt in enumerate(enriched_options, 1):
+                label = opt.get("label", f"Option {i}")
+                desc = opt.get("description", "")
+                line = f"\n**{label}:** {desc}"
+                if opt.get("colonies") is not None:
+                    line += f" ({opt['colonies']} colonies)"
+                if opt.get("estimated_cost"):
+                    line += f" — est. {opt['estimated_cost']}"
+                lines.append(line)
+
+        if recommendation:
+            lines.append(f"\n### Recommendation\n{recommendation}")
+
+        if questions:
+            lines.append("\n### Questions")
+            for q in questions:
+                lines.append(f"- {q}")
+
+        # Wave 64 Track 3: provider-aware planning — show available
+        # providers per caste with cost estimates
+        provider_lines: list[str] = []
+        by_caste: dict[str, list[str]] = {}
+        for rec in self._runtime.settings.models.registry:
+            if rec.status in ("unavailable", "error"):
+                continue
+            # Derive caste affinity from defaults
+            for caste_name in ("coder", "reviewer", "researcher"):
+                default_addr = getattr(
+                    self._runtime.settings.models.defaults,
+                    caste_name, "",
+                )
+                if rec.address == default_addr:
+                    cost_label = (
+                        f"${rec.cost_per_output_token:.6f}/tok"
+                        if rec.cost_per_output_token
+                        else "local"
+                    )
+                    by_caste.setdefault(caste_name, []).append(
+                        f"{rec.address} ({cost_label})"
+                    )
+        if by_caste:
+            provider_lines.append("\n### Available Providers")
+            for caste_name, models in sorted(by_caste.items()):
+                provider_lines.append(
+                    f"- **{caste_name}**: {', '.join(models)}"
+                )
+            lines.extend(provider_lines)
+
+        # Wave 62 Track 1.5: enrich proposal with empirical outcome data
+        stats = self._runtime.projections.outcome_stats(workspace_id)
+        if stats:
+            lines.append("\n### Empirical Basis (from prior colonies)")
+            for s in sorted(stats, key=lambda x: -x["success_rate"])[:5]:
+                lines.append(
+                    f"- {s['strategy']} / {s['caste_mix']}: "
+                    f"{s['success_rate']:.0%} success rate, "
+                    f"{s['avg_rounds']:.1f} avg rounds, "
+                    f"${s['avg_cost']:.2f} avg cost "
+                    f"({s['total']} colonies)"
+                )
+
+        lines.append("\n*Awaiting your confirmation before proceeding.*")
+        result_text = "\n".join(lines)
+
+        # Build proposal metadata for the action dict
+        proposal: dict[str, Any] = {
+            "summary": summary,
+            "options": enriched_options,
+            "questions": questions,
+            "recommendation": recommendation,
+        }
+        action: dict[str, Any] = {
+            "tool": "propose_plan",
+            "render": "proposal_card",
+            "proposal": proposal,
+        }
+        return (result_text, action)
+
+    # ------------------------------------------------------------------ #
+    # Wave 62 Track 2: Queen direct work tools                            #
+    # ------------------------------------------------------------------ #
+
+    # Shell metacharacters that are never allowed in run_command
+    _SHELL_METACHAR_RE = _re.compile(r"[|><;&`$(){}]")
+
+    # Command allowlist for run_command
+    _CMD_ALLOWLIST: dict[str, set[str] | bool] = {
+        "git": {"status", "diff", "log", "blame", "show", "branch"},
+        "pytest": True,
+        "ruff": {"check"},
+        "python": {"-m"},
+        "ls": True,
+        "cat": True,
+        "head": True,
+        "tail": True,
+        "wc": True,
+        "find": True,
+    }
+
+    async def _search_codebase(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Search the workspace codebase with grep."""
+        query = inputs.get("query", "").strip()
+        if not query:
+            return ("Error: query is required.", None)
+        sub_path = inputs.get("path", "")
+        use_regex = inputs.get("regex", False)
+        max_results = min(int(inputs.get("max_results", 20)), 50)
+
+        # Determine search root
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        search_root: Path | None = None
+        if ws is not None:
+            ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+            if ws_dir:
+                search_root = Path(str(ws_dir))
+        # Fallback: workspace files directory
+        if search_root is None or not search_root.exists():
+            data_dir = getattr(self._runtime, "data_dir", None)
+            if data_dir:
+                search_root = Path(str(data_dir)) / "workspaces" / workspace_id / "files"
+        if search_root is None or not search_root.exists():
+            return ("Error: workspace directory not found.", None)
+
+        if sub_path:
+            search_root = search_root / sub_path
+            if not search_root.exists():
+                return (f"Error: path '{sub_path}' not found.", None)
+
+        # Try grep (available in python:3.12-slim Docker image)
+        grep_args = ["grep", "-rn", "--color=never", "--max-count=5"]
+        if not use_regex:
+            grep_args.append("-F")  # fixed-string mode
+        grep_args.extend(["--include=*.py", "--include=*.ts", "--include=*.yaml",
+                          "--include=*.yml", "--include=*.json", "--include=*.md",
+                          "--include=*.toml", "--include=*.txt", "--include=*.cfg"])
+        grep_args.extend([query, str(search_root)])
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *grep_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+            output = stdout.decode("utf-8", errors="replace")
+        except FileNotFoundError:
+            # grep not available — Python fallback
+            output = self._search_codebase_fallback(
+                query, search_root, use_regex, max_results,
+            )
+        except TimeoutError:
+            return ("Error: search timed out after 10 seconds.", None)
+
+        if not output.strip():
+            return (f"No matches found for '{query}'.", None)
+
+        # Truncate to max_results lines and output limit
+        lines = output.strip().split("\n")
+        if len(lines) > max_results:
+            lines = lines[:max_results]
+            lines.append(f"... (truncated, showing {max_results} of many matches)")
+        result = "\n".join(lines)
+        if len(result) > self._OUTPUT_TRUNCATE:
+            result = result[:self._OUTPUT_TRUNCATE] + "\n... (truncated)"
+
+        # Make paths relative to search root for readability
+        root_str = str(search_root)
+        result = result.replace(root_str + os.sep, "")
+        result = result.replace(root_str + "/", "")
+
+        return (result, None)
+
+    @staticmethod
+    def _search_codebase_fallback(
+        query: str,
+        root: Path,
+        use_regex: bool,
+        max_results: int,
+    ) -> str:
+        """Pure-Python fallback when grep is not available."""
+        pattern = _re.compile(query if use_regex else _re.escape(query))
+        matches: list[str] = []
+        exts = {".py", ".ts", ".yaml", ".yml", ".json", ".md", ".toml", ".txt"}
+        for p in root.rglob("*"):
+            if p.suffix not in exts or not p.is_file():
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for i, line in enumerate(text.split("\n"), 1):
+                if pattern.search(line):
+                    rel = p.relative_to(root)
+                    matches.append(f"{rel}:{i}:{line.rstrip()}")
+                    if len(matches) >= max_results:
+                        return "\n".join(matches)
+        return "\n".join(matches)
+
+    async def _run_command(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Run an allowlisted shell command."""
+        command_str = inputs.get("command", "").strip()
+        if not command_str:
+            return ("Error: command is required.", None)
+        timeout = min(int(inputs.get("timeout", 30)), 60)
+
+        # Block shell metacharacters
+        if self._SHELL_METACHAR_RE.search(command_str):
+            return (
+                "Error: shell metacharacters (|, >, <, ;, &, `, $) "
+                "are not allowed.",
+                None,
+            )
+
+        # Parse into tokens
+        try:
+            tokens = shlex.split(command_str)
+        except ValueError as exc:
+            return (f"Error: invalid command syntax: {exc}", None)
+        if not tokens:
+            return ("Error: empty command.", None)
+
+        program = tokens[0]
+        allowed = self._CMD_ALLOWLIST.get(program)
+        if allowed is None:
+            return (
+                f"Error: '{program}' is not in the allowlist. "
+                f"Allowed: {', '.join(sorted(self._CMD_ALLOWLIST))}",
+                None,
+            )
+
+        # For commands with sub-command restrictions, check the sub-command
+        if isinstance(allowed, set) and len(tokens) > 1:
+            subcmd = tokens[1]
+            if subcmd not in allowed:
+                return (
+                    f"Error: '{program} {subcmd}' is not allowed. "
+                    f"Allowed sub-commands: {', '.join(sorted(allowed))}",
+                    None,
+                )
+
+        # Determine working directory
+        cwd: str | None = None
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if ws is not None:
+            ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+            if ws_dir and Path(str(ws_dir)).exists():
+                cwd = str(ws_dir)
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *tokens,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout,
+            )
+        except FileNotFoundError:
+            return (f"Error: '{program}' not found on PATH.", None)
+        except TimeoutError:
+            return (
+                f"Error: command timed out after {timeout} seconds.",
+                None,
+            )
+
+        out = stdout.decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
+
+        parts: list[str] = [f"Exit code: {proc.returncode}"]
+        if out.strip():
+            if len(out) > self._OUTPUT_TRUNCATE:
+                out = out[:self._OUTPUT_TRUNCATE] + "\n... (truncated)"
+            parts.append(f"stdout:\n{out}")
+        if err.strip():
+            if len(err) > 1000:
+                err = err[:1000] + "\n... (truncated)"
+            parts.append(f"stderr:\n{err}")
+        if not out.strip() and not err.strip():
+            parts.append("(no output)")
+
+        return ("\n".join(parts), None)
+
+
+    # ------------------------------------------------------------------ #
+    # Wave 63 Track 3: Queen write tools                                   #
+    # ------------------------------------------------------------------ #
+
+    _EDIT_MAX_FILE_BYTES = 100 * 1024  # 100 KB
+
+    def _resolve_workspace_path(
+        self, workspace_id: str, rel_path: str,
+    ) -> tuple[Path | None, str]:
+        """Resolve workspace-relative path. Returns (abs_path, error) or (path, "")."""
+        if not rel_path:
+            return (None, "Error: path is required.")
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        ws_dir = None
+        if ws is not None:
+            ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+        if not ws_dir:
+            data_dir = self._runtime.settings.system.data_dir
+            ws_dir = str(Path(data_dir) / "workspaces" / workspace_id / "files")
+
+        root = Path(str(ws_dir)).resolve()
+        target = (root / rel_path).resolve()
+        # Path traversal check
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return (None, "Error: path is outside the workspace root.")
+        return (target, "")
+
+    def _edit_file(
+        self, inputs: dict[str, Any], workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Propose a file edit — returns diff preview for operator approval."""
+        path_str = inputs.get("path", "")
+        old_text = inputs.get("old_text", "")
+        new_text = inputs.get("new_text", "")
+        reason = inputs.get("reason", "")
+
+        if not old_text or not new_text:
+            return ("Error: old_text and new_text are required.", None)
+        if old_text == new_text:
+            return ("Error: old_text and new_text are identical.", None)
+
+        target, err = self._resolve_workspace_path(workspace_id, path_str)
+        if target is None:
+            return (err, None)
+        if not target.exists():
+            return (f"Error: file not found: {path_str}", None)
+        if not target.is_file():
+            return (f"Error: not a file: {path_str}", None)
+
+        # Reject binary/large files
+        try:
+            content_bytes = target.read_bytes()
+        except OSError as exc:
+            return (f"Error reading file: {exc}", None)
+        if len(content_bytes) > self._EDIT_MAX_FILE_BYTES:
+            return (
+                f"Error: file too large ({len(content_bytes):,} bytes). "
+                f"Max: {self._EDIT_MAX_FILE_BYTES:,} bytes.",
+                None,
+            )
+        if b"\x00" in content_bytes[:4096]:
+            return ("Error: binary files cannot be edited.", None)
+
+        content = content_bytes.decode("utf-8", errors="replace")
+        if old_text not in content:
+            return ("Error: old_text not found in file.", None)
+
+        # Build diff preview
+        new_content = content.replace(old_text, new_text, 1)
+        import difflib  # noqa: PLC0415
+        diff_lines = list(difflib.unified_diff(
+            content.splitlines(keepends=True),
+            new_content.splitlines(keepends=True),
+            fromfile=f"a/{path_str}",
+            tofile=f"b/{path_str}",
+            lineterm="",
+        ))
+        diff_text = "\n".join(diff_lines[:100])  # cap diff display
+
+        meta: dict[str, Any] = {
+            "tool": "edit_file",
+            "preview": True,
+            "path": path_str,
+            "diff": diff_text,
+            "old_text": old_text,
+            "new_text": new_text,
+            "reason": reason,
+        }
+        summary = (
+            f"Proposed edit to `{path_str}`:\n```diff\n{diff_text}\n```"
+        )
+        if reason:
+            summary += f"\nReason: {reason}"
+        summary += "\nReply 'apply' to confirm or 'reject' to cancel."
+
+        return (summary, meta)
+
+    async def _run_tests(
+        self, inputs: dict[str, Any], workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Run pytest and return structured results."""
+        pattern = inputs.get("pattern", "")
+        timeout = min(int(inputs.get("timeout", 120)), 300)
+
+        # Determine working directory
+        cwd: str | None = None
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if ws is not None:
+            ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+            if ws_dir and Path(str(ws_dir)).exists():
+                cwd = str(ws_dir)
+
+        import sys  # noqa: PLC0415
+        cmd = [sys.executable, "-m", "pytest", "-q", "--tb=short"]
+        if pattern:
+            cmd.append(pattern)
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout,
+            )
+        except FileNotFoundError:
+            return ("Error: python/pytest not found on PATH.", None)
+        except TimeoutError:
+            return (f"Error: tests timed out after {timeout} seconds.", None)
+
+        out = stdout.decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
+
+        # Truncate output
+        if len(out) > 2000:
+            out = out[:2000] + "\n...(truncated)"
+
+        # Parse summary line (e.g., "3 passed, 1 failed in 2.5s")
+        parts: list[str] = [f"Exit code: {proc.returncode}"]
+        parts.append(out)
+        if err.strip():
+            if len(err) > 500:
+                err = err[:500] + "\n...(truncated)"
+            parts.append(f"stderr:\n{err}")
+
+        return ("\n".join(parts), {"tool": "run_tests", "exit_code": proc.returncode})
+
+    def _delete_file(
+        self, inputs: dict[str, Any], workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Propose deleting a file — returns confirmation request."""
+        path_str = inputs.get("path", "")
+        reason = inputs.get("reason", "")
+
+        target, err = self._resolve_workspace_path(workspace_id, path_str)
+        if target is None:
+            return (err, None)
+        if not target.exists():
+            return (f"Error: file not found: {path_str}", None)
+
+        # Get file size for context
+        try:
+            size = target.stat().st_size
+        except OSError:
+            size = 0
+
+        meta: dict[str, Any] = {
+            "tool": "delete_file",
+            "preview": True,
+            "path": path_str,
+            "size": size,
+            "reason": reason,
+        }
+        summary = f"Proposed deletion of `{path_str}` ({size:,} bytes)."
+        if reason:
+            summary += f"\nReason: {reason}"
+        summary += "\nReply 'apply' or 'confirm' to proceed, or 'reject' to cancel."
+
+        return (summary, meta)
+
+
+    # ------------------------------------------------------------------ #
+    # Wave 65 Track 5: Autonomous agency tools                             #
+    # ------------------------------------------------------------------ #
+
+    async def _batch_command(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Run multiple allowlisted commands in sequence."""
+        commands = inputs.get("commands", [])
+        if not commands or not isinstance(commands, list):
+            return ("Error: commands must be a non-empty list.", None)
+        if len(commands) > 10:
+            return ("Error: max 10 commands per batch.", None)
+        stop_on_error = inputs.get("stop_on_error", True)
+
+        results: list[str] = []
+        for i, cmd in enumerate(commands, 1):
+            result_text, _ = await self._run_command(
+                {"command": cmd, "timeout": 30}, workspace_id,
+            )
+            results.append(f"[{i}/{len(commands)}] {cmd}\n{result_text}")
+            # Check for error exit code in the result
+            if stop_on_error and "Exit code:" in result_text:
+                code_line = [
+                    ln for ln in result_text.splitlines()
+                    if ln.startswith("Exit code:")
+                ]
+                if code_line:
+                    try:
+                        code = int(code_line[0].split(":")[1].strip())
+                        if code != 0:
+                            results.append(
+                                f"(stopped: command {i} exited with {code})"
+                            )
+                            break
+                    except (ValueError, IndexError):
+                        pass
+            # Also stop on validation errors from run_command
+            if stop_on_error and result_text.startswith("Error:"):
+                results.append(f"(stopped: command {i} failed validation)")
+                break
+
+        return ("\n\n".join(results), {"tool": "batch_command"})
+
+    def _summarize_thread(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Produce a structured summary of a thread's history."""
+        target_thread_id = inputs.get("thread_id", thread_id)
+        detail = inputs.get("detail_level", "brief")
+
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return ("Error: workspace not found.", None)
+
+        thread = ws.threads.get(target_thread_id)
+        if thread is None:
+            return (f"Thread '{target_thread_id}' not found.", None)
+
+        parts: list[str] = [
+            f"# Thread: {thread.name or thread.id}",
+            f"Status: {thread.status}",
+        ]
+        if thread.goal:
+            parts.append(f"Goal: {thread.goal}")
+
+        # Colony summary
+        total_cost = 0.0
+        total_rounds = 0
+        colony_lines: list[str] = []
+        for cid, colony in thread.colonies.items():
+            total_cost += colony.cost
+            total_rounds += colony.round_number
+            status_icon = (
+                "ok" if colony.status == "completed" else colony.status
+            )
+            line = (
+                f"- {colony.display_name or cid}: "
+                f"{status_icon}, {colony.round_number} rounds, "
+                f"${colony.cost:.3f}"
+            )
+            if detail == "full":
+                line += f", quality={colony.quality_score:.2f}"
+                if colony.castes:
+                    line += f", team={colony.castes}"
+            colony_lines.append(line)
+
+        parts.append(f"\n## Colonies ({len(thread.colonies)})")
+        parts.append(
+            f"Completed: {thread.completed_colony_count}, "
+            f"Failed: {thread.failed_colony_count}"
+        )
+        if colony_lines:
+            parts.extend(colony_lines)
+
+        parts.append("\n## Totals")
+        parts.append(f"Cost: ${total_cost:.3f}")
+        parts.append(f"Rounds: {total_rounds}")
+
+        # Knowledge extracted
+        total_skills = sum(
+            c.skills_extracted for c in thread.colonies.values()
+        )
+        if total_skills:
+            parts.append(f"Knowledge entries extracted: {total_skills}")
+
+        # Workflow steps
+        if thread.workflow_steps:
+            parts.append(f"\n## Workflow Steps ({len(thread.workflow_steps)})")
+            for step in thread.workflow_steps:
+                s_status = step.get("status", "pending")
+                s_desc = step.get("description", "")[:80]
+                parts.append(f"- [{s_status}] {s_desc}")
+
+        # Active plan
+        if thread.active_plan and detail == "full":
+            plan = thread.active_plan
+            parts.append("\n## Active Plan")
+            parts.append(
+                f"Tasks: {len(plan.get('tasks', []))}, "
+                f"Groups: {len(plan.get('parallel_groups', []))}"
+            )
+
+        return ("\n".join(parts), None)
+
+    def _draft_document(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Write a structured document to the workspace."""
+        rel_path = inputs.get("path", "")
+        content = inputs.get("content", "")
+        mode = inputs.get("mode", "overwrite")
+
+        if not rel_path or not content:
+            return ("Error: path and content are required.", None)
+        if mode not in ("overwrite", "prepend", "append"):
+            return ("Error: mode must be overwrite, prepend, or append.", None)
+
+        # Resolve workspace directory
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return ("Error: workspace not found.", None)
+        ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+        if not ws_dir:
+            return ("Error: workspace has no directory.", None)
+
+        target = Path(str(ws_dir)) / rel_path
+        # Security: prevent path traversal
+        try:
+            target.resolve().relative_to(Path(str(ws_dir)).resolve())
+        except ValueError:
+            return ("Error: path traversal not allowed.", None)
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        if mode == "overwrite":
+            target.write_text(content, encoding="utf-8")
+        elif mode == "prepend":
+            existing = ""
+            if target.exists():
+                existing = target.read_text(encoding="utf-8")
+            target.write_text(content + "\n" + existing, encoding="utf-8")
+        elif mode == "append":
+            existing = ""
+            if target.exists():
+                existing = target.read_text(encoding="utf-8")
+            target.write_text(existing + "\n" + content, encoding="utf-8")
+
+        size = target.stat().st_size
+        return (
+            f"Written {size:,} bytes to {rel_path} (mode={mode}).",
+            {"tool": "draft_document", "path": rel_path, "mode": mode},
+        )
+
+    def _list_addons(self) -> tuple[str, dict[str, Any] | None]:
+        """List installed addons with their tools and handlers."""
+        # Addon tool specs carry the addon metadata
+        addon_tools = self._addon_tool_specs
+        # Handler registry shows all registered handlers (built-in + addon)
+        all_handlers = list(self._handlers.keys())
+
+        # Identify addon handlers (not in the built-in set)
+        addon_handlers = [
+            h for h in all_handlers
+            if h not in {
+                "spawn_colony", "spawn_parallel", "kill_colony",
+                "get_status", "list_templates", "inspect_template",
+                "inspect_colony", "read_workspace_files",
+                "suggest_config_change", "approve_config_change",
+                "redirect_colony", "escalate_colony",
+                "read_colony_output", "memory_search",
+                "write_workspace_file", "queen_note",
+                "set_thread_goal", "complete_thread",
+                "query_service", "propose_plan",
+                "query_outcomes", "analyze_colony",
+                "query_briefing", "search_codebase",
+                "run_command", "edit_file", "run_tests",
+                "delete_file", "retry_colony",
+                "batch_command", "summarize_thread",
+                "draft_document", "list_addons",
+                "trigger_addon",
+                "archive_thread", "define_workflow_steps",
+            }
+        ]
+
+        parts: list[str] = ["# Installed Addons"]
+        if addon_tools:
+            parts.append(f"\n## Addon Tools ({len(addon_tools)})")
+            for spec in addon_tools:
+                name = spec.get("name", "unknown")
+                desc = spec.get("description", "")[:100]
+                parts.append(f"- **{name}**: {desc}")
+        else:
+            parts.append("\nNo addon tools registered.")
+
+        if addon_handlers:
+            parts.append(f"\n## Addon Handlers ({len(addon_handlers)})")
+            for h in addon_handlers:
+                parts.append(f"- {h}")
+
+        parts.append(f"\n## Built-in Tools ({len(all_handlers) - len(addon_handlers)})")
+        parts.append(
+            "Use tool_specs for the full list of built-in tools."
+        )
+
+        return ("\n".join(parts), None)
+
+    async def _trigger_addon(
+        self, inputs: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Manually fire an addon trigger via the TriggerDispatcher."""
+        import inspect as _insp  # noqa: PLC0415
+
+        addon_name = inputs.get("addon_name", "")
+        handler_ref = inputs.get("handler", "")
+
+        if not addon_name or not handler_ref:
+            return ("Error: addon_name and handler are required.", None)
+
+        # Access the trigger dispatcher from the app state
+        app = getattr(self._runtime, "_app", None)
+        trigger_dispatcher = (
+            getattr(app.state, "trigger_dispatcher", None)
+            if app else None
+        )
+
+        # Validate the trigger exists via fire_manual
+        if trigger_dispatcher is not None:
+            result = trigger_dispatcher.fire_manual(addon_name, handler_ref)
+            if result is None:
+                return (f"No manual trigger found: {addon_name}::{handler_ref}", None)
+
+        # Resolve and execute the handler
+        try:
+            from formicos.surface.addon_loader import _resolve_handler  # noqa: PLC0415
+
+            handler_fn = _resolve_handler(addon_name, handler_ref)
+            ctx = getattr(self, "_addon_runtime_context", None)
+            sig = _insp.signature(handler_fn)
+            if "runtime_context" in sig.parameters:
+                await handler_fn(runtime_context=ctx)
+            else:
+                await handler_fn()
+            return (
+                f"Manual trigger fired: {addon_name}::{handler_ref}",
+                {"action": "trigger_addon", "addon": addon_name, "handler": handler_ref},
+            )
+        except Exception as exc:  # noqa: BLE001
+            return (f"Failed to trigger {addon_name}::{handler_ref}: {exc}", None)
 
 
 __all__ = ["DELEGATE_THREAD", "QueenToolDispatcher"]

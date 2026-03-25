@@ -53,8 +53,8 @@ class TestEventUnionSize:
         assert len(annotated_args) >= 1, "Expected Annotated wrapper"
         union_type = annotated_args[0]
         members = get_args(union_type)
-        assert len(members) == 65, (
-            f"Expected 65 event types in the union, got {len(members)}: "
+        assert len(members) == 69, (
+            f"Expected 66 event types in the union, got {len(members)}: "
             f"{[m.__name__ for m in members]}"
         )
 
@@ -83,8 +83,8 @@ class TestEventTypeNamesMatchClasses:
 
         # Extract Literal members from EventTypeName
         type_names = set(get_args(ports_mod.EventTypeName))
-        assert len(type_names) == 65, (
-            f"Expected 65 EventTypeName literals, got {len(type_names)}"
+        assert len(type_names) == 69, (
+            f"Expected 66 EventTypeName literals, got {len(type_names)}"
         )
 
         # Extract class names from the FormicOSEvent union

@@ -221,6 +221,10 @@ class ModelRecord(BaseModel):
         default=1.0,
         description="Multiplier over caste base tool calls per iteration.",
     )
+    max_concurrent: int = Field(
+        default=0,
+        description="Max concurrent requests. 0 = use LLM_SLOTS env var.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +666,10 @@ class ColonyContext(BaseModel):
     operational_playbook: str = Field(
         default="",
         description="Task-class-keyed procedural guidance (Wave 54).",
+    )
+    project_context: str = Field(
+        default="",
+        description="Operator-authored project-specific knowledge (Wave 63).",
     )
     task_class: str = Field(
         default="generic",

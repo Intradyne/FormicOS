@@ -231,6 +231,27 @@ export class FcColonyDetail extends LitElement {
     .redirect-entry .redirect-reason { color: var(--v-fg-dim); font-style: italic; margin-top: 2px; }
     .original-goal { font-size: 11px; color: var(--v-fg-dim); margin-bottom: 6px; }
     .original-goal .label { font-size: 9.5px; font-family: var(--f-mono); color: var(--v-fg-dim); letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; }
+    .files-changed-section { margin-bottom: 14px; }
+    .files-changed-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .files-changed-count {
+      font-size: 9px; font-family: var(--f-mono); padding: 1px 6px; border-radius: 8px;
+      background: rgba(45,212,168,0.1); color: var(--v-success); font-feature-settings: 'tnum';
+    }
+    .files-changed-list { display: flex; flex-direction: column; gap: 0; padding: 8px 12px; }
+    .file-change-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 0;
+      font-size: 11px; font-family: var(--f-mono); color: var(--v-fg-muted);
+      border-bottom: 1px solid var(--v-border);
+    }
+    .file-change-row:last-child { border-bottom: none; }
+    .file-change-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-change-badge {
+      font-size: 8px; font-weight: 600; padding: 1px 6px; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0;
+    }
+    .file-change-badge.created { background: rgba(45,212,168,0.12); color: var(--v-success); }
+    .file-change-badge.modified { background: rgba(245,183,49,0.12); color: var(--v-warn); }
+    .file-change-badge.deleted { background: rgba(240,100,100,0.12); color: var(--v-danger); }
   `];
 
   @property({ type: Object }) colony: Colony | null = null;
@@ -449,6 +470,8 @@ export class FcColonyDetail extends LitElement {
         ${this._outcome ? this._renderOutcome() : nothing}
         ${this._transcript ? this._renderFinalOutput(c) : nothing}
         ${this._transcript?.knowledge_trace ? this._renderKnowledgeTrace(this._transcript.knowledge_trace) : nothing}
+
+        ${this._renderFilesChanged()}
 
         <!-- Wave 39 1A: Colony audit view -->
         <div class="audit-section glass" style="padding:12px;margin-bottom:14px">
@@ -1055,6 +1078,33 @@ export class FcColonyDetail extends LitElement {
     a.href = `/api/v1/colonies/${c.id}/export?${params.toString()}`;
     a.download = `${c.id}-export.zip`;
     a.click();
+  }
+
+  private _renderFilesChanged() {
+    // Derive file changes from artifacts: code artifacts = files created/modified
+    const arts = this._colonyArtifacts.length > 0
+      ? this._colonyArtifacts
+      : (this._transcript?.artifacts ?? []);
+    const codeArtifacts = arts.filter(a => a.artifact_type === 'code');
+    if (codeArtifacts.length === 0) return nothing;
+
+    return html`
+      <div class="files-changed-section">
+        <div class="files-changed-header">
+          <span class="s-label" style="margin-bottom:0">Files Changed</span>
+          <span class="files-changed-count">${codeArtifacts.length}</span>
+        </div>
+        <div class="glass" style="padding:0;overflow:hidden">
+          <div class="files-changed-list">
+            ${codeArtifacts.map(a => html`
+              <div class="file-change-row">
+                <span class="file-change-name" title=${a.name}>${a.name || a.id}</span>
+                <span class="file-change-badge created">created</span>
+                ${a.source_round > 0 ? html`<span style="font-size:9px;color:var(--v-fg-dim)">R${a.source_round}</span>` : nothing}
+              </div>`)}
+          </div>
+        </div>
+      </div>`;
   }
 
   private _renderWorkspaceFiles(c: Colony) {

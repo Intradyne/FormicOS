@@ -465,6 +465,7 @@ async def assemble_context(
     input_sources: list[dict[str, Any]] | None = None,
     knowledge_items: list[dict[str, Any]] | None = None,  # Wave 28
     operational_playbook: str | None = None,  # Wave 54
+    project_context: str | None = None,  # Wave 63
 ) -> ContextResult:
     """Build message list with per-tier budget enforcement.
 
@@ -502,6 +503,14 @@ async def assemble_context(
     if mistakes_block:
         messages.append({"role": "system", "content": mistakes_block})
 
+    # 2.7. Project context (Wave 63) — operator-authored project-specific knowledge
+    if project_context:
+        _pc_text = project_context[:2000]  # cap at ~1200 tokens
+        messages.append({
+            "role": "system",
+            "content": f"# Project Context (operator-authored)\n{_pc_text}",
+        })
+
     # 2a. Structural context (Wave 47) — injected when available
     if colony_context.structural_context:
         struct_text = _truncate(
@@ -538,14 +547,24 @@ async def assemble_context(
     skip_legacy_skills = False
     knowledge_access_items: list[KnowledgeAccessItem] = []
 
-    # Wave 58.5: domain-boundary filter — keep entries whose primary_domain
-    # matches the colony's task_class, or entries with no domain tag / generic.
+    # Wave 58.5 + Wave 62 Bug 3: domain-boundary filter.
+    # Entries matching task_class or "generic" pass through.
+    # Untagged entries (no primary_domain) require a stricter similarity
+    # threshold (0.60) — they must be MORE relevant to get through.
     _task_class = colony_context.task_class
     if knowledge_items and _task_class and _task_class != "generic":
-        knowledge_items = [
-            item for item in knowledge_items
-            if item.get("primary_domain", "") in ("", _task_class, "generic")
-        ]
+        _filtered: list[dict[str, Any]] = []
+        for item in knowledge_items:
+            domain = item.get("primary_domain", "")
+            if domain in (_task_class, "generic"):
+                _filtered.append(item)
+            elif domain == "":
+                # Untagged: require higher similarity to pass
+                sim = float(item.get("similarity", item.get("score", 0.0)))
+                if sim >= 0.60:
+                    _filtered.append(item)
+            # else: wrong domain, drop
+        knowledge_items = _filtered
 
     if knowledge_items and _should_inject_knowledge(round_goal, knowledge_items):
         # Wave 59.5: auto-inject full content for top-1 entry, index-only

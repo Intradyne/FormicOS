@@ -4,6 +4,34 @@ Narrative development history of FormicOS. This is not a commit log — it tells
 
 ---
 
+## Wave 65 — The Operational OS
+
+The addon system became real. Every Wave 64 stub turned into working code: codebase index runs real vector search and reindex, git control runs real git commands with two-phase smart commit and branch analysis, proactive intelligence rules are callable through addon handlers with per-workspace rule enable/disable. The Queen gained five autonomous agency tools — `batch_command`, `summarize_thread`, `draft_document`, `list_addons`, `trigger_addon` — bringing the tool count to 36. Cron triggers fire addon handlers on schedule with proper signature detection. MCP chaining guidance in the Queen system prompt positions addons as persistent intelligence alongside external MCP services. Addon developer documentation shipped.
+
+**Key additions:**
+- Addon runtime context injection (`vector_port`, `embed_fn`, `workspace_root_fn`, `projections`, `runtime`)
+- Real codebase index: semantic search via vector_port, structural chunking, full/incremental reindex with cron
+- Real git control: two-phase smart commit, branch divergence analysis, create branch, stash, forbidden ops safety
+- Trigger wiring: TriggerDispatcher background loop, cron → handler dispatch, `trigger_addon` Queen tool
+- Queen autonomous agency: batch_command, summarize_thread, draft_document, list_addons
+- Proactive intelligence addon handlers with per-workspace rule configuration
+- Addon development guide (addons/README.md) and TEMPLATE scaffold
+- Wave 65.5 polish: porcelain parsing fix, consecutive-arg forbidden ops, cron DOW convention, trigger loop cleanup, parameter schema validation, 36 net new tests
+
+## Wave 64 — Parallel Execution + Addon Infrastructure
+
+The system learned to use multiple LLM providers simultaneously and gained an addon framework. Per-provider adapter factory with endpoint-keyed concurrency, optimistic file locking for concurrent agents, Queen smart fan-out with retry and cloud routing heuristics, and a full addon lifecycle — manifest discovery, handler resolution, component registration, trigger dispatch, and three built-in addons (codebase-index, git-control, proactive-intelligence). Three new events brought the closed union to 69.
+
+**Key additions:**
+- Per-provider concurrency with endpoint-keyed adapter factory
+- Optimistic file locking with content-hash conflict detection
+- Queen retry_colony tool with failure context and model override
+- Heuristic cloud routing (complexity, @cloud tag, propose_plan, token budget, parse failure)
+- Addon loader: manifest parser, handler resolver, component registration, 3 new events (#67-69)
+- Proactive intelligence extraction to addon module (1980 lines)
+- TriggerDispatcher with cron parsing and double-fire prevention
+- Reasoning and cache token accounting through the full pipeline
+
 ## Wave 36 — Colony Intelligence + Demo Path
 
 The system becomes presentable. Colony outcomes surface as replay-derived metrics — success rates, cost, knowledge extraction, quality scores — without new events. The Queen and proactive intelligence consume these signals to inform planning. A guided demo path lets a new visitor create a pre-seeded workspace, watch the Queen plan in parallel, see colonies execute with live DAG visualization, and observe self-maintenance resolve a knowledge contradiction — all in one session.

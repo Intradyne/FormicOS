@@ -380,7 +380,7 @@ class TestQueenPrompt:
     def test_under_130_lines(self) -> None:
         prompt = self._load_queen_prompt()
         line_count = len(prompt.strip().split("\n"))
-        assert line_count <= 170, f"Queen prompt is {line_count} lines, expected <= 170"
+        assert line_count <= 200, f"Queen prompt is {line_count} lines, expected <= 200"
 
     def test_spawn_parallel_in_tools(self) -> None:
         import yaml

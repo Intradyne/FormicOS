@@ -1,8 +1,9 @@
 # Cost Tracking Implementation Reference
 
 Current-state reference for FormicOS cost tracking: how costs are computed,
-accumulated, enforced, and displayed. Code-anchored to Wave 59.5. Includes
-analysis of the local-vs-cloud cost gap and specific remediation suggestions.
+accumulated, enforced, and displayed. Code-anchored to Wave 60.5. Includes
+reasoning/cache token accounting, analysis of the local-vs-cloud cost gap,
+and specific remediation suggestions.
 
 ---
 
@@ -41,13 +42,16 @@ Each LLM adapter extracts token counts from the provider response:
 
 | Adapter | File | Token source | Notes |
 |---------|------|-------------|-------|
-| Anthropic | `adapters/llm_anthropic.py:174-182` | `response.usage.input_tokens`, `output_tokens` | Accurate server-side counts |
-| Gemini | `adapters/llm_gemini.py:249-256` | `usageMetadata.promptTokenCount`, `candidatesTokenCount` | Accurate server-side counts |
-| OpenAI-compatible (llama.cpp) | `adapters/llm_openai_compatible.py:273-274` | `usage.prompt_tokens`, `usage.completion_tokens` | llama.cpp returns these in non-streaming mode; **streaming returns 0** |
+| Anthropic | `adapters/llm_anthropic.py:174-182` | `response.usage.input_tokens`, `output_tokens`, `cache_read_input_tokens` | Accurate server-side counts; cache reads extracted |
+| Gemini | `adapters/llm_gemini.py:249-256` | `usageMetadata.promptTokenCount`, `candidatesTokenCount`, `thoughtsTokenCount`, `cachedContentTokenCount` | Thinking + cache counts extracted |
+| OpenAI-compatible (llama.cpp, OpenAI, DeepSeek, Groq, MiniMax, Mistral) | `adapters/llm_openai_compatible.py:273-274` | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens`, `usage.prompt_tokens_details.cached_tokens` | Reasoning + cache details extracted; llama.cpp **streaming returns 0** |
 
-All adapters return `LLMResponse.input_tokens` and `LLMResponse.output_tokens`
-as integers. The runner accumulates these per-turn at `runner.py:1489`:
-`total_input_tokens += response.input_tokens`.
+All adapters return `LLMResponse` with six integer fields:
+- `input_tokens`, `output_tokens` — always present
+- `reasoning_tokens` — reasoning/thinking tokens, subset of output_tokens (default 0)
+- `cache_read_tokens` — input tokens served from provider cache (default 0)
+
+The runner accumulates all four per-turn at `runner.py:1489-1493`.
 
 ### 2. Cost computation
 
@@ -84,6 +88,7 @@ Two events carry cost data per agent turn:
 
 **TokensConsumed** (`core/events.py:444-452`):
 - `agent_id, model, input_tokens, output_tokens, cost: float`
+- `reasoning_tokens: int = 0`, `cache_read_tokens: int = 0` (Wave 60.5)
 - Cost in USD, emitted at `runner.py:1672-1680`
 
 **RoundCompleted** (`core/events.py:270-282`):
@@ -106,8 +111,10 @@ budget_truth.record_token_spend(e.model, e.input_tokens, e.output_tokens, e.cost
 - `total_cost: float` — USD total across all models
 - `total_input_tokens: int` — aggregate input tokens
 - `total_output_tokens: int` — aggregate output tokens
+- `total_reasoning_tokens: int` — aggregate reasoning/thinking tokens (Wave 60.5)
+- `total_cache_read_tokens: int` — aggregate cache read tokens (Wave 60.5)
 - `model_usage: dict[str, dict]` — per-model breakdown of cost, input_tokens,
-  output_tokens
+  output_tokens, reasoning_tokens, cache_read_tokens
 
 The per-model breakdown is the key asset — it already separates local from
 cloud usage. The aggregation into `total_cost` is where the signal is lost.
@@ -341,7 +348,7 @@ dimension) and can be deferred until local-only workloads need gating.
 | `surface/queen_tools.py:975,1519-1521` | Colony spawn budget_limit, colony info display |
 | `surface/proactive_intelligence.py:652-684` | Cost outlier detection rule |
 | `surface/self_maintenance.py:72-77` | Maintenance daily budget enforcement |
-| `core/events.py:444-452` | TokensConsumed event (model, tokens, cost) |
+| `core/events.py:444-452` | TokensConsumed event (model, tokens, cost, reasoning, cache) |
 | `core/events.py:270-282` | RoundCompleted event (round cost) |
 | `core/types.py:849` | `daily_maintenance_budget` in MaintenancePolicy |
 | `adapters/llm_anthropic.py:174-182` | Anthropic token extraction |

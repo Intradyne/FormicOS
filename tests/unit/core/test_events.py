@@ -9,6 +9,8 @@ import pytest
 from pydantic import ValidationError
 
 from formicos.core.events import (
+    AddonLoaded,
+    AddonUnloaded,
     AgentTurnCompleted,
     AgentTurnStarted,
     ApprovalDenied,
@@ -64,6 +66,7 @@ from formicos.core.events import (
     RoundStarted,
     ServiceQueryResolved,
     ServiceQuerySent,
+    ServiceTriggerFired,
     SkillConfidenceUpdated,
     SkillMerged,
     ThreadCreated,
@@ -73,6 +76,7 @@ from formicos.core.events import (
     TokensConsumed,
     WorkflowStepCompleted,
     WorkflowStepDefined,
+    WorkflowStepUpdated,
     WorkspaceConfigChanged,
     WorkspaceConfigSnapshot,
     WorkspaceCreated,
@@ -389,6 +393,14 @@ SAMPLE_EVENTS: dict[str, object] = {
         success=True,
         artifacts_produced=["code"],
     ),
+    "WorkflowStepUpdated": WorkflowStepUpdated(
+        **ENVELOPE,
+        workspace_id="ws1",
+        thread_id="th1",
+        step_index=0,
+        new_description="Revised step",
+        new_status="in_progress",
+    ),
     "CRDTCounterIncremented": CRDTCounterIncremented(
         **ENVELOPE,
         entry_id="mem-col1-s-0",
@@ -520,6 +532,26 @@ SAMPLE_EVENTS: dict[str, object] = {
         thread_id="thread-1",
         content="Remember to check edge cases",
     ),
+    "AddonLoaded": AddonLoaded(
+        **ENVELOPE,
+        addon_name="test-addon",
+        version="1.0.0",
+        tools=["tool_a"],
+        handlers=["handler_a"],
+        panels=[],
+    ),
+    "AddonUnloaded": AddonUnloaded(
+        **ENVELOPE,
+        addon_name="test-addon",
+        reason="shutdown",
+    ),
+    "ServiceTriggerFired": ServiceTriggerFired(
+        **ENVELOPE,
+        addon_name="test-addon",
+        trigger_type="cron",
+        workspace_id="ws1",
+        details="Scheduled maintenance",
+    ),
 }
 
 
@@ -535,10 +567,10 @@ class TestFormicOSEventUnion:
         annotated_args = get_args(FormicOSEvent)
         union_type = annotated_args[0]
         members = get_args(union_type)
-        assert len(members) == 65, f"Expected 65, got {len(members)}: {members}"
+        assert len(members) == 69, f"Expected 69, got {len(members)}: {members}"
 
     def test_all_sample_events_covered(self) -> None:
-        assert len(SAMPLE_EVENTS) == 65
+        assert len(SAMPLE_EVENTS) == 69
 
 
 # ---------------------------------------------------------------------------

@@ -103,7 +103,7 @@ _ALL_ENVELOPE_FIELDS = {"seq", "type", "timestamp", "address", "trace_id"}
 class TestEventTypeNameParity:
     def test_ts_has_37_event_type_names(self) -> None:
         ts_names = _extract_ts_event_type_names()
-        assert len(ts_names) == 65
+        assert len(ts_names) == 69
 
     def test_same_event_type_names(self) -> None:
         ts_names = set(_extract_ts_event_type_names())
@@ -121,7 +121,7 @@ class TestEventTypeNameParity:
 class TestFormicOSEventUnionParity:
     def test_ts_union_has_37_members(self) -> None:
         ts_members = _extract_ts_formicos_event_union()
-        assert len(ts_members) == 65
+        assert len(ts_members) == 69
 
     def test_ts_union_order_matches_python(self) -> None:
         ts_members = _extract_ts_formicos_event_union()

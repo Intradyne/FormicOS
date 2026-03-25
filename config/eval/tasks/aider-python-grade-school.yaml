@@ -1,0 +1,92 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: grade-school\n\nINSTRUCTIONS:\n\
+  # Instructions\n\nGiven students' names along with the grade that they are in, create a roster for the school.\n\nIn the\
+  \ end, you should be able to:\n\n- Add a student's name to the roster for a grade\n  - \"Add Jim to grade 2.\"\n  - \"OK.\"\
+  \n- Get a list of all students enrolled in a grade\n  - \"Which students are in grade 2?\"\n  - \"We've only got Jim just\
+  \ now.\"\n- Get a sorted list of all students in all grades.\n  Grades should sort as 1, 2, 3, etc., and students within\
+  \ a grade should be sorted alphabetically by name.\n  - \"Who all is enrolled in school right now?\"\n  - \"Let me think.\n\
+  \    We have Anna, Barb, and Charlie in grade 1, Alex, Peter, and Zoe in grade 2 and Jim in grade 5.\n    So the answer\
+  \ is: Anna, Barb, Charlie, Alex, Peter, Zoe and Jim\"\n\nNote that all our students only have one name (It's a small town,\
+  \ what do you want?) and each student cannot be added more than once to a grade or the roster.\nIn fact, when a test attempts\
+  \ to add the same student more than once, your implementation should indicate that this is incorrect.\n\n\n# Instructions\
+  \ append\n\nThe tests for this exercise expect your school roster will be implemented via a School `class` in Python.\n\
+  If you are unfamiliar with classes in Python, [classes][classes in python] from the Python docs is a good place to start.\n\
+  \n[classes in python]: https://docs.python.org/3/tutorial/classes.html\n\nSTARTER CODE:\nFILE: grade_school.py\n```\nclass\
+  \ School:\n    def __init__(self):\n        pass\n\n    def add_student(self, name, grade):\n        pass\n\n    def roster(self):\n\
+  \        pass\n\n    def grade(self, grade_number):\n        pass\n\n    def added(self):\n        pass\n\n```\n\nTEST FILE:\n\
+  FILE: grade_school_test.py\n```\n# These tests are auto-generated with test data from:\n# https://github.com/exercism/problem-specifications/tree/main/exercises/grade-school/canonical-data.json\n\
+  # File last updated on 2023-07-19\n\nimport unittest\n\nfrom grade_school import (\n    School,\n)\n\n\nclass GradeSchoolTest(unittest.TestCase):\n\
+  \    def test_roster_is_empty_when_no_student_is_added(self):\n        school = School()\n        expected = []\n\n    \
+  \    self.assertEqual(school.roster(), expected)\n\n    def test_add_a_student(self):\n        school = School()\n     \
+  \   school.add_student(name=\"Aimee\", grade=2)\n        expected = [True]\n        self.assertEqual(school.added(), expected)\n\
+  \n    def test_student_is_added_to_the_roster(self):\n        school = School()\n        school.add_student(name=\"Aimee\"\
+  , grade=2)\n        expected = [\"Aimee\"]\n\n        self.assertEqual(school.roster(), expected)\n\n    def test_adding_multiple_students_in_the_same_grade_in_the_roster(self):\n\
+  \        school = School()\n        school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\"\
+  , grade=2)\n        school.add_student(name=\"Paul\", grade=2)\n        expected = [True, True, True]\n        self.assertEqual(school.added(),\
+  \ expected)\n\n    def test_multiple_students_in_the_same_grade_are_added_to_the_roster(self):\n        school = School()\n\
+  \        school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\", grade=2)\n        school.add_student(name=\"\
+  Paul\", grade=2)\n        expected = [\"Blair\", \"James\", \"Paul\"]\n\n        self.assertEqual(school.roster(), expected)\n\
+  \n    def test_cannot_add_student_to_same_grade_in_the_roster_more_than_once(self):\n        school = School()\n       \
+  \ school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\", grade=2)\n        school.add_student(name=\"\
+  James\", grade=2)\n        school.add_student(name=\"Paul\", grade=2)\n        expected = [True, True, False, True]\n  \
+  \      self.assertEqual(school.added(), expected)\n\n    def test_student_not_added_to_same_grade_in_the_roster_more_than_once(self):\n\
+  \        school = School()\n        school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\"\
+  , grade=2)\n        school.add_student(name=\"James\", grade=2)\n        school.add_student(name=\"Paul\", grade=2)\n  \
+  \      expected = [\"Blair\", \"James\", \"Paul\"]\n\n        self.assertEqual(school.roster(), expected)\n\n    def test_adding_students_in_multiple_grades(self):\n\
+  \        school = School()\n        school.add_student(name=\"Chelsea\", grade=3)\n        school.add_student(name=\"Logan\"\
+  , grade=7)\n        expected = [True, True]\n        self.assertEqual(school.added(), expected)\n\n    def test_students_in_multiple_grades_are_added_to_the_roster(self):\n\
+  \        school = School()\n        school.add_student(name=\"Chelsea\", grade=3)\n        school.add_student(name=\"Logan\"\
+  , grade=7)\n        expected = [\"Chelsea\", \"Logan\"]\n\n        self.assertEqual(school.roster(), expected)\n\n    def\
+  \ test_cannot_add_same_student_to_multiple_grades_in_the_roster(self):\n        school = School()\n        school.add_student(name=\"\
+  Blair\", grade=2)\n        school.add_student(name=\"James\", grade=2)\n        school.add_student(name=\"James\", grade=3)\n\
+  \        school.add_student(name=\"Paul\", grade=3)\n        expected = [True, True, False, True]\n        self.assertEqual(school.added(),\
+  \ expected)\n\n    def test_student_not_added_to_multiple_grades_in_the_roster(self):\n        school = School()\n     \
+  \   school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\", grade=2)\n        school.add_student(name=\"\
+  James\", grade=3)\n        school.add_student(name=\"Paul\", grade=3)\n        expected = [\"Blair\", \"James\", \"Paul\"\
+  ]\n\n        self.assertEqual(school.roster(), expected)\n\n    def test_students_are_sorted_by_grades_in_the_roster(self):\n\
+  \        school = School()\n        school.add_student(name=\"Jim\", grade=3)\n        school.add_student(name=\"Peter\"\
+  , grade=2)\n        school.add_student(name=\"Anna\", grade=1)\n        expected = [\"Anna\", \"Peter\", \"Jim\"]\n\n  \
+  \      self.assertEqual(school.roster(), expected)\n\n    def test_students_are_sorted_by_name_in_the_roster(self):\n  \
+  \      school = School()\n        school.add_student(name=\"Peter\", grade=2)\n        school.add_student(name=\"Zoe\",\
+  \ grade=2)\n        school.add_student(name=\"Alex\", grade=2)\n        expected = [\"Alex\", \"Peter\", \"Zoe\"]\n\n  \
+  \      self.assertEqual(school.roster(), expected)\n\n    def test_students_are_sorted_by_grades_and_then_by_name_in_the_roster(self):\n\
+  \        school = School()\n        school.add_student(name=\"Peter\", grade=2)\n        school.add_student(name=\"Anna\"\
+  , grade=1)\n        school.add_student(name=\"Barb\", grade=1)\n        school.add_student(name=\"Zoe\", grade=2)\n    \
+  \    school.add_student(name=\"Alex\", grade=2)\n        school.add_student(name=\"Jim\", grade=3)\n        school.add_student(name=\"\
+  Charlie\", grade=1)\n        expected = [\"Anna\", \"Barb\", \"Charlie\", \"Alex\", \"Peter\", \"Zoe\", \"Jim\"]\n\n   \
+  \     self.assertEqual(school.roster(), expected)\n\n    def test_grade_is_empty_if_no_students_in_the_roster(self):\n \
+  \       school = School()\n        expected = []\n        self.assertEqual(school.grade(1), expected)\n\n    def test_grade_is_empty_if_no_students_in_that_grade(self):\n\
+  \        school = School()\n        school.add_student(name=\"Peter\", grade=2)\n        school.add_student(name=\"Zoe\"\
+  , grade=2)\n        school.add_student(name=\"Alex\", grade=2)\n        school.add_student(name=\"Jim\", grade=3)\n    \
+  \    expected = []\n        self.assertEqual(school.grade(1), expected)\n\n    def test_student_not_added_to_same_grade_more_than_once(self):\n\
+  \        school = School()\n        school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\"\
+  , grade=2)\n        school.add_student(name=\"James\", grade=2)\n        school.add_student(name=\"Paul\", grade=2)\n  \
+  \      expected = [\"Blair\", \"James\", \"Paul\"]\n        self.assertEqual(school.grade(2), expected)\n\n    def test_student_not_added_to_multiple_grades(self):\n\
+  \        school = School()\n        school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\"\
+  , grade=2)\n        school.add_student(name=\"James\", grade=3)\n        school.add_student(name=\"Paul\", grade=3)\n  \
+  \      expected = [\"Blair\", \"James\"]\n        self.assertEqual(school.grade(2), expected)\n\n    def test_student_not_added_to_other_grade_for_multiple_grades(self):\n\
+  \        school = School()\n        school.add_student(name=\"Blair\", grade=2)\n        school.add_student(name=\"James\"\
+  , grade=2)\n        school.add_student(name=\"James\", grade=3)\n        school.add_student(name=\"Paul\", grade=3)\n  \
+  \      expected = [\"Paul\"]\n        self.assertEqual(school.grade(3), expected)\n\n    def test_students_are_sorted_by_name_in_a_grade(self):\n\
+  \        school = School()\n        school.add_student(name=\"Franklin\", grade=5)\n        school.add_student(name=\"Bradley\"\
+  , grade=5)\n        school.add_student(name=\"Jeff\", grade=1)\n        expected = [\"Bradley\", \"Franklin\"]\n       \
+  \ self.assertEqual(school.grade(5), expected)\n\n```\n\nYour task: Edit the starter code file(s) so ALL tests pass.\nUse\
+  \ write_workspace_file to write your solution, then use\nworkspace_execute to run the tests.\n\nTEST COMMAND: python -m\
+  \ unittest grade_school_test.py -v 2>&1\n\nIf tests fail, read the error output carefully, fix your code,\nand run the tests\
+  \ again.\n\nWrite your solution in the starter file. The test file imports from the solution module. Run tests with workspace_execute.\n\
+  \nUse any Available Knowledge entries — they contain patterns\nfrom prior exercises that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-grade-school
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest grade_school_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/grade-school

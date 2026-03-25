@@ -144,7 +144,18 @@ def build_extraction_prompt(
             "Be conservative. REFINE only when the colony produced genuinely new\n"
             "information that makes an existing entry more precise, more actionable,\n"
             "or corrects an error. NOOP is the right choice when existing coverage\n"
-            "is adequate.\n"
+            "is adequate.\n\n"
+            "## Failure Patterns (REQUIRED if colony had any failures or retries)\n"
+            "For each failure or dead end encountered:\n"
+            "- What approach was tried?\n"
+            "- Why did it fail?\n"
+            "- What should be done instead?\n"
+            'CREATE these as sub_type: "anti_pattern" (for skills) or "bug" (for experiences).\n\n'
+            "## Project Conventions Discovered\n"
+            "For each convention or API pattern specific to THIS project:\n"
+            "- What is the convention?\n"
+            "- Where is it enforced?\n"
+            'CREATE these as sub_type: "convention".\n'
         )
     elif colony_status == "completed":
         parts.append(
@@ -157,14 +168,40 @@ def build_extraction_prompt(
             '"sub_type" ("technique"|"pattern"|"anti_pattern")\n\n'
             'EXPERIENCES: For each: "title", "content" (1-2 sentences), '
             '"trigger", "domains", "tool_refs", "polarity" ("positive"/"neutral"), '
-            '"sub_type" ("decision"|"convention"|"learning"|"bug")\n'
+            '"sub_type" ("decision"|"convention"|"learning"|"bug")\n\n'
+            "## Failure Patterns (REQUIRED if colony had any failures or retries)\n"
+            "For each failure or dead end encountered:\n"
+            "- What approach was tried?\n"
+            "- Why did it fail?\n"
+            "- What should be done instead?\n"
+            'Tag these as sub_type: "anti_pattern" (for skills) or "bug" (for experiences).\n\n'
+            "## Project Conventions Discovered\n"
+            "For each convention or API pattern specific to THIS project:\n"
+            "- What is the convention?\n"
+            "- Where is it enforced?\n"
+            'Tag these as sub_type: "convention".\n'
         )
     else:
         parts.append(
             '\nThis colony FAILED. Extract only tactical lessons.\n\n'
+            'SKILLS (anti-patterns only): For each: "title", "content" (what NOT to do), '
+            '"when_to_use" (when to avoid this approach), "failure_modes", '
+            '"domains" (list), "tool_refs" (list), '
+            '"sub_type": "anti_pattern"\n\n'
             'EXPERIENCES: For each: "title", "content" (warning, 1-2 sentences), '
             '"trigger", "domains", "tool_refs", "polarity": "negative", '
-            '"sub_type" ("decision"|"convention"|"learning"|"bug")\n'
+            '"sub_type" ("decision"|"convention"|"learning"|"bug")\n\n'
+            "## Failure Patterns (REQUIRED for failed colonies)\n"
+            "For each failure or dead end encountered:\n"
+            "- What approach was tried?\n"
+            "- Why did it fail?\n"
+            "- What should be done instead?\n"
+            'Tag these as sub_type: "anti_pattern" (for skills) or "bug" (for experiences).\n\n'
+            "## Project Conventions Discovered\n"
+            "For each convention or API pattern specific to THIS project:\n"
+            "- What is the convention?\n"
+            "- Where is it enforced?\n"
+            'Tag these as sub_type: "convention".\n'
         )
     parts.append(
         'For each entry, classify "decay_class":\n'

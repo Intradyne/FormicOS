@@ -10,6 +10,7 @@ import asyncio
 import math
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import structlog
@@ -668,6 +669,16 @@ class ColonyManager:
         _primary_caste = agents[0].caste if agents else "coder"
         _operational_playbook = load_playbook(_task_class_name, _primary_caste)
 
+        # Wave 63: read project context from workspace
+        _project_context: str = ""
+        if _ws_dir:
+            _pc_path = Path(_ws_dir) / ".formicos" / "project_context.md"
+            if _pc_path.is_file():
+                try:
+                    _project_context = _pc_path.read_text(encoding="utf-8")[:2000]
+                except OSError:
+                    _project_context = ""
+
         # Wave 43: workspace-level budget enforcement
         from formicos.surface.runtime import BudgetEnforcer  # noqa: PLC0415
 
@@ -712,6 +723,25 @@ class ColonyManager:
                 _operational_playbook = load_playbook(_task_class_name, _primary_caste)
                 _prev_goal = goal
 
+            # Wave 62 Bug 2: round-aware retrieval refresh
+            # Re-query with round context so knowledge stays relevant
+            # as the agent's work evolves across rounds.
+            if round_num > start_round and goal == _prev_goal:
+                # Only re-fetch if goal didn't change (goal-change already
+                # re-fetched above).  Use prev_summary from the previous
+                # round as context hint.
+                _hint = (prev_summary or "")[-200:]
+                if _hint:
+                    _round_query = f"{goal} | {_hint}"
+                    knowledge_items = (
+                        await self._runtime.fetch_knowledge_for_colony(
+                            task=_round_query,
+                            workspace_id=colony.workspace_id,
+                            thread_id=colony.thread_id,
+                            top_k=8,
+                        )
+                    )
+
             # Wave 47: per-round structural refresh for coding colonies
             # Only colonies with target_files pay this cost (round > 1 only,
             # since the initial analysis already covers round 1).
@@ -739,6 +769,7 @@ class ColonyManager:
                 structural_context=_structural_ctx,
                 structural_deps=_structural_deps,
                 operational_playbook=_operational_playbook,  # Wave 54
+                project_context=_project_context,  # Wave 63
                 task_class=_task_class_name,  # Wave 58.5
                 stall_count=stall_count,  # Wave 54
                 convergence_progress=last_convergence,  # Wave 54
@@ -1008,6 +1039,37 @@ class ColonyManager:
                     governance_warnings=governance_warnings,
                     stall_count=stall_count, succeeded=False,
                 )
+                # Wave 62 Track 5: stall-based escalation proposal
+                if (total_productive_calls == 0
+                        and round_num >= 3
+                        and not getattr(colony, "routing_override", None)):
+                    # Wave 64 Track 3: suggest a specific model for retry
+                    model_hint = ""
+                    try:
+                        for rec in self._runtime.settings.models.registry:
+                            if (rec.cost_per_output_token
+                                    and rec.cost_per_output_token > 0
+                                    and rec.supports_tools):
+                                est = 4000 * (rec.cost_per_output_token or 0)
+                                model_hint = (
+                                    f"\nSuggestion: retry with "
+                                    f"{rec.address} "
+                                    f"(est. ${est:.3f}/round)."
+                                )
+                                break
+                    except Exception:
+                        pass
+                    await self._runtime.emit_and_broadcast(ColonyChatMessage(
+                        seq=0, timestamp=_now(), address=address,
+                        colony_id=colony_id,
+                        workspace_id=colony.workspace_id,
+                        sender="system", event_kind="escalation_proposal",
+                        content=(
+                            f"Colony stalled — 0 productive tool calls in "
+                            f"{round_num} rounds. "
+                            f"Use retry_colony to retry.{model_hint}"
+                        ),
+                    ))
                 return
 
         # Max rounds exhausted â€" complete with quality score
@@ -1046,6 +1108,20 @@ class ColonyManager:
             productive_calls=total_productive_calls,
             total_calls=total_total_calls,
         )
+        # Wave 62 Track 5: stall-based escalation proposal
+        if (total_productive_calls == 0
+                and colony.max_rounds >= 3
+                and not getattr(colony, "routing_override", None)):
+            await self._runtime.emit_and_broadcast(ColonyChatMessage(
+                seq=0, timestamp=_now(), address=address,
+                colony_id=colony_id,
+                workspace_id=colony.workspace_id,
+                sender="system", event_kind="escalation_proposal",
+                content=(
+                    f"Colony stalled — 0 productive tool calls in "
+                    f"{colony.max_rounds} rounds. Want me to retry with a cloud model?"
+                ),
+            ))
 
     # ===================================================================
     # Section 2: Post-colony hooks (observation, steps, follow-up)
@@ -1181,7 +1257,8 @@ class ColonyManager:
     ) -> None:
         """Queen follow-up summary (Wave 18 B2) â€" fire-and-forget."""
         queen = self._runtime.queen
-        if queen is not None and succeeded and ws_id and th_id:
+        # Wave 63 Track 2: removed succeeded gate — failures now trigger follow-up
+        if queen is not None and ws_id and th_id:
             _followup_task = asyncio.create_task(self._follow_up_colony(
                 colony_id=colony_id,
                 workspace_id=ws_id,

@@ -196,8 +196,8 @@ class TestSearchTieredTopK:
         assert len(out) == 3
 
     @pytest.mark.asyncio
-    async def test_fetches_2x_top_k_for_headroom(self) -> None:
-        """Verify _search_thread_boosted is called with 2x top_k."""
+    async def test_fetches_4x_top_k_for_headroom(self) -> None:
+        """Verify _search_thread_boosted is called with 4x top_k."""
         catalog = KnowledgeCatalog(
             memory_store=None, vector_port=None,
             skill_collection="test", projections=None,
@@ -213,4 +213,4 @@ class TestSearchTieredTopK:
 
         catalog._search_thread_boosted = _capture_search  # type: ignore[assignment]
         await catalog.search_tiered("q", workspace_id="ws1", top_k=5)
-        assert call_args["top_k"] == 10
+        assert call_args["top_k"] == 20

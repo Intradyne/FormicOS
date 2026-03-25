@@ -75,6 +75,20 @@ export class FcResultCard extends LitElement {
       border-color: var(--v-border-hover); color: var(--v-fg);
       background: rgba(255,255,255,0.04);
     }
+    /* Wave 63: failure-specific styling */
+    .card.failure { border-left: 3px solid rgba(248,113,113,0.5); }
+    .error-summary {
+      font-size: 10.5px; font-family: var(--f-mono); color: rgba(248,113,113,0.85);
+      line-height: 1.4; margin-bottom: 8px; padding: 6px 8px;
+      background: rgba(248,113,113,0.04); border-radius: 6px;
+    }
+    .retry-btn {
+      font-size: 9.5px; font-family: var(--f-mono); padding: 3px 8px;
+      border-radius: 5px; cursor: pointer; border: 1px solid rgba(248,113,113,0.3);
+      background: rgba(248,113,113,0.06); color: rgba(248,113,113,0.85);
+      transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .retry-btn:hover { border-color: rgba(248,113,113,0.5); background: rgba(248,113,113,0.1); }
   `];
 
   @property({ type: Object }) result: ResultCardMeta | null = null;
@@ -103,6 +117,10 @@ export class FcResultCard extends LitElement {
 
         <div class="task-text">${r.task}</div>
 
+        ${isFailure && (r as Record<string, unknown>).errorSummary ? html`
+          <div class="error-summary">${(r as Record<string, unknown>).errorSummary}</div>
+        ` : nothing}
+
         <div class="meta-row">
           <div class="meta-item">
             Rounds: <span class="meta-value">${r.rounds}/${r.maxRounds}</span>
@@ -127,9 +145,21 @@ export class FcResultCard extends LitElement {
           ${r.threadId ? html`
             <span class="link-btn" @click=${() => this._nav('timeline')}>Timeline</span>
           ` : nothing}
+          ${isFailure ? html`
+            <span class="retry-btn" @click=${() => this._retry()}>Retry</span>
+          ` : nothing}
         </div>
       </div>
     `;
+  }
+
+  private _retry() {
+    const r = this.result;
+    if (!r) return;
+    this.dispatchEvent(new CustomEvent('result-retry', {
+      detail: { colonyId: r.colonyId, task: r.task },
+      bubbles: true, composed: true,
+    }));
   }
 
   private _nav(target: 'colony' | 'audit' | 'timeline') {

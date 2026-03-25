@@ -119,6 +119,7 @@ class OpenAICompatibleLLMAdapter:
         base_url: str = "http://localhost:11434/v1",
         api_key: str | None = None,
         timeout_s: float = 120.0,
+        max_concurrent: int = 0,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url
@@ -127,13 +128,19 @@ class OpenAICompatibleLLMAdapter:
             base_url=base_url,
             timeout=httpx.Timeout(timeout_s),
         )
-        # Limit concurrent requests to local LLM servers (e.g. llama.cpp with
-        # limited inference slots).  Cloud endpoints are not throttled.
-        # Reads LLM_SLOTS from the environment to match the server's -np flag.
-        self._semaphore: asyncio.Semaphore | None = (
-            asyncio.Semaphore(_local_concurrency_limit())
-            if self._is_local else None
-        )
+        # Wave 64: per-model max_concurrent overrides LLM_SLOTS.
+        # If max_concurrent > 0, always use it (local or cloud).
+        # Otherwise, local endpoints use LLM_SLOTS, cloud is unthrottled.
+        if max_concurrent > 0:
+            self._semaphore: asyncio.Semaphore | None = (
+                asyncio.Semaphore(max_concurrent)
+            )
+        elif self._is_local:
+            self._semaphore = asyncio.Semaphore(
+                _local_concurrency_limit()
+            )
+        else:
+            self._semaphore = None
 
     def _headers(self) -> dict[str, str]:
         headers: dict[str, str] = {"content-type": "application/json"}

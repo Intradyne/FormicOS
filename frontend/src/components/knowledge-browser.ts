@@ -258,6 +258,24 @@ export class FcKnowledgeBrowser extends LitElement {
       text-decoration-color: rgba(255,255,255,0.1);
     }
     .rel-link:hover { color: var(--v-fg); text-decoration-color: rgba(232,88,26,0.3); }
+    /* Wave 63: inline edit + create forms */
+    .edit-overlay, .create-overlay {
+      padding: 12px; margin-bottom: 10px;
+      background: var(--v-glass); border: 1px solid var(--v-border); border-radius: 10px;
+      backdrop-filter: blur(14px);
+    }
+    .edit-overlay h4, .create-overlay h4 {
+      font-family: var(--f-display); font-size: 13px; font-weight: 700; margin: 0 0 8px 0; color: var(--v-fg);
+    }
+    .form-input {
+      width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--v-border);
+      background: var(--v-recessed); color: var(--v-fg); font-size: 11px; font-family: var(--f-mono);
+      outline: none; box-sizing: border-box; margin-bottom: 6px;
+    }
+    .form-input:focus { border-color: rgba(232,88,26,0.3); }
+    .form-textarea { min-height: 80px; resize: vertical; }
+    .form-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .form-actions { display: flex; gap: 6px; margin-top: 8px; }
   `];
 
   @property() workspaceId = '';
@@ -285,6 +303,16 @@ export class FcKnowledgeBrowser extends LitElement {
   @state() private _relCache: Record<string, Array<{entry_id: string; predicate: string; confidence: number; title: string}>> = {};
   /** Wave 60: Entry IDs where feedback was sent (prevent double-click). */
   @state() private _feedbackSent: Record<string, 'positive' | 'negative'> = {};
+  /** Wave 63: Inline edit state. */
+  @state() private _editingId = '';
+  @state() private _editTitle = '';
+  @state() private _editContent = '';
+  /** Wave 63: Create entry modal state. */
+  @state() private _showCreate = false;
+  @state() private _createTitle = '';
+  @state() private _createContent = '';
+  @state() private _createCategory = 'experience';
+  @state() private _createDomain = '';
 
   private _debounceTimer = 0;
 
@@ -742,7 +770,13 @@ export class FcKnowledgeBrowser extends LitElement {
           @click=${() => void this._runMaintenance('service:consolidation:dedup')}>Dedup</button>
         <button class="maintenance-btn" title="Run stale sweep"
           @click=${() => void this._runMaintenance('service:consolidation:stale_sweep')}>Stale Sweep</button>
+        <span class="divider"></span>
+        <button class="maintenance-btn" style="border-color:rgba(45,212,168,0.3);color:#2DD4A8"
+          @click=${() => { this._showCreate = true; }}>+ Create Entry</button>
       </div>
+
+      ${this._showCreate ? this._renderCreateForm() : nothing}
+      ${this._editingId ? this._renderEditForm() : nothing}
 
       ${this._renderHealthWidget()}
       ${this._renderContradictions()}
@@ -1029,6 +1063,11 @@ export class FcKnowledgeBrowser extends LitElement {
                   @click=${() => void this._submitFeedback(e.id, false)}
                   title="Thumbs down — weakens confidence">${this._feedbackSent[e.id] === 'negative' ? '\u2714' : '\u25BC'}</button>
               </span>
+              <button class="promote-btn" @click=${() => this._startEdit(e)}
+                title="Edit entry content">\u270E Edit</button>
+              <button class="promote-btn" style="border-color:rgba(240,100,100,0.3);color:#F06464"
+                @click=${() => void this._deleteEntry(e.id)}
+                title="Soft-delete entry">\u2717 Delete</button>
             </div>
             ${this._confirmPromoteGlobalId === e.id ? html`
               <div class="confirm-overlay">
@@ -1077,6 +1116,94 @@ export class FcKnowledgeBrowser extends LitElement {
           </div>
         ` : nothing}
       </div>`;
+  }
+
+  // --- Wave 63: Knowledge CRUD ---
+
+  private _startEdit(e: KnowledgeItemPreview) {
+    this._editingId = e.id;
+    this._editTitle = e.title;
+    this._editContent = e.content_preview || e.summary || '';
+  }
+
+  private _renderEditForm() {
+    return html`
+      <div class="edit-overlay">
+        <h4>Edit Entry</h4>
+        <input class="form-input" placeholder="Title" .value=${this._editTitle}
+          @input=${(e: Event) => { this._editTitle = (e.target as HTMLInputElement).value; }}>
+        <textarea class="form-input form-textarea" placeholder="Content" .value=${this._editContent}
+          @input=${(e: Event) => { this._editContent = (e.target as HTMLTextAreaElement).value; }}></textarea>
+        <div class="form-actions">
+          <fc-btn variant="primary" sm @click=${() => void this._saveEdit()}>Save</fc-btn>
+          <fc-btn variant="ghost" sm @click=${() => { this._editingId = ''; }}>Cancel</fc-btn>
+        </div>
+      </div>`;
+  }
+
+  private async _saveEdit() {
+    if (!this._editingId) return;
+    try {
+      await fetch(`/api/v1/knowledge/${encodeURIComponent(this._editingId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: this._editTitle, content: this._editContent }),
+      });
+      this._editingId = '';
+      void this._fetchItems();
+    } catch { /* best-effort */ }
+  }
+
+  private async _deleteEntry(id: string) {
+    try {
+      await fetch(`/api/v1/knowledge/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      void this._fetchItems();
+    } catch { /* best-effort */ }
+  }
+
+  private _renderCreateForm() {
+    return html`
+      <div class="create-overlay">
+        <h4>Create Knowledge Entry</h4>
+        <input class="form-input" placeholder="Title" .value=${this._createTitle}
+          @input=${(e: Event) => { this._createTitle = (e.target as HTMLInputElement).value; }}>
+        <textarea class="form-input form-textarea" placeholder="Content" .value=${this._createContent}
+          @input=${(e: Event) => { this._createContent = (e.target as HTMLTextAreaElement).value; }}></textarea>
+        <div class="form-row">
+          <select class="form-input" style="flex:1" .value=${this._createCategory}
+            @change=${(e: Event) => { this._createCategory = (e.target as HTMLSelectElement).value; }}>
+            <option value="experience">Experience</option>
+            <option value="skill">Skill</option>
+          </select>
+          <input class="form-input" style="flex:1" placeholder="Primary domain" .value=${this._createDomain}
+            @input=${(e: Event) => { this._createDomain = (e.target as HTMLInputElement).value; }}>
+        </div>
+        <div class="form-actions">
+          <fc-btn variant="primary" sm @click=${() => void this._submitCreate()}>Create</fc-btn>
+          <fc-btn variant="ghost" sm @click=${() => { this._showCreate = false; }}>Cancel</fc-btn>
+        </div>
+      </div>`;
+  }
+
+  private async _submitCreate() {
+    if (!this._createTitle.trim() || !this._createContent.trim()) return;
+    try {
+      await fetch(`/api/v1/workspaces/${encodeURIComponent(this.workspaceId)}/knowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: this._createTitle,
+          content: this._createContent,
+          category: this._createCategory,
+          primary_domain: this._createDomain || undefined,
+        }),
+      });
+      this._showCreate = false;
+      this._createTitle = '';
+      this._createContent = '';
+      this._createDomain = '';
+      void this._fetchItems();
+    } catch { /* best-effort */ }
   }
 }
 

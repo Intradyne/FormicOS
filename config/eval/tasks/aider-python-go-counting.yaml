@@ -1,0 +1,80 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: go-counting\n\nINSTRUCTIONS:\n\
+  # Instructions\n\nCount the scored points on a Go board.\n\nIn the game of go (also known as baduk, igo, cờ vây and wéiqí)\
+  \ points are gained by completely encircling empty intersections with your stones.\nThe encircled intersections of a player\
+  \ are known as its territory.\n\nCalculate the territory of each player.\nYou may assume that any stones that have been\
+  \ stranded in enemy territory have already been taken off the board.\n\nDetermine the territory which includes a specified\
+  \ coordinate.\n\nMultiple empty intersections may be encircled at once and for encircling only horizontal and vertical neighbors\
+  \ count.\nIn the following diagram the stones which matter are marked \"O\" and the stones that don't are marked \"I\" (ignored).\n\
+  Empty spaces represent empty intersections.\n\n```text\n+----+\n|IOOI|\n|O  O|\n|O OI|\n|IOI |\n+----+\n```\n\nTo be more\
+  \ precise an empty intersection is part of a player's territory if all of its neighbors are either stones of that player\
+  \ or empty intersections that are part of that player's territory.\n\nFor more information see [Wikipedia][go-wikipedia]\
+  \ or [Sensei's Library][go-sensei].\n\n[go-wikipedia]: https://en.wikipedia.org/wiki/Go_%28game%29\n[go-sensei]: https://senseis.xmp.net/\n\
+  \n\n# Instructions append\n\n## Exception messages\n\nSometimes it is necessary to [raise an exception](https://docs.python.org/3/tutorial/errors.html#raising-exceptions).\
+  \ When you do this, you should always include a **meaningful error message** to indicate what the source of the error is.\
+  \ This makes your code more readable and helps significantly with debugging. For situations where you know that the error\
+  \ source will be a certain type, you can choose to raise one of the [built in error types](https://docs.python.org/3/library/exceptions.html#base-classes),\
+  \ but should still include a meaningful message.\n\nThis particular exercise requires that you use the [raise statement](https://docs.python.org/3/reference/simple_stmts.html#the-raise-statement)\
+  \ to \"throw\" a `ValueError` when given invalid coordinates. The tests will only pass if you both `raise` the `exception`\
+  \ and include a message with it.\n\nTo raise a `ValueError` with a message, write the message as an argument to the `exception`\
+  \ type:\n\n```python\n# when the coordinates for the piece are invalid\nraise ValueError('Invalid coordinate')\n```\n\n\
+  STARTER CODE:\nFILE: go_counting.py\n```\n\nclass Board:\n    \"\"\"Count territories of each player in a Go game\n\n  \
+  \  Args:\n        board (list[str]): A two-dimensional Go board\n    \"\"\"\n\n    def __init__(self, board):\n        pass\n\
+  \n    def territory(self, x, y):\n        \"\"\"Find the owner and the territories given a coordinate on\n           the\
+  \ board\n\n        Args:\n            x (int): Column on the board\n            y (int): Row on the board\n\n        Returns:\n\
+  \            (str, set): A tuple, the first element being the owner\n                        of that area.  One of \"W\"\
+  , \"B\", \"\".  The\n                        second being a set of coordinates, representing\n                        the\
+  \ owner's territories.\n        \"\"\"\n        pass\n\n    def territories(self):\n        \"\"\"Find the owners and the\
+  \ territories of the whole board\n\n        Args:\n            none\n\n        Returns:\n            dict(str, set): A dictionary\
+  \ whose key being the owner\n                        , i.e. \"W\", \"B\", \"\".  The value being a set\n               \
+  \         of coordinates owned by the owner.\n        \"\"\"\n        pass\n\n```\n\nTEST FILE:\nFILE: go_counting_test.py\n\
+  ```\n# These tests are auto-generated with test data from:\n# https://github.com/exercism/problem-specifications/tree/main/exercises/go-counting/canonical-data.json\n\
+  # File last updated on 2023-07-19\n\nimport unittest\n\nfrom go_counting import (\n    Board,\n    WHITE,\n    BLACK,\n\
+  \    NONE,\n)\n\n\nclass GoCountingTest(unittest.TestCase):\n    def test_black_corner_territory_on_5x5_board(self):\n \
+  \       board = Board([\"  B  \", \" B B \", \"B W B\", \" W W \", \"  W  \"])\n        stone, territory = board.territory(x=0,\
+  \ y=1)\n        self.assertEqual(stone, BLACK)\n        self.assertSetEqual(territory, {(0, 0), (0, 1), (1, 0)})\n\n   \
+  \ def test_white_center_territory_on_5x5_board(self):\n        board = Board([\"  B  \", \" B B \", \"B W B\", \" W W \"\
+  , \"  W  \"])\n        stone, territory = board.territory(x=2, y=3)\n        self.assertEqual(stone, WHITE)\n        self.assertSetEqual(territory,\
+  \ {(2, 3)})\n\n    def test_open_corner_territory_on_5x5_board(self):\n        board = Board([\"  B  \", \" B B \", \"B\
+  \ W B\", \" W W \", \"  W  \"])\n        stone, territory = board.territory(x=1, y=4)\n        self.assertEqual(stone, NONE)\n\
+  \        self.assertSetEqual(territory, {(0, 3), (0, 4), (1, 4)})\n\n    def test_a_stone_and_not_a_territory_on_5x5_board(self):\n\
+  \        board = Board([\"  B  \", \" B B \", \"B W B\", \" W W \", \"  W  \"])\n        stone, territory = board.territory(x=1,\
+  \ y=1)\n        self.assertEqual(stone, NONE)\n        self.assertSetEqual(territory, set())\n\n    def test_invalid_because_x_is_too_low_for_5x5_board(self):\n\
+  \        board = Board([\"  B  \", \" B B \", \"B W B\", \" W W \", \"  W  \"])\n        with self.assertRaises(ValueError)\
+  \ as err:\n            board.territory(x=-1, y=1)\n        self.assertEqual(type(err.exception), ValueError)\n        self.assertEqual(err.exception.args[0],\
+  \ \"Invalid coordinate\")\n\n    def test_invalid_because_x_is_too_high_for_5x5_board(self):\n        board = Board([\"\
+  \  B  \", \" B B \", \"B W B\", \" W W \", \"  W  \"])\n        with self.assertRaises(ValueError) as err:\n           \
+  \ board.territory(x=5, y=1)\n        self.assertEqual(type(err.exception), ValueError)\n        self.assertEqual(err.exception.args[0],\
+  \ \"Invalid coordinate\")\n\n    def test_invalid_because_y_is_too_low_for_5x5_board(self):\n        board = Board([\" \
+  \ B  \", \" B B \", \"B W B\", \" W W \", \"  W  \"])\n        with self.assertRaises(ValueError) as err:\n            board.territory(x=1,\
+  \ y=-1)\n        self.assertEqual(type(err.exception), ValueError)\n        self.assertEqual(err.exception.args[0], \"Invalid\
+  \ coordinate\")\n\n    def test_invalid_because_y_is_too_high_for_5x5_board(self):\n        board = Board([\"  B  \", \"\
+  \ B B \", \"B W B\", \" W W \", \"  W  \"])\n        with self.assertRaises(ValueError) as err:\n            board.territory(x=1,\
+  \ y=5)\n        self.assertEqual(type(err.exception), ValueError)\n        self.assertEqual(err.exception.args[0], \"Invalid\
+  \ coordinate\")\n\n    def test_one_territory_is_the_whole_board(self):\n        board = Board([\" \"])\n        territories\
+  \ = board.territories()\n        self.assertSetEqual(territories[BLACK], set())\n        self.assertSetEqual(territories[WHITE],\
+  \ set())\n        self.assertSetEqual(territories[NONE], {(0, 0)})\n\n    def test_two_territory_rectangular_board(self):\n\
+  \        board = Board([\" BW \", \" BW \"])\n        territories = board.territories()\n        self.assertSetEqual(territories[BLACK],\
+  \ {(0, 0), (0, 1)})\n        self.assertSetEqual(territories[WHITE], {(3, 0), (3, 1)})\n        self.assertSetEqual(territories[NONE],\
+  \ set())\n\n    def test_two_region_rectangular_board(self):\n        board = Board([\" B \"])\n        territories = board.territories()\n\
+  \        self.assertSetEqual(territories[BLACK], {(0, 0), (2, 0)})\n        self.assertSetEqual(territories[WHITE], set())\n\
+  \        self.assertSetEqual(territories[NONE], set())\n\n```\n\nYour task: Edit the starter code file(s) so ALL tests pass.\n\
+  Use write_workspace_file to write your solution, then use\nworkspace_execute to run the tests.\n\nTEST COMMAND: python -m\
+  \ unittest go_counting_test.py -v 2>&1\n\nIf tests fail, read the error output carefully, fix your code,\nand run the tests\
+  \ again.\n\nWrite your solution in the starter file. The test file imports from the solution module. Run tests with workspace_execute.\n\
+  \nUse any Available Knowledge entries — they contain patterns\nfrom prior exercises that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-go-counting
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest go_counting_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/go-counting

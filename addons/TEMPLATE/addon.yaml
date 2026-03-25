@@ -1,0 +1,38 @@
+# Template addon manifest -- copy this directory to create a new addon.
+#
+# 1. Copy: cp -r addons/TEMPLATE addons/my-addon
+# 2. Create: mkdir -p src/formicos/addons/my_addon
+# 3. Copy:  cp src/formicos/addons/template/handler.py src/formicos/addons/my_addon/
+# 4. Add:   touch src/formicos/addons/my_addon/__init__.py
+# 5. Edit this manifest and the handler to fit your addon.
+# 6. Restart FormicOS.
+
+name: template
+version: "0.1.0"
+description: "Template addon -- copy and customize"
+author: "your-name"
+
+tools:
+  - name: template_greet
+    description: "Example tool: returns a greeting"
+    handler: handler.py::handle_greet
+    parameters:
+      type: object
+      properties:
+        name:
+          type: string
+          description: "Name to greet"
+      required: ["name"]
+
+# Uncomment to add event handlers:
+# handlers:
+#   - event: ColonyCompleted
+#     handler: handler.py::on_colony_completed
+
+# Uncomment to add triggers:
+# triggers:
+#   - type: cron
+#     schedule: "0 * * * *"
+#     handler: handler.py::on_hourly
+#   - type: manual
+#     handler: handler.py::on_manual_trigger

@@ -47,11 +47,11 @@ class TestEventManifestParity:
     """Python EVENT_TYPE_NAMES vs TypeScript EVENT_NAMES."""
 
     def test_python_event_count(self) -> None:
-        assert len(EVENT_TYPE_NAMES) == 65
+        assert len(EVENT_TYPE_NAMES) == 69
 
     def test_typescript_event_count(self) -> None:
         ts_names = _extract_ts_event_names()
-        assert len(ts_names) == 65
+        assert len(ts_names) == 69
 
     def test_python_ts_event_names_match(self) -> None:
         ts_names = _extract_ts_event_names()

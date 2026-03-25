@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { voidTokens, sharedStyles } from '../styles/shared.js';
-import { allColonies, colonyName, providerOf, providerColor, formatCost, formatVram } from '../helpers.js';
+import { allColonies, colonyName, providerOf, providerColor, formatCost } from '../helpers.js';
 import type { TreeNode, ApprovalRequest, QueenThread, LocalModel, CasteDefinition, Colony, SkillBankStats, CloudEndpoint, RuntimeConfig } from '../types.js';
 import './atoms.js';
 import './queen-chat.js';
@@ -10,6 +10,7 @@ import './proactive-briefing.js';
 import './config-memory.js';
 import './demo-guide.js';
 import './learning-card.js';
+import './budget-panel.js';
 
 interface OutcomeSummary {
   total_colonies: number;
@@ -97,11 +98,24 @@ export class FcQueenOverview extends LitElement {
     }
     .plan-cards { display: flex; flex-direction: column; gap: 6px; }
     .plan-card {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; flex-direction: column; gap: 6px;
       padding: 8px 12px; border-radius: 6px;
       background: rgba(255,255,255,0.02); border: 1px solid var(--v-border);
       cursor: pointer; transition: border-color 0.15s;
     }
+    .plan-header {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .plan-group-bar {
+      display: flex; gap: 2px; height: 4px;
+    }
+    .group-segment {
+      flex: 1; border-radius: 2px; min-width: 8px;
+    }
+    .group-segment.done { background: var(--v-success); }
+    .group-segment.active { background: var(--v-blue); animation: pulse 1.5s infinite; }
+    .group-segment.pending { background: rgba(255,255,255,0.06); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
     .plan-card:hover { border-color: var(--v-border-hover); }
     .plan-thread-name {
       font-family: var(--f-display); font-size: 11px; font-weight: 600;
@@ -161,14 +175,6 @@ export class FcQueenOverview extends LitElement {
     const completed = cols.filter(c => c.status === 'completed');
     const totalCost = cols.reduce((a, c) => a + ((c as any).cost ?? 0), 0);
     const totalTok = cols.reduce((a, c) => a + ((c as any).agents ?? []).reduce((b: number, ag: any) => b + (ag.tokens ?? 0), 0), 0);
-    const vramModels = this.localModels.filter(m => m.vram != null);
-    const totalVramUsed = vramModels.reduce((a, m) => a + (m.vram?.usedMb ?? 0), 0);
-    const totalVramTotal = vramModels.reduce((a, m) => a + (m.vram?.totalMb ?? 0), 0);
-    const hasKnownVram = vramModels.length > 0;
-    const totalSlots = this.localModels.reduce((a, m) => a + m.slotsTotal, 0);
-    const idleSlots = this.localModels.reduce((a, m) => a + m.slotsIdle, 0);
-    const anthropic = this.cloudEndpoints.find(e => e.id === 'anthropic');
-    const gemini = this.cloudEndpoints.find(e => e.id === 'gemini');
     const recentCompleted = completed.slice(-6).reverse();
 
     return html`
@@ -201,44 +207,8 @@ export class FcQueenOverview extends LitElement {
           ></fc-demo-guide>
         ` : nothing}
 
-        <!-- ROW 2: Budget + system health -->
-        <div class="resource-grid">
-          <div class="glass" style="padding:12px">
-            <div class="s-label" style="margin-bottom:6px">API Spend</div>
-            <div style="font-family:var(--f-mono);font-size:16px;color:var(--v-accent);font-feature-settings:'tnum'">${formatCost(totalCost)}</div>
-            <div style="font-size:9px;font-family:var(--f-mono);color:var(--v-fg-dim);margin-top:4px">${cols.length} colonies \u00B7 ${(totalTok / 1000).toFixed(0)}k tokens</div>
-          </div>
-          <div class="glass" style="padding:12px">
-            <div class="s-label" style="margin-bottom:6px">Local Compute</div>
-            <div style="font-family:var(--f-mono);font-size:16px;color:var(--v-purple);font-feature-settings:'tnum'">${(totalTok / 1000).toFixed(0)}k</div>
-            <div style="font-size:9px;font-family:var(--f-mono);color:var(--v-fg-dim);margin-top:4px">tokens processed</div>
-            ${(this._outcomeSummary?.total_reasoning_tokens ?? 0) > 0 || (this._outcomeSummary?.total_cache_read_tokens ?? 0) > 0 ? html`
-              <div style="font-size:8px;font-family:var(--f-mono);color:var(--v-fg-dim);margin-top:2px">${(this._outcomeSummary?.total_reasoning_tokens ?? 0) > 0 ? `${((this._outcomeSummary!.total_reasoning_tokens!) / 1000).toFixed(0)}k reasoning` : ''}${(this._outcomeSummary?.total_reasoning_tokens ?? 0) > 0 && (this._outcomeSummary?.total_cache_read_tokens ?? 0) > 0 ? ' / ' : ''}${(this._outcomeSummary?.total_cache_read_tokens ?? 0) > 0 ? `${((this._outcomeSummary!.total_cache_read_tokens!) / 1000).toFixed(0)}k cached` : ''}</div>
-            ` : nothing}
-          </div>
-          <div class="glass" style="padding:12px">
-            ${totalSlots > 0
-              ? html`<fc-meter label="Local Slots" .value=${totalSlots - idleSlots} .max=${totalSlots} unit=" slots" color="#A78BFA"></fc-meter>`
-              : hasKnownVram
-              ? html`<fc-meter label="VRAM" .value=${totalVramUsed} .max=${totalVramTotal} unit=" MiB" color="#A78BFA"></fc-meter>`
-              : html`
-                <div class="s-label" style="margin-bottom:6px">Local Runtime</div>
-                <div style="font-family:var(--f-mono);font-size:12px;color:var(--v-fg-muted)">No probe data</div>
-              `}
-          </div>
-          <div class="glass" style="padding:12px">
-            <div class="s-label" style="margin-bottom:6px">Per-Provider</div>
-            ${this.cloudEndpoints.filter(e => e.status === 'connected').map(ep => html`
-              <div style="display:flex;justify-content:space-between;font-size:9.5px;font-family:var(--f-mono);color:var(--v-fg-muted);padding:1px 0">
-                <span>${ep.provider}</span>
-                <span style="color:var(--v-fg);font-feature-settings:'tnum'">${formatCost(ep.spend)}</span>
-              </div>
-            `)}
-            ${this.cloudEndpoints.filter(e => e.status === 'connected').length === 0
-              ? html`<div style="font-size:9.5px;font-family:var(--f-mono);color:var(--v-fg-dim)">No cloud providers</div>`
-              : nothing}
-          </div>
-        </div>
+        <!-- ROW 2: Budget control panel (Wave 61) -->
+        <fc-budget-panel .workspaceId=${this.activeWorkspaceId}></fc-budget-panel>
 
         ${this.approvals.length > 0 ? html`
           <fc-approval-queue .approvals=${this.approvals}
@@ -580,11 +550,18 @@ export class FcQueenOverview extends LitElement {
         <div class="plan-cards">
           ${plans.map(p => html`
             <div class="plan-card" @click=${() => this.re('navigate', p.threadId)}>
-              <span class="plan-thread-name">${p.threadName}</span>
-              <span class="plan-groups">${p.completedGroups}/${p.totalGroups} groups</span>
-              ${p.runningCount > 0 ? html`
-                <span class="plan-running">${p.runningCount} running</span>
-              ` : nothing}
+              <div class="plan-header">
+                <span class="plan-thread-name">${p.threadName}</span>
+                <span class="plan-groups">${p.completedGroups}/${p.totalGroups} groups</span>
+                ${p.runningCount > 0 ? html`
+                  <span class="plan-running">\u25CF ${p.runningCount} running</span>
+                ` : nothing}
+              </div>
+              <div class="plan-group-bar">
+                ${Array.from({length: p.totalGroups}, (_, i) => html`
+                  <div class="group-segment ${i < p.completedGroups ? 'done' : i === p.completedGroups && p.runningCount > 0 ? 'active' : 'pending'}"></div>
+                `)}
+              </div>
             </div>
           `)}
         </div>

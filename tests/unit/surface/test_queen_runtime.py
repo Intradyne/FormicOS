@@ -1252,3 +1252,308 @@ class TestSearchMemoryRemoved:
         tools = queen._queen_tools()
         names = {t["name"] for t in tools}
         assert "memory_search" in names
+
+
+# ---------------------------------------------------------------------------
+# Wave 63 Track 1: Cross-turn tool memory tests
+# ---------------------------------------------------------------------------
+
+
+class TestToolMemory:
+    """Tests for cross-turn tool memory collection and injection."""
+
+    @pytest.mark.anyio()
+    async def test_tool_memory_collected(self) -> None:
+        """respond() with tool calls produces QueenMessage with tool_memory in meta."""
+        llm_resp_with_tools = _make_llm_response(
+            content="Found results.",
+            tool_calls=[{
+                "name": "search_codebase",
+                "input": {"query": "budget"},
+            }],
+        )
+        # After tool call, LLM returns final response
+        llm_final = _make_llm_response(content="Here are the results.")
+
+        thread = _make_thread(queen_messages=[
+            SimpleNamespace(role="operator", content="Search for budget", timestamp=_recent_timestamp(), meta=None),
+        ])
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        runtime = _make_runtime(thread=thread)
+        runtime.llm_router.complete = AsyncMock(
+            side_effect=[llm_resp_with_tools, llm_final],
+        )
+        runtime.retrieve_relevant_memory = AsyncMock(return_value="")
+
+        queen = QueenAgent(runtime)
+        # Mock the tool dispatcher to return a result
+        queen._tool_dispatcher.dispatch = AsyncMock(
+            return_value=("3 matches found in projections.py", None),
+        )
+
+        await queen.respond("ws-1", "th-1")
+
+        # Check emit_and_broadcast was called with QueenMessage
+        emitted = runtime.emit_and_broadcast.call_args_list
+        assert len(emitted) > 0
+        last_event = emitted[-1][0][0]
+        assert hasattr(last_event, "meta")
+        if last_event.meta:
+            assert "tool_memory" in last_event.meta
+
+    def test_tool_memory_injected(self) -> None:
+        """_build_messages() injects prior tool results when recent QueenMessages have tool_memory."""
+        thread = _make_thread(queen_messages=[
+            SimpleNamespace(
+                role="queen", content="Previous response",
+                timestamp="2026-03-24T09:00:00Z",
+                meta={"tool_memory": [
+                    {"tool": "search_codebase", "summary": "Found 5 matches"},
+                ]},
+                intent=None, render=None,
+            ),
+            SimpleNamespace(
+                role="operator", content="Tell me more",
+                timestamp="2026-03-24T09:01:00Z",
+                meta=None, intent=None, render=None,
+            ),
+        ])
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        runtime = _make_runtime(thread=thread)
+        queen = QueenAgent(runtime)
+        messages = queen._build_messages(thread)
+
+        # Find the tool memory injection
+        tool_mem_msg = [
+            m for m in messages
+            if "Prior tool results" in m.get("content", "")
+        ]
+        assert len(tool_mem_msg) == 1
+        assert "search_codebase" in tool_mem_msg[0]["content"]
+
+    def test_tool_memory_window(self) -> None:
+        """Only last 3 turns of tool memory are injected."""
+        queen_msgs = []
+        for i in range(5):
+            queen_msgs.append(SimpleNamespace(
+                role="queen", content=f"Response {i}",
+                timestamp=f"2026-03-24T0{i}:00:00Z",
+                meta={"tool_memory": [
+                    {"tool": f"tool_{i}", "summary": f"Result {i}"},
+                ]},
+                intent=None, render=None,
+            ))
+        queen_msgs.append(SimpleNamespace(
+            role="operator", content="next",
+            timestamp="2026-03-24T06:00:00Z",
+            meta=None, intent=None, render=None,
+        ))
+
+        thread = _make_thread(queen_messages=queen_msgs)
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        runtime = _make_runtime(thread=thread)
+        queen = QueenAgent(runtime)
+        messages = queen._build_messages(thread)
+
+        tool_mem_msg = [
+            m for m in messages
+            if "Prior tool results" in m.get("content", "")
+        ]
+        assert len(tool_mem_msg) == 1
+        content = tool_mem_msg[0]["content"]
+        # Should have tool_4, tool_3, tool_2 (last 3) but NOT tool_0, tool_1
+        assert "tool_4" in content
+        assert "tool_3" in content
+        assert "tool_2" in content
+        assert "tool_0" not in content
+
+
+# ---------------------------------------------------------------------------
+# Wave 63 Track 2: Failed colony notifications + parallel aggregation
+# ---------------------------------------------------------------------------
+
+
+def _recent_timestamp() -> str:
+    """Return an ISO timestamp within the last 5 minutes (passes the 30-min recency check)."""
+    from datetime import datetime, UTC, timedelta
+    return (datetime.now(UTC) - timedelta(minutes=2)).isoformat()
+
+
+class TestFailedColonyFollowUp:
+    """Tests for failure-aware follow-up and parallel aggregation."""
+
+    @pytest.mark.anyio()
+    async def test_failed_colony_triggers_followup(self) -> None:
+        """Failed colony should produce a follow-up notification."""
+        thread = _make_thread(queen_messages=[
+            SimpleNamespace(
+                role="operator", content="build auth",
+                timestamp=_recent_timestamp(),
+                meta=None,
+            ),
+        ])
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        colony = SimpleNamespace(
+            display_name="auth-builder",
+            quality_score=0.0,
+            skills_extracted=0,
+            cost=0.001,
+            round_number=4,
+            status="failed",
+            failure_reason="stalled at round 4",
+            agents={"a1": SimpleNamespace(tokens=5000)},
+            task="Build auth module",
+            max_rounds=10,
+            artifacts=[],
+            expected_output_types=[],
+        )
+
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.get_thread.return_value = thread
+        runtime.projections.get_colony.return_value = colony
+
+        queen = QueenAgent(runtime)
+        await queen.follow_up_colony("col-1", "ws-1", "th-1")
+
+        # Should have emitted a QueenMessage
+        assert runtime.emit_and_broadcast.called
+        event = runtime.emit_and_broadcast.call_args[0][0]
+        assert "FAILED" in event.content
+        assert "stalled at round 4" in event.content
+
+    @pytest.mark.anyio()
+    async def test_failure_card_has_failure_reason_in_meta(self) -> None:
+        """Failure follow-up meta should include failureReason."""
+        thread = _make_thread(queen_messages=[
+            SimpleNamespace(
+                role="operator", content="work",
+                timestamp=_recent_timestamp(),
+                meta=None,
+            ),
+        ])
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        colony = SimpleNamespace(
+            display_name="broken",
+            quality_score=0.0,
+            skills_extracted=0,
+            cost=0.0,
+            round_number=2,
+            status="failed",
+            failure_reason="tool error",
+            agents={},
+            task="Fix bug",
+            max_rounds=5,
+            artifacts=[],
+            expected_output_types=[],
+        )
+
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.get_thread.return_value = thread
+        runtime.projections.get_colony.return_value = colony
+
+        queen = QueenAgent(runtime)
+        await queen.follow_up_colony("col-2", "ws-1", "th-1")
+
+        event = runtime.emit_and_broadcast.call_args[0][0]
+        assert event.meta["failureReason"] == "tool error"
+        assert event.meta["status"] == "failed"
+
+    @pytest.mark.anyio()
+    async def test_parallel_aggregation_waits(self) -> None:
+        """First completion in a parallel plan should not emit a message."""
+        thread = _make_thread(queen_messages=[
+            SimpleNamespace(
+                role="operator", content="build",
+                timestamp=_recent_timestamp(),
+                meta=None,
+            ),
+        ])
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        colony = SimpleNamespace(
+            display_name="task-a",
+            quality_score=0.8,
+            skills_extracted=1,
+            cost=0.0,
+            round_number=3,
+            status="completed",
+            failure_reason=None,
+            agents={"a1": SimpleNamespace(tokens=3000)},
+            task="Task A",
+            max_rounds=10,
+            artifacts=[],
+            expected_output_types=[],
+        )
+
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.get_thread.return_value = thread
+        runtime.projections.get_colony.return_value = colony
+
+        queen = QueenAgent(runtime)
+        queen.register_parallel_plan("plan-1", ["col-a", "col-b"])
+
+        await queen.follow_up_colony("col-a", "ws-1", "th-1")
+
+        # Should NOT have emitted — still waiting for col-b
+        assert not runtime.emit_and_broadcast.called
+
+    @pytest.mark.anyio()
+    async def test_parallel_aggregation_emits_on_last(self) -> None:
+        """Last colony in plan triggers grouped result card."""
+        thread = _make_thread(queen_messages=[
+            SimpleNamespace(
+                role="operator", content="build",
+                timestamp=_recent_timestamp(),
+                meta=None,
+            ),
+        ])
+        thread.workspace_id = "ws-1"
+        thread.thread_id = "th-1"
+
+        def _make_colony(name: str, status: str = "completed") -> SimpleNamespace:
+            return SimpleNamespace(
+                display_name=name,
+                quality_score=0.8 if status == "completed" else 0.0,
+                skills_extracted=1,
+                cost=0.01,
+                round_number=3,
+                status=status,
+                failure_reason="stalled" if status == "failed" else None,
+                agents={"a1": SimpleNamespace(tokens=2000)},
+                task=f"Task {name}",
+                max_rounds=10,
+                artifacts=[],
+                expected_output_types=[],
+            )
+
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.get_thread.return_value = thread
+
+        queen = QueenAgent(runtime)
+        queen.register_parallel_plan("plan-1", ["col-a", "col-b"])
+
+        # First colony completes
+        runtime.projections.get_colony.return_value = _make_colony("task-a")
+        await queen.follow_up_colony("col-a", "ws-1", "th-1")
+        assert not runtime.emit_and_broadcast.called
+
+        # Second (last) colony completes
+        runtime.projections.get_colony.return_value = _make_colony("task-b", "failed")
+        await queen.follow_up_colony("col-b", "ws-1", "th-1")
+
+        # NOW should emit aggregated summary
+        assert runtime.emit_and_broadcast.called
+        event = runtime.emit_and_broadcast.call_args[0][0]
+        assert "Parallel plan complete: 1/2 succeeded" in event.content
+        assert event.meta["planId"] == "plan-1"

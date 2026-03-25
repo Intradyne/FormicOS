@@ -258,25 +258,29 @@ def create_app(
         )
         log.info("app.knowledge_graph", threshold=threshold)
 
-    # LLM adapters keyed by provider prefix.
-    # Cloud adapters are only created when the API key is present — avoids
-    # instantiating adapters that will fail on every call (truthful state).
+    # LLM adapters keyed by (provider:endpoint) pair.
+    # Wave 64: per-endpoint adapter instances — two models with the same
+    # provider prefix but different endpoints get separate adapters.
+    # Cloud adapters are only created when the API key is present.
     llm_adapters: dict[str, LLMPort] = {}
     for model in settings.models.registry:
-        if model.provider in llm_adapters:
+        adapter_key = (
+            f"{model.provider}:{model.endpoint or 'default'}"
+        )
+        if adapter_key in llm_adapters:
             continue
         if model.provider == "anthropic":
             api_key = os.environ.get(model.api_key_env or "ANTHROPIC_API_KEY", "")
             if not api_key:
                 log.info("app.adapter_skipped", provider="anthropic", reason="no_key")
                 continue
-            llm_adapters["anthropic"] = AnthropicLLMAdapter(api_key=api_key)  # type: ignore[assignment]
+            llm_adapters[adapter_key] = AnthropicLLMAdapter(api_key=api_key)  # type: ignore[assignment]
         elif model.provider == "gemini":
             api_key = os.environ.get(model.api_key_env or "GEMINI_API_KEY", "")
             if not api_key:
                 log.info("app.adapter_skipped", provider="gemini", reason="no_key")
                 continue
-            llm_adapters["gemini"] = GeminiAdapter(api_key=api_key)  # type: ignore[assignment]
+            llm_adapters[adapter_key] = GeminiAdapter(api_key=api_key)  # type: ignore[assignment]
         else:
             # Wave 55: extract API key for cloud OpenAI-compatible providers
             api_key = (
@@ -294,10 +298,36 @@ def create_app(
                  if m.provider == model.provider),
                 default=1.0,
             )
-            llm_adapters[model.provider] = OpenAICompatibleLLMAdapter(  # type: ignore[assignment]
+            llm_adapters[adapter_key] = OpenAICompatibleLLMAdapter(  # type: ignore[assignment]
                 base_url=base_url,
                 api_key=api_key if api_key else None,
                 timeout_s=120.0 * max(1.0, max_mult),
+                max_concurrent=model.max_concurrent,
+            )
+
+    # Wave 64: unknown prefix fallback — if a model has a provider prefix
+    # not in the known set but has an endpoint, create OpenAI-compatible.
+    _KNOWN_PROVIDERS = {
+        "anthropic", "gemini", "llama-cpp", "ollama",
+        "openai", "deepseek",
+    }
+    for model in settings.models.registry:
+        adapter_key = (
+            f"{model.provider}:{model.endpoint or 'default'}"
+        )
+        if adapter_key in llm_adapters:
+            continue
+        if model.provider not in _KNOWN_PROVIDERS and model.endpoint:
+            api_key = (
+                os.environ.get(model.api_key_env or "", "")
+                if model.api_key_env
+                else ""
+            )
+            base_url = _ensure_v1(model.endpoint)
+            llm_adapters[adapter_key] = OpenAICompatibleLLMAdapter(  # type: ignore[assignment]
+                base_url=base_url,
+                api_key=api_key if api_key else None,
+                max_concurrent=model.max_concurrent,
             )
 
     # -- Institutional memory store (Wave 26) --
@@ -693,6 +723,125 @@ def create_app(
                     description=svc_desc,
                 ))
 
+        # Wave 64 Track 6a: load addon manifests and register components
+        from formicos.core.events import AddonLoaded  # noqa: PLC0415
+        from formicos.surface.addon_loader import (  # noqa: PLC0415
+            build_addon_tool_specs,
+            discover_addons,
+            register_addon,
+        )
+
+        _addons_dir = Path(__file__).resolve().parents[3] / "addons"
+        if not _addons_dir.is_dir():
+            _addons_dir = Path("/app/addons")  # Docker layout
+        _addon_manifests = discover_addons(_addons_dir)
+        _addon_registrations = []
+        _addon_runtime_context: dict[str, Any] = {
+            "vector_port": getattr(runtime, "memory_store", None),
+            "embed_fn": getattr(runtime, "embed_fn", None),
+            "workspace_root_fn": (
+                lambda ws_id: Path(runtime.data_dir) / "workspaces" / ws_id / "files"
+            ),
+            "event_store": getattr(runtime, "event_store", None),
+            "settings": getattr(runtime, "settings", {}),
+            "projections": getattr(runtime, "projections", None),
+            "runtime": runtime,
+        }
+        for _manifest in _addon_manifests:
+            _reg = register_addon(
+                _manifest,
+                tool_registry=(
+                    queen._tool_dispatcher._handlers  # pyright: ignore[reportPrivateUsage]
+                    if queen is not None else None
+                ),
+                service_router=service_router,
+                runtime_context=_addon_runtime_context,
+            )
+            _addon_registrations.append(_reg)
+            await runtime.emit_and_broadcast(AddonLoaded(
+                seq=0,
+                timestamp=datetime.now(UTC),
+                address="system",
+                addon_name=_manifest.name,
+                version=_manifest.version,
+                tools=_reg.registered_tools,
+                handlers=_reg.registered_handlers,
+                panels=[p.get("id", "") for p in _manifest.panels],
+            ))
+            log.info(
+                "app.addon_loaded",
+                addon=_manifest.name,
+                tools=_reg.registered_tools,
+                handlers=_reg.registered_handlers,
+            )
+
+        # Expose addon tool specs for Queen tool list and wire into dispatcher
+        app.state.addon_tool_specs = build_addon_tool_specs(_addon_manifests)  # type: ignore[attr-defined]
+        app.state.addon_manifests = _addon_manifests  # type: ignore[attr-defined]
+        if queen is not None:
+            queen._tool_dispatcher._addon_tool_specs = app.state.addon_tool_specs  # pyright: ignore[reportPrivateUsage]
+            queen._tool_dispatcher._addon_runtime_context = _addon_runtime_context  # pyright: ignore[reportPrivateUsage]
+
+        # Wave 65 Track 4: wire TriggerDispatcher for addon cron/manual triggers
+        from formicos.core.events import ServiceTriggerFired  # noqa: PLC0415
+        from formicos.surface.trigger_dispatch import TriggerDispatcher  # noqa: PLC0415
+
+        _trigger_dispatcher = TriggerDispatcher()
+        for _manifest in _addon_manifests:
+            _trigger_dispatcher.register_triggers(_manifest.name, _manifest.triggers)
+
+        async def _trigger_loop() -> None:
+            """Evaluate cron triggers every 60 seconds."""
+            while True:
+                await asyncio.sleep(60)
+                fired = _trigger_dispatcher.evaluate_cron_triggers()
+                for desc in fired:
+                    try:
+                        addon_name = desc["addon_name"]
+                        handler_ref = desc["handler"]
+                        # Find the matching addon registration for handler resolution
+                        import inspect as _insp  # noqa: PLC0415
+
+                        from formicos.surface.addon_loader import (  # noqa: PLC0415
+                            _resolve_handler,
+                        )
+                        handler_fn = _resolve_handler(addon_name, handler_ref)
+                        try:
+                            sig = _insp.signature(handler_fn)
+                        except (ValueError, TypeError):
+                            sig = None
+                        if sig and "runtime_context" in sig.parameters:
+                            await handler_fn(runtime_context=_addon_runtime_context)
+                        elif sig and len(sig.parameters) == 0:
+                            await handler_fn()
+                        else:
+                            log.warning(
+                                "trigger_dispatch.unsupported_handler_signature",
+                                addon=addon_name,
+                                handler=handler_ref,
+                                params=list(sig.parameters.keys()),
+                            )
+                            continue
+                        await runtime.emit_and_broadcast(ServiceTriggerFired(
+                            seq=0,
+                            timestamp=datetime.now(UTC),
+                            address="system",
+                            addon_name=addon_name,
+                            trigger_type="cron",
+                            handler=handler_ref,
+                        ))
+                    except Exception:  # noqa: BLE001
+                        log.warning(
+                            "trigger_dispatch.handler_error",
+                            addon=desc.get("addon_name"),
+                            handler=desc.get("handler"),
+                            exc_info=True,
+                        )
+
+        _trigger_task = asyncio.create_task(_trigger_loop())
+        _trigger_task.add_done_callback(_log_task_exception)
+        app.state.trigger_dispatcher = _trigger_dispatcher  # type: ignore[attr-defined]
+
         # Wave 45.5: MaintenanceDispatcher for proactive briefing evaluation
         from formicos.surface.self_maintenance import (  # noqa: PLC0415
             MaintenanceDispatcher,
@@ -758,6 +907,20 @@ def create_app(
 
         yield
         # Shutdown
+        _trigger_task.cancel()
+        # Wave 64: emit AddonUnloaded for each loaded addon
+        import contextlib  # noqa: PLC0415
+
+        from formicos.core.events import AddonUnloaded  # noqa: PLC0415
+        for _reg in _addon_registrations:
+            with contextlib.suppress(Exception):
+                await runtime.emit_and_broadcast(AddonUnloaded(
+                    seq=0,
+                    timestamp=datetime.now(UTC),
+                    address="system",
+                    addon_name=_reg.manifest.name,
+                    reason="shutdown",
+                ))
         await telemetry_bus.stop()
         await event_store.close()
         log.info("app.stopped")

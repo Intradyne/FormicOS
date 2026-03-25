@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 import math
+import os
 import re
 import time
 import unicodedata
@@ -1365,6 +1367,7 @@ class RoundRunner:
             merged_summaries=[],
             vector_port=vector_port,
             operational_playbook=colony_context.operational_playbook or None,  # Wave 54
+            project_context=colony_context.project_context or None,  # Wave 63
             budget_tokens=agent.recipe.max_tokens,
             tier_budgets=self._tier_budgets,
             kg_adapter=self._kg_adapter,
@@ -1998,7 +2001,11 @@ class RoundRunner:
                 return ToolExecutionResult(content="Error: path traversal not allowed")
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
+                # Wave 64: atomic write via temp+rename to prevent
+                # partial writes being visible to concurrent readers.
+                tmp = target.with_suffix(target.suffix + ".tmp")
+                tmp.write_text(content, encoding="utf-8")
+                os.replace(str(tmp), str(target))
                 return ToolExecutionResult(content=f"Written {len(content)} bytes to {rel_path}")
             except Exception as exc:
                 return ToolExecutionResult(content=f"Error writing file: {exc}")
@@ -2057,6 +2064,10 @@ class RoundRunner:
         except Exception as exc:
             return ToolExecutionResult(content=f"Error reading file: {exc}")
 
+        # Wave 64: content-hash optimistic locking — detect concurrent
+        # modification between read and write (no await in between).
+        content_hash = hashlib.sha256(buffer.encode()).hexdigest()[:16]
+
         # Apply operations sequentially against the in-memory buffer
         for idx, op in enumerate(operations):
             search = op.get("search", "")
@@ -2081,9 +2092,30 @@ class RoundRunner:
 
             buffer = buffer.replace(search, replace, 1)
 
-        # All operations succeeded — atomic write
+        # Wave 64: re-read and verify hash before write (optimistic lock)
         try:
-            target.write_text(buffer, encoding="utf-8")
+            current = target.read_text(encoding="utf-8", errors="replace")
+            current_hash = hashlib.sha256(
+                current.encode()
+            ).hexdigest()[:16]
+            if current_hash != content_hash:
+                return ToolExecutionResult(
+                    content=(
+                        "CONFLICT: file was modified by another agent "
+                        "since it was read. Re-read the file and retry "
+                        "with current content."
+                    ),
+                )
+        except Exception as exc:
+            return ToolExecutionResult(
+                content=f"Error re-reading file for conflict check: {exc}",
+            )
+
+        # All operations succeeded — atomic write via temp+rename
+        try:
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            tmp.write_text(buffer, encoding="utf-8")
+            os.replace(str(tmp), str(target))
         except Exception as exc:
             return ToolExecutionResult(content=f"Error writing file: {exc}")
 

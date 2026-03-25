@@ -1,0 +1,123 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: zipper\n\nINSTRUCTIONS:\n# Instructions\n\
+  \nCreating a zipper for a binary tree.\n\n[Zippers][zipper] are a purely functional way of navigating within a data structure\
+  \ and manipulating it.\nThey essentially contain a data structure and a pointer into that data structure (called the focus).\n\
+  \nFor example given a rose tree (where each node contains a value and a list of child nodes) a zipper might support these\
+  \ operations:\n\n- `from_tree` (get a zipper out of a rose tree, the focus is on the root node)\n- `to_tree` (get the rose\
+  \ tree out of the zipper)\n- `value` (get the value of the focus node)\n- `prev` (move the focus to the previous child of\
+  \ the same parent,\n  returns a new zipper)\n- `next` (move the focus to the next child of the same parent, returns a\n\
+  \  new zipper)\n- `up` (move the focus to the parent, returns a new zipper)\n- `set_value` (set the value of the focus node,\
+  \ returns a new zipper)\n- `insert_before` (insert a new subtree before the focus node, it\n  becomes the `prev` of the\
+  \ focus node, returns a new zipper)\n- `insert_after` (insert a new subtree after the focus node, it becomes\n  the `next`\
+  \ of the focus node, returns a new zipper)\n- `delete` (removes the focus node and all subtrees, focus moves to the\n  `next`\
+  \ node if possible otherwise to the `prev` node if possible,\n  otherwise to the parent node, returns a new zipper)\n\n\
+  [zipper]: https://en.wikipedia.org/wiki/Zipper_%28data_structure%29\n\nSTARTER CODE:\nFILE: zipper.py\n```\nclass Zipper:\n\
+  \    @staticmethod\n    def from_tree(tree):\n        pass\n\n    def value(self):\n        pass\n\n    def set_value(self):\n\
+  \        pass\n\n    def left(self):\n        pass\n\n    def set_left(self):\n        pass\n\n    def right(self):\n  \
+  \      pass\n\n    def set_right(self):\n        pass\n\n    def up(self):\n        pass\n\n    def to_tree(self):\n   \
+  \     pass\n\n```\n\nTEST FILE:\nFILE: zipper_test.py\n```\n# These tests are auto-generated with test data from:\n# https://github.com/exercism/problem-specifications/tree/main/exercises/zipper/canonical-data.json\n\
+  # File last updated on 2023-07-19\n\nimport unittest\n\nfrom zipper import (\n    Zipper,\n)\n\n\nclass ZipperTest(unittest.TestCase):\n\
+  \    def test_data_is_retained(self):\n        initial = {\n            \"value\": 1,\n            \"left\": {\n       \
+  \         \"value\": 2,\n                \"left\": None,\n                \"right\": {\"value\": 3, \"left\": None, \"right\"\
+  : None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n       \
+  \ expected = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\"\
+  : None,\n                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\"\
+  : {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result\
+  \ = zipper.to_tree()\n        self.assertEqual(result, expected)\n\n    def test_left_right_and_value(self):\n        initial\
+  \ = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n\
+  \                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"\
+  value\": 4, \"left\": None, \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result =\
+  \ zipper.left().right().value()\n        self.assertEqual(result, 3)\n\n    def test_dead_end(self):\n        initial =\
+  \ {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n\
+  \                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"\
+  value\": 4, \"left\": None, \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result =\
+  \ zipper.left().left()\n        self.assertIsNone(result)\n\n    def test_tree_from_deep_focus(self):\n        initial =\
+  \ {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n\
+  \                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"\
+  value\": 4, \"left\": None, \"right\": None},\n        }\n\n        expected = {\n            \"value\": 1,\n          \
+  \  \"left\": {\n                \"value\": 2,\n                \"left\": None,\n                \"right\": {\"value\": 3,\
+  \ \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n\
+  \        }\n\n        zipper = Zipper.from_tree(initial)\n        result = zipper.left().right().to_tree()\n        self.assertEqual(result,\
+  \ expected)\n\n    def test_traversing_up_from_top(self):\n        initial = {\n            \"value\": 1,\n            \"\
+  left\": {\n                \"value\": 2,\n                \"left\": None,\n                \"right\": {\"value\": 3, \"\
+  left\": None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n\
+  \        }\n\n        zipper = Zipper.from_tree(initial)\n        result = zipper.up()\n        self.assertIsNone(result)\n\
+  \n    def test_left_right_and_up(self):\n        initial = {\n            \"value\": 1,\n            \"left\": {\n     \
+  \           \"value\": 2,\n                \"left\": None,\n                \"right\": {\"value\": 3, \"left\": None, \"\
+  right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n\
+  \        zipper = Zipper.from_tree(initial)\n        result = zipper.left().up().right().up().left().right().value()\n \
+  \       self.assertEqual(result, 3)\n\n    def test_test_ability_to_descend_multiple_levels_and_return(self):\n        initial\
+  \ = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n\
+  \                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"\
+  value\": 4, \"left\": None, \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result =\
+  \ zipper.left().right().up().up().value()\n        self.assertEqual(result, 1)\n\n    def test_set_value(self):\n      \
+  \  initial = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\"\
+  : None,\n                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\"\
+  : {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n        expected = {\n            \"value\": 1,\n     \
+  \       \"left\": {\n                \"value\": 5,\n                \"left\": None,\n                \"right\": {\"value\"\
+  : 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\"\
+  : None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result = zipper.left().set_value(5).to_tree()\n\
+  \        self.assertEqual(result, expected)\n\n    def test_set_value_after_traversing_up(self):\n        initial = {\n\
+  \            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n  \
+  \              \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\"\
+  : 4, \"left\": None, \"right\": None},\n        }\n\n        expected = {\n            \"value\": 1,\n            \"left\"\
+  : {\n                \"value\": 5,\n                \"left\": None,\n                \"right\": {\"value\": 3, \"left\"\
+  : None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n   \
+  \     }\n\n        zipper = Zipper.from_tree(initial)\n        result = zipper.left().right().up().set_value(5).to_tree()\n\
+  \        self.assertEqual(result, expected)\n\n    def test_set_left_with_leaf(self):\n        initial = {\n           \
+  \ \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n             \
+  \   \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"\
+  left\": None, \"right\": None},\n        }\n\n        expected = {\n            \"value\": 1,\n            \"left\": {\n\
+  \                \"value\": 2,\n                \"left\": {\"value\": 5, \"left\": None, \"right\": None},\n           \
+  \     \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\": 4,\
+  \ \"left\": None, \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result = (\n     \
+  \       zipper.left().set_left({\"value\": 5, \"left\": None, \"right\": None}).to_tree()\n        )\n        self.assertEqual(result,\
+  \ expected)\n\n    def test_set_right_with_null(self):\n        initial = {\n            \"value\": 1,\n            \"left\"\
+  : {\n                \"value\": 2,\n                \"left\": None,\n                \"right\": {\"value\": 3, \"left\"\
+  : None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n   \
+  \     }\n\n        expected = {\n            \"value\": 1,\n            \"left\": {\"value\": 2, \"left\": None, \"right\"\
+  : None},\n            \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n\
+  \        result = zipper.left().set_right(None).to_tree()\n        self.assertEqual(result, expected)\n\n    def test_set_right_with_subtree(self):\n\
+  \        initial = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n              \
+  \  \"left\": None,\n                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n      \
+  \      \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n        expected = {\n            \"value\"\
+  : 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n                \"right\"\
+  : {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\n                \"value\"\
+  : 6,\n                \"left\": {\"value\": 7, \"left\": None, \"right\": None},\n                \"right\": {\"value\"\
+  : 8, \"left\": None, \"right\": None},\n            },\n        }\n\n        zipper = Zipper.from_tree(initial)\n      \
+  \  result = zipper.set_right(\n            {\n                \"value\": 6,\n                \"left\": {\"value\": 7, \"\
+  left\": None, \"right\": None},\n                \"right\": {\"value\": 8, \"left\": None, \"right\": None},\n         \
+  \   }\n        ).to_tree()\n        self.assertEqual(result, expected)\n\n    def test_set_value_on_deep_focus(self):\n\
+  \        initial = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n              \
+  \  \"left\": None,\n                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n      \
+  \      \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n        }\n\n        expected = {\n            \"value\"\
+  : 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n                \"right\"\
+  : {\"value\": 5, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\": 4, \"left\": None,\
+  \ \"right\": None},\n        }\n\n        zipper = Zipper.from_tree(initial)\n        result = zipper.left().right().set_value(5).to_tree()\n\
+  \        self.assertEqual(result, expected)\n\n    def test_different_paths_to_same_zipper(self):\n        initial = {\n\
+  \            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n                \"left\": None,\n  \
+  \              \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n            \"right\": {\"value\"\
+  : 4, \"left\": None, \"right\": None},\n        }\n        result = Zipper.from_tree(initial).left().up().right().to_tree()\n\
+  \n        final = {\n            \"value\": 1,\n            \"left\": {\n                \"value\": 2,\n               \
+  \ \"left\": None,\n                \"right\": {\"value\": 3, \"left\": None, \"right\": None},\n            },\n       \
+  \     \"right\": {\"value\": 4, \"left\": None, \"right\": None},\n        }\n        expected = Zipper.from_tree(final).right().to_tree()\n\
+  \n        self.assertEqual(result, expected)\n\n```\n\nYour task: Edit the starter code file(s) so ALL tests pass.\nUse\
+  \ write_workspace_file to write your solution, then use\nworkspace_execute to run the tests.\n\nTEST COMMAND: python -m\
+  \ unittest zipper_test.py -v 2>&1\n\nIf tests fail, read the error output carefully, fix your code,\nand run the tests again.\n\
+  \nWrite your solution in the starter file. The test file imports from the solution module. Run tests with workspace_execute.\n\
+  \nUse any Available Knowledge entries — they contain patterns\nfrom prior exercises that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-zipper
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest zipper_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/zipper

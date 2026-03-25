@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from formicos.core.events import (
+    AddonLoaded,
+    AddonUnloaded,
     AgentTurnCompleted,
     AgentTurnStarted,
     ApprovalDenied,
@@ -67,6 +69,7 @@ from formicos.core.events import (
     RoundStarted,
     ServiceQueryResolved,
     ServiceQuerySent,
+    ServiceTriggerFired,
     SkillConfidenceUpdated,
     SkillMerged,
     ThreadCreated,
@@ -76,6 +79,7 @@ from formicos.core.events import (
     TokensConsumed,
     WorkflowStepCompleted,
     WorkflowStepDefined,
+    WorkflowStepUpdated,
     WorkspaceConfigChanged,
     WorkspaceCreated,
 )
@@ -388,6 +392,12 @@ def build_representative_event_sequence() -> list[FormicOSEvent]:
             workspace_id=_WS_ID, thread_id=_TH_ID,
             step_index=0, colony_id=_COL_ID, success=True,
         ),
+        # 46b. WorkflowStepUpdated (Wave 63)
+        WorkflowStepUpdated(
+            seq=_seq(), timestamp=_NOW, address=f"{_WS_ID}/{_TH_ID}",
+            workspace_id=_WS_ID, thread_id=_TH_ID,
+            step_index=0, new_description="Revised step", new_status="in_progress",
+        ),
         # 47. CRDTCounterIncremented
         CRDTCounterIncremented(
             seq=_seq(), timestamp=_NOW, address=_ADDR,
@@ -529,8 +539,22 @@ def build_representative_event_sequence() -> list[FormicOSEvent]:
             refinement_source="maintenance",
             source_colony_id="",
         ),
+        AddonLoaded(
+            seq=_seq(), timestamp=_NOW, address="system",
+            addon_name="test-addon", version="1.0.0",
+            tools=["tool_a"], handlers=["handler_a"], panels=[],
+        ),
+        AddonUnloaded(
+            seq=_seq(), timestamp=_NOW, address="system",
+            addon_name="test-addon", reason="shutdown",
+        ),
+        ServiceTriggerFired(
+            seq=_seq(), timestamp=_NOW, address=_WS_ID,
+            addon_name="test-addon", trigger_type="cron",
+            workspace_id=_WS_ID, details="Scheduled maintenance.",
+        ),
     ]
-    assert len(events) == 66, f"Expected 66 events, got {len(events)}"
+    assert len(events) == 70, f"Expected 70 events, got {len(events)}"
     return events
 
 

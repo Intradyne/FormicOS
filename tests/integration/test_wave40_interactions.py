@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -454,7 +454,7 @@ class TestProactiveInsightsAnnotations:
                 "title": "Annotated entry",
                 "domains": ["python"],
                 "created_at": datetime(2026, 1, 1, tzinfo=UTC).isoformat(),
-                "last_confidence_update": datetime(2026, 3, 18, tzinfo=UTC).isoformat(),
+                "last_confidence_update": (datetime.now(UTC) - timedelta(days=3)).isoformat(),
             },
         }
 

@@ -168,7 +168,7 @@ export interface MergeEdge {
 
 /** Wave 49: structured intent/render metadata on Queen messages. */
 export type QueenMsgIntent = 'notify' | 'ask';
-export type QueenMsgRender = 'text' | 'preview_card' | 'result_card';
+export type QueenMsgRender = 'text' | 'preview_card' | 'result_card' | 'proposal_card' | 'edit_proposal' | 'parallel_result';
 
 export interface QueenChatMessage {
   role: QueenMessageRole;
@@ -223,6 +223,56 @@ export interface ResultCardMeta {
   threadId?: string;
   total_reasoning_tokens?: number;
   total_cache_read_tokens?: number;
+}
+
+/** Wave 61: Proposal card payload from Queen's propose_plan tool. */
+export interface ProposalOption {
+  label: string;
+  description: string;
+  colonies?: number;
+  estimated_cost?: string;
+}
+
+export interface ProposalData {
+  summary: string;
+  options: ProposalOption[];
+  questions?: string[];
+  recommendation?: string;
+}
+
+/** Wave 63: Edit proposal card from Queen's edit_file tool. */
+export interface EditProposalMeta {
+  filePath: string;
+  diff: string;
+  reason: string;
+  colonyId?: string;
+}
+
+/** Wave 63: Parallel result aggregation from spawn_parallel completions. */
+export interface ParallelResultMeta {
+  planId: string;
+  planSummary: string;
+  colonies: ParallelColonyResult[];
+  totalCost: number;
+  durationMs: number;
+}
+
+export interface ParallelColonyResult {
+  colonyId: string;
+  task: string;
+  status: string;
+  cost: number;
+  rounds: number;
+  displayName?: string;
+}
+
+/** Wave 63: Workflow step for thread step CRUD. */
+export interface WorkflowStepItem {
+  step_index: number;
+  description: string;
+  status: string;
+  expected_outputs?: string[];
+  notes?: string;
 }
 
 export interface QueenThread {
@@ -764,6 +814,7 @@ export const EVENT_NAMES = [
   'MemoryConfidenceUpdated',
   'WorkflowStepDefined',
   'WorkflowStepCompleted',
+  'WorkflowStepUpdated',
   'CRDTCounterIncremented',
   'CRDTTimestampUpdated',
   'CRDTSetElementAdded',
@@ -781,6 +832,9 @@ export const EVENT_NAMES = [
   'ColonyEscalated',
   'QueenNoteSaved',
   'MemoryEntryRefined',
+  'AddonLoaded',
+  'AddonUnloaded',
+  'ServiceTriggerFired',
 ] as const;
 
 // Wave 19 event types (ADR-032)

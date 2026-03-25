@@ -109,6 +109,19 @@ _ACTION_MARKERS_RE = re.compile(
     r"(?i)(?:spawning\s+now|I['\u2019]ll\s+(?:go\s+ahead|dispatch|create\s+a\s+colony))"
 )
 
+# Wave 62 Track 3: DIRECT_WORK — operator messages that the Queen can
+# answer with search_codebase / run_command / read_workspace_files
+# instead of spawning a colony.
+_DIRECT_WORK_RE = re.compile(
+    r"(?i)(?:"
+    r"where\s+is|what\s+does|show\s+me|how\s+does|"
+    r"are\s+the\s+tests|what\s+changed|git\s+(?:status|diff|log)|"
+    r"find\s+(?:the|where|all)|search\s+(?:for|the)|"
+    r"grep\s+|look\s+(?:up|for|at)\s+|"
+    r"what\s+is\s+the\s+(?:status|output|result)"
+    r")",
+)
+
 
 INTENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # APOPTOSIS before KILL — "self-terminate" must not match KILL's "terminate"
@@ -382,6 +395,8 @@ def intent_to_tool_call(intent: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "_DELIBERATION_RE",
+    "_DIRECT_WORK_RE",
     "parse_intent_regex",
     "parse_queen_intent",
     "intent_to_tool_call",

@@ -49,4 +49,4 @@ class TestSkillMergedRoundTrip:
         annotated_args = get_args(FormicOSEvent)
         union_type = annotated_args[0]
         members = get_args(union_type)
-        assert len(members) == 65
+        assert len(members) == 69

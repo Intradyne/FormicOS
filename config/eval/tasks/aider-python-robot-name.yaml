@@ -1,0 +1,39 @@
+budget_limit: 1.0
+castes:
+- caste: coder
+  count: 1
+  tier: standard
+category: code_implementation
+description: "Solve the following Exercism coding exercise.\n\nLANGUAGE: python\nEXERCISE: robot-name\n\nINSTRUCTIONS:\n#\
+  \ Instructions\n\nManage robot factory settings.\n\nWhen a robot comes off the factory floor, it has no name.\n\nThe first\
+  \ time you turn on a robot, a random name is generated in the format of two uppercase letters followed by three digits,\
+  \ such as RX837 or BC811.\n\nEvery once in a while we need to reset a robot to its factory settings, which means that its\
+  \ name gets wiped.\nThe next time you ask, that robot will respond with a new random name.\n\nThe names must be random:\
+  \ they should not follow a predictable sequence.\nUsing random names means a risk of collisions.\nYour solution must ensure\
+  \ that every existing robot has a unique name.\n\nSTARTER CODE:\nFILE: robot_name.py\n```\nclass Robot:\n    def __init__(self):\n\
+  \        pass\n\n```\n\nTEST FILE:\nFILE: robot_name_test.py\n```\nimport unittest\nimport random\n\nfrom robot_name import\
+  \ Robot\n\n\nclass RobotNameTest(unittest.TestCase):\n    # assertRegex() alias to address DeprecationWarning\n    # assertRegexpMatches\
+  \ got renamed in version 3.2\n    if not hasattr(unittest.TestCase, \"assertRegex\"):\n        assertRegex = unittest.TestCase.assertRegexpMatches\n\
+  \n    name_re = r'^[A-Z]{2}\\d{3}$'\n\n    def test_has_name(self):\n        self.assertRegex(Robot().name, self.name_re)\n\
+  \n    def test_name_sticks(self):\n        robot = Robot()\n        robot.name\n        self.assertEqual(robot.name, robot.name)\n\
+  \n    def test_different_robots_have_different_names(self):\n        self.assertNotEqual(\n            Robot().name,\n \
+  \           Robot().name\n        )\n\n    def test_reset_name(self):\n        # Set a seed\n        seed = \"Totally random.\"\
+  \n\n        # Initialize RNG using the seed\n        random.seed(seed)\n\n        # Call the generator\n        robot =\
+  \ Robot()\n        name = robot.name\n\n        # Reinitialize RNG using seed\n        random.seed(seed)\n\n        # Call\
+  \ the generator again\n        robot.reset()\n        name2 = robot.name\n        self.assertNotEqual(name, name2)\n   \
+  \     self.assertRegex(name2, self.name_re)\n\n\nif __name__ == '__main__':\n    unittest.main()\n\n```\n\nYour task: Edit\
+  \ the starter code file(s) so ALL tests pass.\nUse write_workspace_file to write your solution, then use\nworkspace_execute\
+  \ to run the tests.\n\nTEST COMMAND: python -m unittest robot_name_test.py -v 2>&1\n\nIf tests fail, read the error output\
+  \ carefully, fix your code,\nand run the tests again.\n\nWrite your solution in the starter file. The test file imports\
+  \ from the solution module. Run tests with workspace_execute.\n\nUse any Available Knowledge entries — they contain patterns\n\
+  from prior exercises that may help you avoid common mistakes."
+difficulty: moderate
+eval_timeout_s: 180
+fast_path: true
+id: aider-python-robot-name
+max_rounds: 4
+quality_mode: pass_fail
+strategy: sequential
+success_rubric: All tests pass with exit code 0
+verify_command: python -m unittest robot_name_test.py -v 2>&1
+workspace_seed: /benchmark/python/exercises/practice/robot-name
