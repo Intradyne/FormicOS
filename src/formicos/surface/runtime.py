@@ -491,6 +491,8 @@ class Runtime:
         self.queen: Any = None  # noqa: ANN401
         # Set by app.py after memory store is created (Wave 26)
         self.memory_store: Any = None  # noqa: ANN401
+        # Set by app.py after addons are registered (Wave 64)
+        self.addon_registrations: list[Any] | None = None
 
     def _wire_kg_events(self) -> None:
         """Inject KG event callback into the adapter (Wave 14 Stream D)."""
@@ -533,7 +535,13 @@ class Runtime:
             elif etype == "MemoryEntryStatusChanged":
                 sync_id = str(getattr(event_with_seq, "entry_id", ""))
             elif etype == "MemoryEntryMerged":
-                sync_id = str(getattr(event_with_seq, "target_id", ""))
+                # Wave 66 S3: sync both target (updated) and source (rejected)
+                for _merge_attr in ("target_id", "source_id"):
+                    _merge_id = str(getattr(event_with_seq, _merge_attr, ""))
+                    if _merge_id:
+                        await self.memory_store.sync_entry(
+                            _merge_id, self.projections.memory_entries,
+                        )
             elif etype in ("MemoryConfidenceUpdated", "MemoryEntryRefined"):
                 sync_id = str(getattr(event_with_seq, "entry_id", ""))
             if sync_id:
@@ -1159,19 +1167,19 @@ class Runtime:
         task: str,
         workspace_id: str,
         thread_id: str = "",
-    ) -> str:
+    ) -> tuple[str, list[dict[str, Any]]]:
         """Deterministic pre-spawn knowledge retrieval.
 
         Searches the unified knowledge catalog for skills and experiences
-        relevant to *task* and returns a formatted block for Queen context
-        injection.
+        relevant to *task* and returns a ``(formatted_block, raw_items)``
+        tuple for Queen context injection and consulted-entry tracking.
 
         Called by ``QueenAgent.respond()`` before the first LLM call.
         This is a deterministic runtime action, not a model-facing nudge.
         """
         catalog = getattr(self, "knowledge_catalog", None)
         if catalog is None:
-            return ""
+            return "", []
 
         try:
             results: list[dict[str, Any]] = await catalog.search(
@@ -1182,10 +1190,10 @@ class Runtime:
             )
         except Exception:
             log.debug("runtime.memory_retrieval_failed", task=task[:80])
-            return ""
+            return "", []
 
         if not results:
-            return ""
+            return "", []
 
         lines = [f"[System Knowledge -- {len(results)} entries found]"]
 
@@ -1205,7 +1213,7 @@ class Runtime:
             )
             lines.append(f"  source: colony {colony}, confidence: {conf:.1f}")
 
-        return "\n".join(lines)
+        return "\n".join(lines), results
 
 
     # -- Unified knowledge fetch for agent context (Wave 28 A1) --

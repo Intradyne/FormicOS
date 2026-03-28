@@ -210,10 +210,26 @@ def build_extraction_prompt(
         '- "permanent": verified definitions, mathematical facts, immutable truths\n'
         'Default to "ephemeral" if uncertain.\n'
     )
+    # Wave 67: domain normalization via existing entry suggestion
+    existing_domains: set[str] = set()
+    if existing_entries:
+        for e in existing_entries[:10]:
+            for d in e.get("domains", []):
+                existing_domains.add(d)
+    domain_hint = ""
+    if existing_domains:
+        sorted_domains = sorted(existing_domains)[:20]
+        domain_hint = (
+            "\nUse one of these existing domain tags if applicable "
+            "(do not create synonyms): "
+            + ", ".join(sorted_domains)
+        )
     parts.append(
         f'Tag each entry with "primary_domain": "{task_class}". '
         "This classifies the task context the knowledge was extracted from.\n"
     )
+    if domain_hint:
+        parts.append(domain_hint)
     if not (existing_entries and colony_status == "completed"):
         parts.append(
             'Return JSON: {"skills": [...], "experiences": [...]}\n'

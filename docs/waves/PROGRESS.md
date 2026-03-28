@@ -1,12 +1,412 @@
 # FormicOS v2 -- Wave Progress
 
-**Last updated:** 2026-03-25 -- Wave 65.5 landed (Addons Made Real + Polish). 3640 tests green. Addon runtime context injection, real codebase index + git control, trigger wiring, Queen autonomous agency (36 tools), addon dev guide, polish pass (porcelain parsing, forbidden ops, cron DOW, trigger loop, schema validation).
+**Last updated:** 2026-03-27 -- Wave 73 landed and integrated. Developer Bridge: MCP composition layer (27 tools, 9 resources, 6 prompts), init-mcp CLI, frontend governance truth, workspace creation, addon polish. 3911 tests green. 43 Queen tools. 9-slot Queen context budget.
 
-**Note:** Detailed per-wave docs are on disk through Wave 65. Consolidated numeric metrics further down this file are still historical snapshots from earlier milestones until a dedicated metrics refresh is done.
+**Note:** Detailed per-wave docs are on disk through Wave 73. Consolidated numeric metrics further down this file are still historical snapshots from earlier milestones until a dedicated metrics refresh is done.
 
 ---
 
-## Current: Wave 65.5 -- Addon Polish Pass
+## Current: Wave 73 -- The Developer Bridge
+
+**Status:** Landed and integrated (3 teams)
+**Theme:** Make FormicOS usable from Claude Code. MCP composition layer
+(prompts that compose existing tools into developer workflows), prose
+resources, init-mcp CLI, frontend truth fixes, workspace creation UI.
+No new event types — event count stays at 69.
+
+### Team A — MCP Prompts + Resources + Addon Tools + init-mcp: LANDED.
+1. **4 MCP prompts:** `morning-status`, `delegate-task`,
+   `review-overnight-work`, `knowledge-for-context` — read-only, compose
+   existing operational state modules.
+2. **2 MCP tools:** `log_finding` (creates knowledge entries),
+   `handoff_to_formicos` (creates thread + spawns colony with developer
+   context) — mutating, use `@mcp.tool(annotations=_MUT)`.
+3. **3 MCP resources:** `formicos://plan` (global),
+   `formicos://procedures/{workspace_id}`,
+   `formicos://journal/{workspace_id}` — return prose markdown.
+4. **3 addon tools:** `addon_status` (RO), `toggle_addon` (MUT),
+   `trigger_addon` (MUT).
+5. **init-mcp CLI:** `python -m formicos init-mcp` generates `.mcp.json`
+   (type: http) and `.formicos/DEVELOPER_QUICKSTART.md`.
+6. **Runtime wiring:** `addon_registrations` exposed on runtime for MCP
+   server access.
+
+### Team B — Frontend Truth + Workspace Creation: LANDED.
+7. **Colony creator governance:** Replaced hardcoded budget=2.0 and
+   maxRounds=10 with governance-configured defaults via
+   `_applyGovernanceDefaults()`. Removed fabricated tier cost rates.
+8. **Template editor governance:** Same pattern — replaced hardcoded 1.0/5
+   with governance defaults. Governance passed through playbook-view.ts.
+9. **Workspace creation:** `POST /api/v1/workspaces` REST endpoint. Frontend
+   sidebar button with inline form. Uses fetch (not WS) — snapshot
+   auto-refreshes via WorkspaceCreated event.
+10. **Addon config type coercion:** boolean/integer string→native coercion
+    in `put_addon_config()`.
+
+### Team C — Settings Protocol Detail + Addon Polish + Documentation: LANDED.
+11. **Protocol detail:** Verified Wave 72.5 protocol summary already complete.
+12. **Addon search/filter:** Text filter on sidebar addon list.
+13. **Addon health summary:** Aggregate stats card (total, tools, calls,
+    errors) at top of detail panel.
+14. **DEVELOPER_BRIDGE.md:** 5-minute developer onboarding guide.
+15. **CLAUDE.md refresh:** Updated MCP counts, key paths, commands.
+
+### Seam integration
+- `MCP_TOOL_NAMES` tuple updated to include all 27 tools (was 19).
+- `view_state.py` fallback updated from 19 to 27.
+- `formicos://plan` resource URI corrected (global, no workspace_id).
+- DEVELOPER_BRIDGE.md jargon removed from Architecture section.
+
+**Post-wave state:** 27 MCP tools, 9 resources, 6 prompts, 4 CLI
+subcommands, 69 events, 43 Queen tools. REST workspace creation.
+
+---
+
+## Wave 72.5 -- Topbar Simplification + Addon Lifecycle (landed)
+
+**Status:** Landed (3 teams)
+**Theme:** Clean topbar, interactive addon management, protocol detail migration.
+
+- Removed protocol badges and connection indicator from topbar; added
+  clickable budget popover.
+- Fixed addon trigger handler calling convention; added interactive "Try It"
+  tool testing forms and inline config editing.
+- Migrated protocol detail (tool counts, event counts, endpoints) from
+  topbar badges to Settings Integrations section.
+- Addon lifecycle: soft disable toggle, hello-world scaffold hiding.
+
+---
+
+## Wave 72 -- Autonomous Learning + Workflow Patterns (landed)
+
+**Status:** Landed (3 teams)
+**Theme:** System improves its own knowledge, learns from patterns, continues
+work autonomously, stays legible to the operator.
+
+- Knowledge review lifecycle: scanning, queuing, operator confirmation/
+  invalidation of problematic entries.
+- Autonomous continuation: Queen proposes and executes low-risk work across
+  sessions and during idle time.
+- Workflow learning: deterministic pattern recognition for reusable templates
+  (`extract_workflow_patterns`) and operator procedure suggestions
+  (`detect_operator_patterns`).
+- Product polish: trigger fixes, active Knowledge tab, writable Settings,
+  addon disable, model filtering.
+
+---
+
+## Wave 71 -- Operational Coherence (landed)
+
+**Status:** 71.0 + 71.5 landed and integrated
+**Theme:** Turn operational intelligence into a durable file-backed substrate
+(71.0) and surface it in a dedicated Mission Control tab (71.5). No new event
+types — event count stays at 69.
+
+Split into two dispatches: 71.0 (backend operational state layer) and 71.5
+(frontend Operations tab consuming those contracts).
+
+### Wave 71.0 — Operational Coherence Substrate (9 tracks, 3 teams)
+
+**Team A — Queen Working Memory: LANDED.**
+1. **Track 1 -- Queen context budget expansion:** 7-slot → 9-slot
+   `QueenContextBudget` frozen dataclass. New slots: `operating_procedures`
+   (5%), `queen_journal` (4%), carved from `thread_context` (15→13%) and
+   `memory_retrieval` (15→13%). Remaining slots rebalanced gently (no slot
+   loses >2 points). (`queen_budget.py`)
+2. **Track 2 -- Operating procedures injection:** File-backed procedures at
+   `.formicos/operations/{workspace_id}/procedures.md`. Structured rule parser
+   extracts rules from markdown. Injected into Queen context after briefing,
+   before deliberation. `GET/PUT /api/v1/workspaces/{id}/operating-procedures`
+   endpoints. (`queen_runtime.py`, `routes/api.py`)
+3. **Track 3 -- Queen journal injection:** File-backed journal at
+   `.formicos/operations/{workspace_id}/journal.md`. Session summary writes
+   appended to journal. Injected into Queen context as working-memory block.
+   `GET /api/v1/workspaces/{id}/queen-journal` endpoint.
+   (`queen_runtime.py`, `routes/api.py`)
+
+**Team B — Durable Action Queue: LANDED.**
+4. **Track 4 -- Action queue ledger:** Generic typed action envelope with
+   `kind` as semantic authority. Statuses: `pending_review`, `approved`,
+   `rejected`, `executed`, `self_rejected`, `failed`. JSONL-backed at
+   `.formicos/operations/{workspace_id}/action_queue.jsonl`. Size management
+   via `compact_action_log()` at 1000 lines. (`routes/api.py`)
+5. **Track 5 -- Approve/reject endpoints:**
+   `POST .../actions/{id}/approve` and `POST .../actions/{id}/reject`
+   (with optional reason). Dispatcher wiring for approved actions.
+   (`routes/api.py`)
+6. **Track 6 -- 30-minute operational sweep:** Second asyncio task alongside
+   24-hour consolidation loop. Processes approved actions, queues medium/high-
+   risk work. Configurable via `FORMICOS_OPS_SWEEP_INTERVAL_S` env var.
+   (`app.py`)
+
+**Team C — Operations Coordinator: LANDED.**
+7. **Track 7 -- Thread plan helper:** Shared helper extracts structured thread
+   context for the coordinator. Budget-aware truncation via
+   `[:budget.thread_context * 2]`. (`queen_runtime.py`)
+8. **Track 8 -- Operations coordinator:** Synthesizes project plan, thread
+   plans, session summaries, outcomes, and action queue into
+   `continuation_candidates`, `sync_issues`, and operator-idle signals.
+   `GET /api/v1/workspaces/{id}/operations/summary` endpoint.
+   (`routes/api.py`)
+9. **Track 9 -- Queen continuity cue:** Coordinator output injected as
+   structured context for the Queen to reason about next steps.
+   (`queen_runtime.py`)
+
+Integration fixes: Team A operations-view.ts rewired to mount real Team C
+leaf components instead of inline previews. Team C `get_operations_summary`
+fixed bare `projections` reference → `runtime.projections if runtime else None`.
+
+21 + 17 + 24 = 62 new tests. Queen context budget: 7 → 9 slots.
+
+### Wave 71.5 — Mission Control Surface (3 teams)
+
+**Team A — Operations Shell: LANDED.**
+- `fc-operations-view` Lit component: header with journal-count badge,
+  summary row (journal entries, procedures status, pending actions), two-column
+  layout mounting Team B and Team C leaf components. 8th nav tab added to
+  `formicos-app.ts` (ViewId union, NAV array, grid-template-columns).
+  (`operations-view.ts`, `formicos-app.ts`)
+
+**Team B — Action Inbox: LANDED.**
+- `fc-operations-inbox` Lit component: kind/status-driven rendering with
+  sections for pending review, recent automatic, deferred/self-rejected.
+  Approve (one-click) and reject (with optional reason) workflow. Blast-radius
+  visual language following proposal-card pattern. Extensible for future action
+  kinds without inbox redesign.
+  (`operations-inbox.ts`)
+
+**Team C — Operational Memory Surfaces: LANDED.**
+- `fc-queen-journal-panel`: operational log view with load-more, empty state.
+- `fc-operating-procedures-editor`: inline text editing with PUT save, success/
+  failure feedback, empty template for first-time users.
+- `fc-operations-summary-card`: compact at-a-glance orientation — pending
+  review count, active milestones, operator idle/active state, top continuation
+  candidate, top sync issue, recent progress snippet.
+  (`queen-journal-panel.ts`, `operating-procedures-editor.ts`,
+  `operations-summary-card.ts`)
+
+3870 tests passing. CI: ruff clean, imports clean.
+
+### Post-integration audit
+
+Comprehensive UI/UX seam audit completed. Reference doc at
+`docs/waves/wave_72_polish_reference.md` catalogs 9 items across model
+management, settings editability, document ingestion, addon triggers, and
+navigation. Key findings: addon manual trigger bug (docs-index and
+codebase-index both miswired to `indexer.py::incremental_reindex` instead
+of `search.py::handle_reindex`), model status type contract divergence,
+and Settings page structural inversion (too much read-only inventory,
+not enough writable controls).
+
+---
+
+## Previous: Wave 70 -- Operational Flexibility
+
+**Status:** 70.0 + 70.5 landed and integrated
+**Theme:** Backend contracts (70.0) + operator trust surface (70.5) for MCP
+access, project-level intelligence, and earned autonomy.
+
+Split into two dispatches: 70.0 (backend/control-plane contracts) and 70.5
+(frontend rendering consuming those contracts). No new event types — event
+count stays at 69.
+
+### Wave 70.0 — Backend Substrate (9 tracks, 3 teams)
+
+**Team A — MCP Bridge Substrate: LANDED.**
+1. **Track 1 -- MCP bridge addon core:** New `addons/mcp-bridge/` addon with
+   FastMCP `>=3.0,<4.0` Client. Bridge registers as addon via existing
+   `addon_loader.py` pipeline. Generic capability protocol for health exposure
+   (no addon-name branching). `call_mcp_tool` Queen tool for remote tool
+   invocation. (`addons/mcp_bridge/`)
+2. **Track 2 -- Dynamic MCP tool discovery:** `discover_mcp_tools` Queen tool
+   queries connected MCP servers and returns available tools with schemas.
+   (`queen_tools.py`)
+3. **Track 3 -- Bridge health exposure:** Generic addon health via
+   `AddonRegistration.health_status` property. Bridge health visible through
+   `/api/v1/addons` endpoint without hardcoded addon-name checks.
+   (`addon_loader.py`, `routes/api.py`)
+
+**Team B — Project Intelligence Substrate: LANDED.**
+4. **Track 4 -- Project plan helper:** `project_plan.py` shared parser/helper
+   — single source of truth for resolving plan path, parsing milestones,
+   rendering compact Queen context text, updating timestamps.
+   (`surface/project_plan.py`)
+5. **Track 5 -- Milestone tools + endpoint + budget:** `propose_project_milestone`
+   and `complete_project_milestone` Queen tools. `GET /api/v1/project-plan`
+   returns structured JSON. Dedicated 7th Queen context budget slot
+   (`project_plan` at 5%, 400-token fallback, carved from `thread_context`
+   which went from 20% to 15%). ADR-051 updated.
+   (`queen_tools.py`, `queen_budget.py`, `routes/api.py`)
+6. **Track 6 -- Project plan injection:** Parsed project plan injected into
+   Queen context as its own system message block, capped by `project_plan`
+   budget, labeled `# Project Plan (cross-thread)`. Separate from
+   `project_context.md` and thread plans.
+   (`queen_runtime.py`)
+
+**Team C — Autonomy Trust Substrate: LANDED.**
+7. **Track 7 -- Daily autonomy budget:** `check_autonomy_budget` Queen tool
+   surfaces daily budget spend, remaining capacity, and recent autonomous
+   actions. (`queen_tools.py`)
+8. **Track 8 -- Blast radius estimator:** `BlastRadiusEstimate` dataclass with
+   6 heuristic factors (task length, caste risk, round count, strategy,
+   keywords coder-only, outcome history). Thresholds: >=0.6 escalate,
+   >=0.3 notify, <0.3 proceed. Dispatch gate in `evaluate_and_dispatch()`.
+   Proposal metadata carries blast-radius truth.
+   (`self_maintenance.py`, `queen_tools.py`)
+9. **Track 9 -- Autonomy scoring + status endpoint:** `AutonomyScore` with
+   4 weighted components (success_rate, volume, cost_efficiency,
+   operator_trust). `compute_autonomy_score()` pure function.
+   `GET /api/v1/workspaces/{id}/autonomy-status` returns structured trust
+   data. (`self_maintenance.py`, `routes/api.py`)
+
+**Integration fix:** Blast radius keyword weight set to 0.0 for non-coder
+castes — researcher investigating "authentication" is not the same as
+modifying it.
+
+### Wave 70.5 — Operator Surface (3 teams)
+
+**Team A — MCP Settings UX: LANDED.**
+- `fc-mcp-servers-card` Lit component: server list with health dots, add/remove
+  forms, three empty states. Reads from `/api/v1/addons`, writes through
+  `PUT /api/v1/addons/mcp-bridge/config`. Self-contained, no store dependency.
+  (`mcp-servers-card.ts`)
+
+**Team B — Project Visibility: LANDED.**
+- `fc-project-plan-card` Lit component: plan goal, progress bar, milestone
+  checklist with status chips, thread links, completion dates. Mounted in
+  `queen-overview.ts` after budget panel. Data from `GET /api/v1/project-plan`
+  only — no frontend markdown parsing.
+  (`project-plan-card.ts`, `queen-overview.ts`)
+
+**Team C — Trust Integration: LANDED.**
+- `fc-autonomy-card` Lit component: grade badge (A-F), trust score, daily
+  budget bar, component breakdown, recent autonomous actions table. Mounted
+  in `settings-view.ts`.
+  (`autonomy-card.ts`, `settings-view.ts`)
+- Proposal card blast-radius rendering: score, level pill, recommendation pill,
+  factors list. Color-coded border. Additive only — unchanged when absent.
+  (`proposal-card.ts`, `queen-chat.ts`)
+- `system-overview.ts` tool count updated to 43.
+- `BlastRadiusData` and `AutonomyStatusData` interfaces added to `types.ts`.
+
+**Integration fix:** Mounted Team A's `fc-mcp-servers-card` in
+`settings-view.ts` (Card G, between Addons and Autonomy Trust).
+
+Queen tools: 38 → 43 (+discover_mcp_tools, +call_mcp_tool,
++propose_project_milestone, +complete_project_milestone,
++check_autonomy_budget). Queen context budget: 6 → 7 slots.
+3808 tests passing. CI: ruff clean, imports clean.
+
+---
+
+## Earlier: Wave 67 -- The Knowledge Architecture
+
+**Status:** 67.0 landed + polish pass complete, 67.5 landed
+**Theme:** Give knowledge structure, integrity, and auditability.
+
+Split into two dispatches: 67.0 (foundation) lands first, 67.5 (surfaces)
+builds on it. No new event types — all changes are projection-level
+enrichments. Event count stays at 69.
+
+### Wave 67.0 — Foundation (3 tracks, 2 teams)
+
+1. **Track 1 -- Knowledge Hierarchy (Team A): LANDED.** Materialized paths
+   on projections (`hierarchy_path`, `parent_id`). Qdrant payload gains
+   keyword-indexed `hierarchy_path` for filtered branch search. Branch
+   confidence aggregation caps at ESS 150, filters by workspace.
+   `GET /api/v1/workspaces/{id}/knowledge-tree` endpoint. Knowledge
+   browser gains tree subview (collapsible branches, confidence bars,
+   click-to-filter). LLM-only offline bootstrap script (zero new deps).
+   12 new tests. ADR-049 proposed.
+   (`projections.py`, `memory_store.py`, `hierarchy.py`, `routes/api.py`,
+   `knowledge-browser.ts`, `bootstrap_hierarchy.py`)
+   - **Polish:** Fixed `compute_branch_confidence` negative Beta bug (aggregated
+     beta could go < 0 when children have conf_beta < prior 5.0, producing
+     invalid mean > 1.0). Added floor clamp at 1.0. Added Qdrant keyword
+     index for `hierarchy_path` in `vector_qdrant.py`. +1 test.
+2. **Track 2 -- Domain Normalization (Team B): LANDED.** Existing domain
+   tags from up to 10 similar entries injected into extraction prompt as
+   guidance ("use one of these if applicable, do not create synonyms").
+   Caps at 20 domains. Fires on all three prompt paths. Call site verified:
+   `colony_manager.py:2069` populates via `knowledge_catalog.search()`.
+   5 new tests. (`memory_extractor.py`)
+3. **Track 3 -- Outcome-Confidence Reinforcement (Team B): LANDED.**
+   Geometric credit 0.7^rank (Position-Based Model) replaces flat delta.
+   Rank-0 entry gets full credit, rank-5 gets ~17%. ESS capped at 150 via
+   `rescale_preserving_mean()` in Engine layer — applied after mastery
+   restoration, before event emission. Preserves posterior mean. Co-occurrence
+   reinforcement unchanged. Auto-promotion verified. 11 new tests.
+   (`colony_manager.py`, `scoring_math.py`)
+
+### Wave 67.5 — Surfaces (3 tracks, 3 coders)
+
+4. **Track 4 -- Two-Pass Retrieval (Team B):** Replace hardcoded 0.0
+   graph proximity in standard retrieval with iterative Personalized
+   PageRank (damping=0.5, pure Python, no igraph dep). Entity seeding
+   via embedding similarity. Shared `_enrich_with_graph_scores()` method
+   refactors thread-boosted path. ADR-050 proposed.
+   (`knowledge_graph.py`, `knowledge_catalog.py`)
+5. **Track 5 -- Provenance Chains (Team A):** Append-only
+   `provenance_chain` list on projection entries from 6 event handlers.
+   REST endpoint. Provenance timeline in entry detail UI. Score breakdown
+   bar visible by default on search results. **Contract change blocker:**
+   `ProvenanceChainItem` interface needs operator approval.
+   (`projections.py`, `knowledge_api.py`, `types.ts`, `knowledge-browser.ts`)
+6. **Track 6 -- Documentation Indexer Addon (Team C):** New
+   `addons/docs-index/` addon. Chunks .md/.rst/.txt/.html on section
+   headers. Registers `semantic_search_docs` and `reindex_docs` Queen
+   tools. Separate `docs_index` Qdrant collection. Follows codebase-index
+   addon pattern and keeps raw corpus chunks out of `memory_entries`.
+   (`addons/docs-index/`, `addons/docs_index/`)
+
+### Blockers
+
+- **ADR-049:** Knowledge Hierarchy (proposed, awaiting approval)
+- **ADR-050:** Two-Pass Retrieval with PPR (proposed, awaiting approval)
+- **Contract change:** ProvenanceChainItem interface (67.5 only)
+
+No new dependencies — UMAP+HDBSCAN rejected in favor of LLM-only
+bootstrap (entries already carry domain tags, LLM sub-clusters within
+domains, ~15 calls for 300 entries).
+
+---
+
+## Previous: Wave 66 -- Addons as First-Class Software
+
+Makes addons visible, configurable, and extensible. Six tracks across
+three teams. No new events — reuses existing WorkspaceConfigChanged.
+
+1. **Track 1 -- Addons Tab (Team 1):** `GET /api/v1/addons` returns installed
+   addons with health summaries (tool call counts, handler errors, trigger
+   schedules). `POST /api/v1/addons/{name}/trigger` manually fires trigger
+   handlers. `AddonRegistration` tracks health counters updated by tool/handler
+   wrappers. (`routes/api.py`, `addon_loader.py`)
+2. **Track 2 -- Addon Config Surface:** `AddonConfigParam` model declares
+   configurable parameters in addon manifests (key, type, default, label,
+   options). `GET /api/v1/addons/{name}/config?workspace_id=X` returns config
+   schema + current values. `PUT /api/v1/addons/{name}/config` persists values
+   via WorkspaceConfigChanged events at `addon.{name}.{key}` dimension. All
+   three shipped addons declare config blocks: git_auto_stage (boolean),
+   chunk_size/skip_dirs (integer/string), disabled_rules (string).
+   (`addon_loader.py`, `routes/api.py`, addon manifests)
+3. **Track 3 -- Addon Panels + Routes:** `register_addon()` now resolves
+   `routes` and `panels` manifest fields (previously warned as unimplemented).
+   Catch-all route at `/addons/{name}/{path}` mounts addon HTTP endpoints.
+   `fc-addon-panel` Lit component renders status_card, table, and log display
+   types with 60s auto-refresh. Panel injection zones in knowledge-browser.ts
+   and workspace-browser.ts. Status endpoints: codebase-index (chunk count from
+   vector store), git-control (branch + modified files).
+   (`addon_loader.py`, `app.py`, `addon-panel.ts`, status endpoints, manifests)
+4. **S2 -- Knowledge ROI Rule Fix:** Extended `_rule_knowledge_roi` to track
+   `entries_accessed` alongside `entries_extracted`. New insight when 3+
+   successful colonies access zero knowledge and score below 0.7 quality.
+   (`addons/proactive_intelligence/rules.py`)
+5. **S4 -- CLAUDE.md Weight Update:** Updated composite retrieval formula to
+   7-signal Wave 59.5 values including graph_proximity.
+
+3654 tests passing (+14 net new). CI: ruff clean, imports clean.
+
+## Previous: Wave 65.5 -- Addon Polish Pass
 
 Bug fixes and test hardening for the addon system shipped in Wave 65.
 No new features, events, or tools. Six fixes:

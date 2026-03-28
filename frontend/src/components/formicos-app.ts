@@ -22,13 +22,20 @@ import './knowledge-browser.js';
 import './colony-creator.js';
 import './colony-chat.js';
 import './workspace-browser.js';
+import './addons-view.js';
+import './operations-view.js';
 
-type ViewId = 'queen' | 'tree' | 'knowledge' | 'workspace' | 'playbook' | 'models' | 'settings';
+type ViewId = 'queen' | 'tree' | 'knowledge' | 'workspace' | 'operations' | 'addons' | 'playbook' | 'models' | 'settings';
 
-const NAV = [
+const NAV_PRIMARY = [
   { id: 'queen' as const, label: 'Queen', icon: '\u265B' },
   { id: 'knowledge' as const, label: 'Knowledge', icon: '\u25C8' },
   { id: 'workspace' as const, label: 'Workspace', icon: '\u2302' },
+  { id: 'operations' as const, label: 'Operations', icon: '\u2318' },
+];
+
+const NAV_SECONDARY = [
+  { id: 'addons' as const, label: 'Addons', icon: '\u2B9E' },
   { id: 'playbook' as const, label: 'Playbook', icon: '\u29C9' },
   { id: 'models' as const, label: 'Models', icon: '\u2B22' },
   { id: 'settings' as const, label: 'Settings', icon: '\u2699' },
@@ -49,7 +56,7 @@ export class FormicOSApp extends LitElement {
       background: rgba(6,6,12,0.85); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     }
     .topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
-    .topbar-center { display: flex; justify-content: center; }
+    .topbar-center { display: flex; justify-content: flex-start; }
     .topbar-right-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
     .logo { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .logo-text { font-family: var(--f-display); font-weight: 800; font-size: 15px; color: var(--v-fg); letter-spacing: -0.04em; }
@@ -57,10 +64,15 @@ export class FormicOSApp extends LitElement {
     .logo-ver { font-size: 10px; font-family: var(--f-mono); color: var(--v-fg-dim); letter-spacing: 0.05em; }
     .topbar-right { display: flex; align-items: center; gap: 14px; font-size: 12px; font-family: var(--f-mono); font-feature-settings: 'tnum'; }
     .top-nav {
-      display: inline-grid; grid-template-columns: repeat(6, minmax(72px, auto));
-      gap: 4px; padding: 4px; border: 1px solid var(--v-border); border-radius: 11px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .nav-group {
+      display: inline-grid; gap: 4px; padding: 4px;
+      border: 1px solid var(--v-border); border-radius: 11px;
       background: rgba(13,14,22,0.78); box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
     }
+    .nav-group.primary { grid-template-columns: repeat(4, minmax(66px, auto)); }
+    .nav-group.secondary { grid-template-columns: repeat(4, minmax(52px, auto)); }
     .top-nav-tab {
       min-height: 34px; min-width: 0; display: flex; align-items: center; justify-content: center;
       gap: 6px; border-radius: 8px; cursor: pointer; font-size: 12px; color: var(--v-fg-dim);
@@ -83,6 +95,8 @@ export class FormicOSApp extends LitElement {
     .mini-colonies { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 5px; }
     .mini-colony { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid var(--v-border); font-size: 10px; color: var(--v-fg-muted); }
     .mini-colony.active { background: rgba(232,88,26,0.05); border-color: rgba(232,88,26,0.15); }
+    .create-ws-btn { display: block; width: 100%; padding: 6px 12px; margin-top: 4px; background: transparent; border: 1px dashed var(--v-border); border-radius: 6px; color: var(--v-fg-dim); font-size: 10px; font-family: var(--f-mono); cursor: pointer; text-align: left; }
+    .create-ws-btn:hover { border-color: var(--v-accent); color: var(--v-accent); }
     .content { flex: 1; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
     .content-inner { flex: 1; min-height: 0; overflow: hidden; }
     .startup-shell {
@@ -215,13 +229,32 @@ export class FormicOSApp extends LitElement {
     }
     .creator-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(4,4,8,0.7); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
     .creator-panel { width: 480px; max-height: 80vh; overflow: auto; padding: 20px; border-radius: 12px; background: var(--v-surface); border: 1px solid var(--v-border); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
-    .proto-bar { display: flex; gap: 10px; align-items: center; }
-    .proto-item { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--v-border); background: var(--v-recessed); }
-    .proto-label { font-family: var(--f-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; color: var(--v-fg-dim); }
-    .proto-detail { font-family: var(--f-mono); font-size: 9.5px; color: var(--v-fg-dim); }
-    .conn-indicator { display: flex; align-items: center; gap: 4px; }
-    .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .conn-label { font-size: 9.5px; font-family: var(--f-mono); color: var(--v-fg-dim); }
+    .cost-btn {
+      cursor: pointer; padding: 4px 8px; border-radius: 6px;
+      transition: background 0.15s; color: var(--v-accent);
+    }
+    .cost-btn:hover { background: rgba(232,88,26,0.1); }
+    .budget-backdrop { position: fixed; inset: 0; z-index: 99; }
+    .budget-popover {
+      position: absolute; top: 100%; right: 0; margin-top: 6px;
+      background: var(--v-recessed); border: 1px solid var(--v-border);
+      border-radius: 10px; padding: 16px; min-width: 260px; z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .budget-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 0; font-family: var(--f-mono);
+    }
+    .budget-label { font-size: 10px; color: var(--v-fg-dim); }
+    .budget-value { font-size: 12px; color: var(--v-accent); }
+    .budget-value.neutral { color: var(--v-fg); }
+    .popover-link {
+      display: block; margin-top: 10px; padding-top: 8px;
+      border-top: 1px solid var(--v-border); font-size: 10px;
+      font-family: var(--f-mono); color: var(--v-fg-dim); cursor: pointer;
+      transition: color 0.15s;
+    }
+    .popover-link:hover { color: var(--v-accent); }
     .sidebar-toggle { padding: 4px 8px; cursor: pointer; text-align: center; font-size: 10px; color: var(--v-fg-dim); border-bottom: 1px solid var(--v-border); user-select: none; transition: color 0.15s; }
     .sidebar-toggle:hover { color: var(--v-fg-muted); }
     @media (max-width: 1380px) {
@@ -234,7 +267,9 @@ export class FormicOSApp extends LitElement {
       }
       .topbar-center { order: 2; }
       .topbar-right-wrap { order: 3; }
-      .top-nav { width: 100%; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .top-nav { width: 100%; flex-wrap: wrap; }
+      .nav-group { flex: 1; }
+      .nav-group.primary, .nav-group.secondary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .view-shell { flex-direction: column; }
       .queen-rail.open { width: 100%; height: 280px; }
       .queen-rail.closed { width: 100%; height: 46px; }
@@ -253,6 +288,11 @@ export class FormicOSApp extends LitElement {
   @state() private showCreator = false;
   @state() private creatorTemplateId = '';
   @state() private knowledgeSourceColony = '';
+  @state() private _showBudgetPopover = false;
+  @state() private _autonomyData: { grade: string; level: string; budget_spent: number; budget_total: number; daily_maintenance_budget?: number } | null = null;
+  @state() private _showCreateWorkspace = false;
+  @state() private _newWorkspaceName = '';
+  @state() private _creatingWorkspace = false;
 
   private unsub?: () => void;
   private _subscribed = false;
@@ -351,21 +391,40 @@ export class FormicOSApp extends LitElement {
         </div>
         <div class="topbar-center">
           <div class="top-nav">
-            ${NAV.map(n => {
-              const active = this.view === n.id || (this.view === 'tree' && n.id === 'queen');
-              return html`<div class="top-nav-tab ${active ? 'active' : ''}" @click=${() => this.navTab(n.id as ViewId)} title=${n.label}>
-                <span class="tab-icon" style="font-size:12px">${n.icon}</span>
-                <span class="top-nav-label">${n.label}</span>
-              </div>`;
-            })}
+            <div class="nav-group primary">
+              ${NAV_PRIMARY.map(n => {
+                const active = this.view === n.id || (this.view === 'tree' && n.id === 'queen');
+                return html`<div class="top-nav-tab ${active ? 'active' : ''}" @click=${() => this.navTab(n.id as ViewId)} title=${n.label}>
+                  <span class="tab-icon" style="font-size:12px">${n.icon}</span>
+                  <span class="top-nav-label">${n.label}</span>
+                </div>`;
+              })}
+            </div>
+            <div class="nav-group secondary">
+              ${NAV_SECONDARY.map(n => {
+                const active = this.view === n.id;
+                return html`<div class="top-nav-tab ${active ? 'active' : ''}" @click=${() => this.navTab(n.id as ViewId)} title=${n.label}>
+                  <span class="tab-icon" style="font-size:12px">${n.icon}</span>
+                  <span class="top-nav-label">${n.label}</span>
+                </div>`;
+              })}
+            </div>
           </div>
         </div>
-        <div class="topbar-right-wrap">
+        <div class="topbar-right-wrap" style="position:relative">
           <div class="topbar-right">
-            ${this.renderProtocolBar(s.protocolStatus)}
-            <span style="color:var(--v-accent)">${formatCost(totalCost)} spent</span>
-            ${this._renderConnectionIndicator(s.connection)}
+            <span class="cost-btn" @click=${(e: Event) => {
+              e.stopPropagation();
+              this._showBudgetPopover = !this._showBudgetPopover;
+              if (this._showBudgetPopover) void this._fetchBudgetData();
+            }}>${formatCost(totalCost)} spent</span>
           </div>
+          ${this._showBudgetPopover ? html`
+            <div class="budget-backdrop" @click=${() => { this._showBudgetPopover = false; }}></div>
+            <div class="budget-popover">
+              ${this._renderBudgetPopover(totalCost)}
+            </div>
+          ` : nothing}
           ${s.approvals.length > 0 ? html`
             <div class="approval-badge" @click=${() => this.navTab('queen')}>
               <span class="approval-dot"></span>${s.approvals.length}
@@ -384,6 +443,27 @@ export class FormicOSApp extends LitElement {
               <div class="tree-panel">
                 <fc-tree-nav .tree=${this.tree} .selected=${this.treeSel}
                   @node-select=${(e: CustomEvent) => this.navTree(e.detail)}></fc-tree-nav>
+              </div>
+              <div style="padding:0 8px 8px">
+                ${this._showCreateWorkspace ? html`
+                  <div class="glass" style="padding:10px;margin-top:4px;border-radius:6px">
+                    <input class="config-input" type="text" placeholder="Workspace name"
+                      .value=${this._newWorkspaceName}
+                      @input=${(e: Event) => { this._newWorkspaceName = (e.target as HTMLInputElement).value; }}
+                      @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._createWorkspace(); }}
+                      style="width:100%;box-sizing:border-box;margin-bottom:6px">
+                    <div style="display:flex;gap:6px">
+                      <fc-btn variant="ghost" sm @click=${() => { this._showCreateWorkspace = false; this._newWorkspaceName = ''; }}>Cancel</fc-btn>
+                      <fc-btn variant="primary" sm
+                        ?disabled=${!this._newWorkspaceName.trim() || this._creatingWorkspace}
+                        @click=${() => this._createWorkspace()}>
+                        ${this._creatingWorkspace ? 'Creating...' : 'Create'}
+                      </fc-btn>
+                    </div>
+                  </div>
+                ` : html`
+                  <button class="create-ws-btn" @click=${() => { this._showCreateWorkspace = true; }}>+ New Workspace</button>
+                `}
               </div>
             </div>
           ` : html`
@@ -407,6 +487,7 @@ export class FormicOSApp extends LitElement {
             <fc-colony-creator
               .castes=${store.state.castes}
               .initialTemplateId=${this.creatorTemplateId}
+              .governance=${store.state.runtimeConfig?.governance ?? null}
               @spawn-colony=${(e: CustomEvent) => {
                 store.send('spawn_colony', this.activeWorkspaceId, e.detail);
                 this._closeCreator();
@@ -514,6 +595,8 @@ export class FormicOSApp extends LitElement {
     'tree': () => this._renderTree(),
     'knowledge': () => this._renderKnowledge(),
     'workspace': () => this._renderWorkspace(),
+    'operations': () => html`<fc-operations-view .workspaceId=${this.activeWorkspaceId}></fc-operations-view>`,
+    'addons': () => html`<fc-addons-view></fc-addons-view>`,
     'playbook': () => this._renderPlaybook(),
     'models': () => this._renderModels(),
     'settings': () => this._renderSettings(),
@@ -551,6 +634,7 @@ export class FormicOSApp extends LitElement {
       @send-colony-message=${(e: CustomEvent) => store.send('chat_colony', this.activeWorkspaceId, e.detail)}
       @confirm-preview=${(e: CustomEvent) => this._handleConfirmPreview(e)}
       @open-colony-editor=${() => this._openCreator()}
+      @update-config=${(e: CustomEvent) => store.send('update_config', this.activeWorkspaceId, e.detail)}
     ></fc-queen-overview>`;
   }
 
@@ -595,17 +679,32 @@ export class FormicOSApp extends LitElement {
       .castes=${s.castes} .runtimeConfig=${s.runtimeConfig}
       @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
       @update-config=${(e: CustomEvent) => store.send('update_config', sel.id, e.detail)}
+      @spawn-colony-request=${() => this._openCreator()}
+      @navigate-tab=${(e: CustomEvent) => this.navTab(e.detail)}
     ></fc-workspace-config>`;
     return nothing;
   }
 
+  private get _addonPanels() {
+    return store.state.addons.flatMap(a =>
+      (a.panels ?? []).map(p => ({
+        target: p.target,
+        display_type: p.displayType,
+        path: p.path,
+        addon_name: p.addonName,
+      }))
+    );
+  }
+
   private _renderKnowledge() {
     return html`<fc-knowledge-browser .workspaceId=${this.activeWorkspaceId}
-      .sourceColonyId=${this.knowledgeSourceColony}></fc-knowledge-browser>`;
+      .sourceColonyId=${this.knowledgeSourceColony}
+      .addonPanels=${this._addonPanels}></fc-knowledge-browser>`;
   }
 
   private _renderWorkspace() {
-    return html`<fc-workspace-browser .workspaceId=${this.activeWorkspaceId}></fc-workspace-browser>`;
+    return html`<fc-workspace-browser .workspaceId=${this.activeWorkspaceId}
+      .addonPanels=${this._addonPanels}></fc-workspace-browser>`;
   }
 
   private _renderPlaybook() {
@@ -627,7 +726,7 @@ export class FormicOSApp extends LitElement {
 
   private _renderSettings() {
     const s = store.state;
-    return html`<fc-settings-view .protocolStatus=${s.protocolStatus} .runtimeConfig=${s.runtimeConfig} .skillBankStats=${s.skillBankStats} .tree=${this.tree}></fc-settings-view>`;
+    return html`<fc-settings-view .protocolStatus=${s.protocolStatus} .runtimeConfig=${s.runtimeConfig} .skillBankStats=${s.skillBankStats} .tree=${this.tree} .addons=${s.addons}></fc-settings-view>`;
   }
 
   private _renderQueenChatRail() {
@@ -693,38 +792,66 @@ export class FormicOSApp extends LitElement {
     this.creatorTemplateId = '';
   }
 
-  private _renderConnectionIndicator(conn: string) {
-    const color = conn === 'connected' ? 'var(--v-success)'
-      : conn === 'connecting' ? 'var(--v-warn)' : 'var(--v-danger)';
-    const label = conn === 'connecting' ? 'Connecting'
-      : conn === 'error' ? 'Retrying...'
-      : conn === 'connected' ? '' : 'Disconnected';
-    return html`
-      <span class="conn-indicator">
-        <span class="conn-dot" style="background:${color}"></span>
-        ${label ? html`<span class="conn-label">${label}</span>` : nothing}
-      </span>`;
+  private async _createWorkspace() {
+    if (!this._newWorkspaceName.trim()) return;
+    this._creatingWorkspace = true;
+    try {
+      const resp = await fetch('/api/v1/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: this._newWorkspaceName.trim() }),
+      });
+      if (resp.ok) {
+        this._showCreateWorkspace = false;
+        this._newWorkspaceName = '';
+      } else {
+        const data = await resp.json().catch(() => ({}));
+        console.error('Failed to create workspace:', (data as Record<string, unknown>).error ?? resp.statusText);
+      }
+    } catch (e) {
+      console.error('Failed to create workspace:', e);
+    }
+    this._creatingWorkspace = false;
   }
 
-  private renderProtocolBar(ps: any) {
-    if (!ps) return nothing;
-    const aguiStatus = ps.agui?.status ?? 'inactive';
-    const a2aStatus = ps.a2a?.status ?? 'inactive';
-    const a2aDetail = a2aStatus === 'inactive'
-      ? (ps.a2a?.note ?? 'inactive')
-      : `${ps.a2a?.semantics ?? 'poll/result'} ${ps.a2a?.endpoint ?? '/a2a/tasks'}`;
-    const items = [
-      { label: 'MCP', status: ps.mcp?.status, detail: `${ps.mcp?.tools ?? 0} tools` },
-      { label: 'AG-UI', status: aguiStatus, detail: aguiStatus === 'inactive' ? 'inactive' : `${ps.agui?.events ?? 0} events` },
-      { label: 'A2A', status: a2aStatus, detail: a2aDetail },
-    ];
-    return html`<div class="proto-bar">${items.map(p => html`
-      <div class="proto-item">
-        <fc-dot .status=${p.status === 'active' ? 'loaded' : p.status === 'inactive' ? 'done' : 'pending'} .size=${4}></fc-dot>
-        <span class="proto-label">${p.label}</span>
-        <span class="proto-detail">${p.detail}</span>
+  private async _fetchBudgetData() {
+    const wsId = store.state.tree?.[0]?.id;
+    if (!wsId) return;
+    try {
+      const resp = await fetch(`/api/v1/workspaces/${wsId}/autonomy-status`);
+      if (resp.ok) this._autonomyData = await resp.json() as typeof this._autonomyData;
+    } catch { /* popover shows what it has */ }
+  }
+
+  private _renderBudgetPopover(totalCost: number) {
+    const perColonyCap = (store.state as any).runtimeConfig?.governance?.defaultBudgetPerColony ?? 1.0;
+    const a = this._autonomyData;
+    return html`
+      <div class="budget-row">
+        <span class="budget-label">Total spent</span>
+        <span class="budget-value">${formatCost(totalCost)}</span>
       </div>
-    `)}</div>`;
+      <div class="budget-row">
+        <span class="budget-label">Per-colony cap</span>
+        <span class="budget-value">${formatCost(perColonyCap as number)}</span>
+      </div>
+      ${a ? html`
+        <div class="budget-row">
+          <span class="budget-label">Daily maintenance</span>
+          <span class="budget-value">${formatCost(a.budget_spent)} / ${formatCost(a.budget_total || a.daily_maintenance_budget || 0)}</span>
+        </div>
+        <div class="budget-row">
+          <span class="budget-label">Autonomy</span>
+          <span class="budget-value neutral">Grade ${a.grade} · ${a.level}</span>
+        </div>
+      ` : html`
+        <div class="budget-row">
+          <span class="budget-label">Daily maintenance</span>
+          <span class="budget-value neutral">—</span>
+        </div>
+      `}
+      <span class="popover-link" @click=${() => { this._showBudgetPopover = false; this.navTab('settings'); }}>All budget settings \u2192</span>
+    `;
   }
 }
 

@@ -1,6 +1,10 @@
 name: git-control
 version: "1.0.0"
-description: "Git intelligence for the Queen"
+description: >
+  Git intelligence for the Queen — smart_commit, branch_analysis,
+  create_branch, and stash_operations. If you have a git MCP server
+  connected via the mcp-bridge addon, these tools overlap and this
+  addon can be disabled.
 author: "formicos-core"
 
 tools:
@@ -58,6 +62,22 @@ tools:
         message:
           type: string
           description: "Optional stash message (for 'save' action)"
+
+panels:
+  - target: workspace
+    display_type: status_card
+    path: /status
+    handler: status.py::get_status
+
+routes:
+  - path: /status
+    handler: status.py::get_status
+
+config:
+  - key: git_auto_stage
+    type: boolean
+    default: true
+    label: "Auto-stage modified files after colony completion"
 
 handlers:
   - event: ColonyCompleted

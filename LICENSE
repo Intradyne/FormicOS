@@ -1,18 +1,286 @@
 FORMICOS LICENSE AGREEMENT
 ==========================
 
-This software is licensed under the GNU Affero General Public License version 3 (AGPLv3), with the following Additional Permissions granted under Section 7 of the AGPLv3.
+Copyright (C) 2024-2026 Intradyne. All rights reserved.
 
-SPECIAL EXCEPTION FOR SMALL BUSINESSES AND EDUCATIONAL INSTITUTIONS:
-As a special exception to the AGPLv3, the copyright holders of FormicOS grant you permission to modify the software and interact with it remotely through a computer network (e.g., as a SaaS) WITHOUT the obligation to distribute the corresponding source code under Section 13, PROVIDED THAT you meet at least one of the following criteria:
+This software is licensed under the GNU Affero General Public License
+version 3 ("AGPLv3"), with the following Additional Permissions and
+Alternative Commercial License granted under Section 7 of the AGPLv3.
 
-1. Educational / Non-Profit: You are using the software exclusively for academic research, teaching at a recognized educational institution, or operating as a registered non-profit organization (e.g., 501(c)(3)).
-2. Small Business Commercial Use: Your organization (including any corporate affiliates) has a Gross Annual Revenue of less than $1,000,000 USD (or local equivalent) in the trailing 12 months.
+IMPORTANT: This preamble is a legal instrument. Have it reviewed by
+qualified legal counsel before relying on it for commercial use.
 
-If your organization exceeds the $1,000,000 USD revenue threshold, this exception automatically terminates. At that point, you must either fully comply with the source-sharing requirements of Section 13 of the AGPLv3, or obtain a separate Commercial License from the copyright holder.
 
-COMMERCIAL LICENSING:
-If you do not meet the criteria for the exception above and wish to use FormicOS in a closed-source commercial environment without complying with the AGPLv3 network source-sharing requirements, please contact the repository owner for a Commercial License.
+DEFINITIONS
+-----------
+
+"FormicOS" means the software in this repository, including its
+runtime engine, adapters, surface layer, frontend, configuration
+files, and documentation.
+
+"You" means the individual or Legal Entity exercising permissions
+granted by this License.
+
+"Legal Entity" means the union of the acting entity and all other
+entities that control, are controlled by, or are under common
+control with that entity. "Control" means (a) the power to direct
+the management of such entity, or (b) ownership of fifty percent
+(50%) or more of the outstanding shares or beneficial ownership of
+such entity.
+
+"Gross Annual Revenue" means the total revenue of the Legal Entity
+and its affiliates in the trailing twelve (12) calendar months,
+calculated in accordance with generally accepted accounting
+principles. Revenue from grants, donations, and tuition does not
+count toward this threshold for nonprofit and educational entities.
+
+"Total Tokens" means the aggregate count of input tokens, output
+tokens, and reasoning tokens processed through the FormicOS
+orchestration runtime during a Billing Period, as recorded by the
+usage metering system described in METERING.md. Cache-read tokens
+are a subset of input tokens (they are input tokens served from
+provider cache) and are NOT counted separately -- they are already
+included in the input token count. Total Tokens includes tokens
+processed by both local inference servers and cloud API providers.
+Total Tokens does NOT include tokens consumed by systems external
+to FormicOS that are not orchestrated by the FormicOS runtime.
+
+"Billing Period" means one calendar month.
+
+"Usage Attestation" means a cryptographically signed report of
+Total Tokens for a Billing Period, produced by the FormicOS usage
+metering system as described in METERING.md.
+
+"Contributor" means any individual or Legal Entity that has
+contributed code to the FormicOS repository and whose contribution
+has been merged into the main branch, subject to the terms of the
+FormicOS Contributor License Agreement.
+
+
+TIER 1: FREE USE (ADDITIONAL PERMISSION UNDER AGPLV3 SECTION 7)
+----------------------------------------------------------------
+
+As an additional permission under Section 7 of the AGPLv3, the
+copyright holders grant You permission to use, modify, and deploy
+FormicOS -- including interaction over a computer network -- WITHOUT
+the obligation to distribute corresponding source code under
+Section 13 of the AGPLv3, PROVIDED THAT You meet at least one of
+the following criteria:
+
+  (a) SMALL BUSINESS: Your Legal Entity has Gross Annual Revenue of
+      less than One Million United States Dollars (USD $1,000,000)
+      in the trailing twelve (12) months.
+
+  (b) NONPROFIT: You are using FormicOS exclusively for the
+      operations of a registered nonprofit organization (e.g., US
+      IRC Section 501(c)(3) or equivalent foreign designation).
+
+  (c) EDUCATION: You are using FormicOS exclusively for academic
+      research or teaching at an accredited educational institution.
+
+  (d) PERSONAL: You are an individual using FormicOS for personal,
+      non-commercial purposes.
+
+This permission applies to the complete FormicOS software without
+restriction on features, scale, or deployment topology. There are
+no metering obligations, no reporting requirements, and no fees
+under Tier 1.
+
+AUTOMATIC TERMINATION: If Your Legal Entity's Gross Annual Revenue
+exceeds USD $1,000,000, this Tier 1 permission terminates
+automatically at the end of the calendar quarter in which the
+threshold is exceeded. You then have ninety (90) days to either:
+
+  (i)   comply fully with Section 13 of the AGPLv3 (open-source
+        your modifications and provide source to network users), OR
+
+  (ii)  obtain a Tier 2 Commercial License as described below.
+
+During the 90-day grace period, You may continue using FormicOS
+under Tier 1 terms.
+
+
+TIER 2: METERED COMMERCIAL LICENSE (ALTERNATIVE TO AGPLV3 SECTION 13)
+---------------------------------------------------------------------
+
+Organizations that exceed the Tier 1 revenue threshold and wish to
+use FormicOS without complying with AGPLv3 Section 13 may obtain a
+Commercial License. The Commercial License grants You a non-
+exclusive, non-transferable, worldwide license to use, modify, and
+deploy FormicOS in proprietary environments without source-
+disclosure obligations.
+
+### Pricing Formula
+
+The monthly license fee in United States Dollars is computed as:
+
+    monthly_fee = 2.00 * sqrt(T)
+
+where:
+
+    T = Total Tokens for the Billing Period, divided by 1,000,000
+        (i.e., T is measured in millions of tokens)
+
+    sqrt = the principal (positive) square root function
+
+The fee is rounded to the nearest cent (two decimal places).
+
+### Reference Implementation (canonical)
+
+    import math
+
+    def formicos_monthly_fee(total_tokens: int) -> float:
+        """Compute the FormicOS monthly commercial license fee.
+
+        Args:
+            total_tokens: Total tokens processed in the billing
+                          period (input + output + reasoning).
+                          Cache-read tokens are already included
+                          in the input token count and must not
+                          be added separately.
+
+        Returns:
+            Fee in USD, rounded to two decimal places.
+        """
+        tokens_millions = total_tokens / 1_000_000
+        return round(2.00 * math.sqrt(tokens_millions), 2)
+
+### Worked Examples
+
+    Total Tokens          T (millions)    Monthly Fee
+    --------------------------------------------------
+    10,000,000            10              $  6.32
+    66,000,000            66              $ 16.25
+    200,000,000           200             $ 28.28
+    500,000,000           500             $ 44.72
+    1,000,000,000         1,000           $ 63.25
+    3,300,000,000         3,300           $114.89
+    10,000,000,000        10,000          $200.00
+
+### What the formula means in plain language
+
+The square root function means: if you process 100 times more
+tokens, you pay 10 times more. Marginal cost decreases with scale.
+A solo developer processing 66M tokens/month pays $16.25. A large
+team processing 3.3B tokens/month pays $114.89. There are no per-
+seat fees, no per-machine fees, and no per-install fees. The token
+volume is the sole measure of usage regardless of how many humans,
+agents, machines, or API calls generate it.
+
+### Metering Obligations
+
+Tier 2 licensees must:
+
+  (a) Maintain the FormicOS usage metering system in operational
+      condition. The metering system is an integral component of the
+      licensed software. Disabling, circumventing, or materially
+      modifying the metering system constitutes a modification of
+      the software that, if deployed over a network, triggers the
+      source-disclosure obligations of AGPLv3 Section 13.
+
+  (b) Submit a Usage Attestation within fifteen (15) days after the
+      end of each Billing Period.
+
+  (c) Pay the computed fee within thirty (30) days of attestation
+      submission.
+
+  (d) Retain event store records for a minimum of twelve (12)
+      months for audit purposes.
+
+### Audit Rights
+
+The copyright holder may, no more than once per calendar year and
+upon thirty (30) days written notice, request an audit of Your
+token usage records. The audit is limited to aggregate token counts
+per Billing Period and does not include access to prompts, model
+outputs, or other content processed by FormicOS. If an audit
+reveals underreporting of more than ten percent (10%) for any
+Billing Period, You are responsible for the underpayment plus the
+reasonable cost of the audit.
+
+### Payment Terms
+
+Payment terms, methods, currencies, invoicing, and dispute
+resolution are governed by the FormicOS Commercial Terms, a
+separate instrument available at COMMERCIAL_TERMS.md. In the event
+of conflict between this License and the Commercial Terms, this
+License controls on matters of fee computation and metering; the
+Commercial Terms control on matters of payment mechanics and
+dispute resolution.
+
+
+TIER 3: ENTERPRISE AGREEMENT
+-----------------------------
+
+Organizations seeking predictable budgeting, custom terms, service-
+level agreements, or support may negotiate an Enterprise Agreement
+with the copyright holder. Enterprise Agreements use the Tier 2
+pricing formula as a floor: the negotiated annual fee must equal or
+exceed the fee that would result from applying the Tier 2 formula
+to the licensee's projected annual token volume.
+
+Contact the copyright holder for Enterprise Agreement terms.
+
+
+CONTRIBUTOR REVENUE SHARE
+--------------------------
+
+Twenty percent (20%) of all Tier 2 and Tier 3 Commercial License
+revenue is allocated to the Contributor Revenue Pool.
+
+ACTIVATION THRESHOLD: The Contributor Revenue Pool activates when
+cumulative Tier 2 and Tier 3 revenue exceeds USD $5,000 in a
+calendar quarter. Below this threshold, all revenue is retained by
+the copyright holder. Revenue below the threshold does not
+accumulate toward future quarters.
+
+The Pool is distributed quarterly to Contributors proportional to
+their contribution weight. The contribution-weight formula,
+maintainer-floor rule, eligibility requirements, payout mechanics,
+and program governance are defined in the FormicOS Contributor
+License Agreement (CLA.md). Changes to the attribution algorithm
+require an Architecture Decision Record and thirty (30) days
+notice to Contributors.
+
+The copyright holder publishes an attribution report with each
+distribution showing the computation inputs and per-contributor
+shares.
+
+
+SCOPE AND INTERACTION WITH AGPLV3
+----------------------------------
+
+This preamble constitutes Additional Permissions under AGPLv3
+Section 7. The AGPLv3 remains the base license for all purposes not
+addressed by these Additional Permissions.
+
+Per AGPLv3 Section 7, paragraph 4: anyone who redistributes
+FormicOS may remove these Additional Permissions from their copy.
+A redistributed copy without these permissions is governed solely
+by the AGPLv3, including the full source-disclosure requirements of
+Section 13. The Tier 2 pricing formula and Contributor Revenue
+Share apply only to copies that retain these Additional Permissions
+as granted by the original copyright holder.
+
+Nothing in this preamble restricts any rights granted by the AGPLv3
+itself. You may always choose to comply with the full AGPLv3
+(including Section 13) instead of obtaining a Commercial License.
+
+The usage metering system is an integral part of the FormicOS
+software distributed under the AGPLv3. It is not a separate work
+and is subject to the same license terms as the rest of FormicOS.
+
+
+DISCLAIMER
+----------
+
+THIS LICENSE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS." THE
+PRICING FORMULA, METERING SYSTEM, AND CONTRIBUTOR REVENUE SHARE
+ARE OFFERED WITHOUT WARRANTY OF ANY KIND. THE COPYRIGHT HOLDERS ARE
+NOT PROVIDING LEGAL, TAX, OR FINANCIAL ADVICE. LICENSEES AND
+CONTRIBUTORS SHOULD CONSULT QUALIFIED PROFESSIONALS REGARDING
+THEIR SPECIFIC CIRCUMSTANCES.
+
 
 ----------------------------------------------------------------------
 GNU AFFERO GENERAL PUBLIC LICENSE

@@ -1,0 +1,68 @@
+name: docs-index
+version: "1.0.0"
+description: "Semantic documentation search via embedding index"
+author: "formicos-core"
+
+content_kinds:
+  - documentation
+path_globs:
+  - "**/*.md"
+  - "**/*.rst"
+  - "**/*.txt"
+  - "**/*.html"
+search_tool: semantic_search_docs
+
+tools:
+  - name: semantic_search_docs
+    description: "Search project documentation by meaning"
+    handler: search.py::handle_semantic_search
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: "Natural language search query"
+        top_k:
+          type: integer
+          description: "Number of results to return (default 10)"
+        file_pattern:
+          type: string
+          description: "Optional glob pattern to filter files (e.g. '*.md')"
+
+  - name: reindex_docs
+    description: "Rebuild or incrementally update the semantic documentation index"
+    handler: search.py::handle_reindex
+    parameters:
+      type: object
+      properties:
+        changed_files:
+          type: array
+          items:
+            type: string
+          description: "Optional list of relative file paths to reindex. Omit for full reindex."
+
+# v1: extensions and skip dirs are hardcoded in indexer.py constants.
+# Config wiring is planned for v2 when addon config injection is standardized.
+config:
+  - key: doc_extensions
+    type: string
+    default: ".md,.rst,.txt,.html"
+    label: "Comma-separated file extensions to index (v1: hardcoded)"
+  - key: skip_dirs
+    type: string
+    default: "__pycache__,.git,node_modules,.venv,venv,dist,build"
+    label: "Comma-separated directories to skip during indexing (v1: hardcoded)"
+
+panels:
+  - target: knowledge
+    display_type: status_card
+    path: /status
+    handler: status.py::get_status
+
+routes:
+  - path: /status
+    handler: status.py::get_status
+
+triggers:
+  - type: manual
+    handler: search.py::handle_reindex

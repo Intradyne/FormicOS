@@ -1285,7 +1285,7 @@ class TestToolMemory:
         runtime.llm_router.complete = AsyncMock(
             side_effect=[llm_resp_with_tools, llm_final],
         )
-        runtime.retrieve_relevant_memory = AsyncMock(return_value="")
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
 
         queen = QueenAgent(runtime)
         # Mock the tool dispatcher to return a result

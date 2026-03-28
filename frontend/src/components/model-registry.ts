@@ -90,6 +90,11 @@ export class FcModelRegistry extends LitElement {
   @state() private recipes: Record<string, CasteRecipePayload> = {};
   @state() private saving = false;
   @state() private _lastRefreshed: number = 0;
+  @state() private _showAddForm = false;
+  @state() private _addAddress = '';
+  @state() private _addProvider = '';
+  @state() private _addCtx = 8192;
+  @state() private _showHidden = false;
   private _refreshTimer?: ReturnType<typeof setInterval>;
 
   // Inline edit state for policy fields
@@ -156,7 +161,45 @@ export class FcModelRegistry extends LitElement {
         `)}
       </div>
 
-      <div class="s-label">Model Policy</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span class="s-label" style="margin-bottom:0">Model Policy</span>
+        <fc-btn variant="ghost" sm @click=${() => { this._showAddForm = !this._showAddForm; }}>+ Add Model</fc-btn>
+        <label style="margin-left:auto;font-size:9px;font-family:var(--f-mono);color:var(--v-fg-dim);display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" .checked=${this._showHidden}
+            @change=${(e: Event) => { this._showHidden = (e.target as HTMLInputElement).checked; }}>
+          Show hidden
+        </label>
+      </div>
+      ${this._showAddForm ? html`
+        <div class="glass" style="padding:12px;margin-bottom:8px">
+          <div class="policy-row">
+            <div class="policy-field">
+              <label>Address</label>
+              <input type="text" placeholder="provider/model-name"
+                .value=${this._addAddress}
+                @input=${(e: Event) => { this._addAddress = (e.target as HTMLInputElement).value; }}>
+            </div>
+            <div class="policy-field">
+              <label>Provider</label>
+              <input type="text" placeholder="anthropic, openai, etc."
+                .value=${this._addProvider}
+                @input=${(e: Event) => { this._addProvider = (e.target as HTMLInputElement).value; }}>
+            </div>
+            <div class="policy-field">
+              <label>Context Window</label>
+              <input type="number" min="1024" max="2000000"
+                .value=${String(this._addCtx)}
+                @input=${(e: Event) => { this._addCtx = parseInt((e.target as HTMLInputElement).value, 10) || 8192; }}>
+            </div>
+          </div>
+          <div class="policy-actions">
+            <fc-btn variant="secondary" sm @click=${() => { this._showAddForm = false; }}>Cancel</fc-btn>
+            <fc-btn variant="primary" sm ?disabled=${this.saving || !this._addAddress || !this._addProvider}
+              @click=${() => this._addModel()}>
+              ${this.saving ? 'Adding\u2026' : 'Add Model'}
+            </fc-btn>
+          </div>
+        </div>` : nothing}
       <div class="model-list">
         ${this._renderGroupedRegistry(registry)}
       </div>
@@ -279,8 +322,9 @@ export class FcModelRegistry extends LitElement {
   }
 
   private _renderGroupedRegistry(registry: ModelRegistryEntry[]) {
+    const filtered = this._showHidden ? registry : registry.filter(m => !m.hidden);
     const groups = new Map<string, ModelRegistryEntry[]>();
-    for (const m of registry) {
+    for (const m of filtered) {
       const provider = providerOf(m.address);
       const list = groups.get(provider) ?? [];
       list.push(m);
@@ -325,7 +369,7 @@ export class FcModelRegistry extends LitElement {
         <div class="policy-main" @click=${() => this._expandPolicy(m)}>
           <span class="provider-dot" style="background:${providerColor(m.address)}"></span>
           <div class="policy-info">
-            <div class="policy-addr">${primaryLabel}</div>
+            <div class="policy-addr">${primaryLabel}${m.hidden ? html` <span style="font-size:9px;color:var(--v-fg-dim);font-weight:400">(hidden)</span>` : nothing}</div>
             <div class="policy-meta">
               <span>${m.address}</span>
               <span>${m.provider}</span>
@@ -375,6 +419,11 @@ export class FcModelRegistry extends LitElement {
               </div>
             </div>
             <div class="policy-actions">
+              <fc-btn variant="ghost" sm
+                @click=${() => this._toggleHidden(m.address, !m.hidden)}>
+                ${m.hidden ? '\u{1F441} Unhide' : '\u{1F6AB} Hide'}
+              </fc-btn>
+              <span style="flex:1"></span>
               <fc-btn variant="secondary" sm
                 @click=${() => { this.policyExpanded = null; }}>Cancel</fc-btn>
               <fc-btn variant="primary" sm
@@ -423,6 +472,45 @@ export class FcModelRegistry extends LitElement {
         this.dispatchEvent(
           new CustomEvent('policy-saved', { bubbles: true, composed: true }),
         );
+      }
+    } catch { /* best-effort */ }
+    this.saving = false;
+  }
+
+  private async _toggleHidden(address: string, hidden: boolean) {
+    this.saving = true;
+    try {
+      const resp = await fetch(`/api/v1/models/${encodeURIComponent(address)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden }),
+      });
+      if (resp.ok) {
+        this.dispatchEvent(new CustomEvent('policy-saved', { bubbles: true, composed: true }));
+      }
+    } catch { /* best-effort */ }
+    this.saving = false;
+  }
+
+  private async _addModel() {
+    if (!this._addAddress || !this._addProvider) return;
+    this.saving = true;
+    try {
+      const resp = await fetch('/api/v1/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: this._addAddress,
+          provider: this._addProvider,
+          context_window: this._addCtx,
+        }),
+      });
+      if (resp.ok) {
+        this._showAddForm = false;
+        this._addAddress = '';
+        this._addProvider = '';
+        this._addCtx = 8192;
+        this.dispatchEvent(new CustomEvent('policy-saved', { bubbles: true, composed: true }));
       }
     } catch { /* best-effort */ }
     this.saving = false;

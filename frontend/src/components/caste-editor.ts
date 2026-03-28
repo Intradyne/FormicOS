@@ -325,8 +325,10 @@ export class FcCasteEditor extends LitElement {
 
   private _availableModels(): string[] {
     const registry = this.runtimeConfig?.models?.registry ?? [];
+    const _SELECTABLE = new Set(['available', 'loaded']);
     return [...new Set(
       registry
+        .filter(model => !model.hidden && _SELECTABLE.has(model.status ?? 'available'))
         .map(model => model.address)
         .filter((address): address is string => Boolean(address)),
     )];

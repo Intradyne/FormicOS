@@ -100,13 +100,14 @@ export class FcTemplateEditor extends LitElement {
 
   @property({ type: String }) mode: EditorMode = 'create';
   @property({ type: Object }) template: TemplateInfo | null = null;
+  @property({ type: Object }) governance: { defaultBudgetPerColony: number; maxRoundsPerColony: number } | null = null;
 
   @state() private name = '';
   @state() private description = '';
   @state() private castes: CasteSlot[] = [];
   @state() private strategy: CoordinationStrategy = 'stigmergic';
-  @state() private budgetLimit = 1.0;
-  @state() private maxRounds = 5;
+  @state() private budgetLimit = 0;
+  @state() private maxRounds = 0;
   @state() private tags: string[] = [];
   @state() private tagInput = '';
   @state() private saving = false;
@@ -121,9 +122,21 @@ export class FcTemplateEditor extends LitElement {
     this._populateFromTemplate();
   }
 
+  private get _defaultBudget(): number {
+    return this.governance?.defaultBudgetPerColony ?? 1.0;
+  }
+
+  private get _defaultMaxRounds(): number {
+    return this.governance?.maxRoundsPerColony ?? 5;
+  }
+
   updated(changed: Map<string, unknown>) {
     if (changed.has('template') || changed.has('mode')) {
       this._populateFromTemplate();
+    }
+    if (changed.has('governance') && this.governance) {
+      if (!this.budgetLimit) this.budgetLimit = this._defaultBudget;
+      if (!this.maxRounds) this.maxRounds = this._defaultMaxRounds;
     }
   }
 
@@ -135,8 +148,8 @@ export class FcTemplateEditor extends LitElement {
       this.description = '';
       this.castes = [{ caste: 'coder', tier: 'standard', count: 1 }];
       this.strategy = 'stigmergic';
-      this.budgetLimit = 1.0;
-      this.maxRounds = 5;
+      this.budgetLimit = this._defaultBudget;
+      this.maxRounds = this._defaultMaxRounds;
       this.tags = [];
       this._templateId = '';
       this._version = 1;
@@ -157,8 +170,8 @@ export class FcTemplateEditor extends LitElement {
     this.description = t.description;
     this.castes = t.castes.map(c => ({ ...c }));
     this.strategy = t.strategy;
-    this.budgetLimit = t.budgetLimit ?? 1.0;
-    this.maxRounds = t.maxRounds ?? 5;
+    this.budgetLimit = t.budgetLimit ?? this._defaultBudget;
+    this.maxRounds = t.maxRounds ?? this._defaultMaxRounds;
     this.tags = [...(t.tags ?? [])];
     this._sourceColonyId = t.sourceColonyId;
   }

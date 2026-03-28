@@ -34,6 +34,16 @@ def _build_parser() -> argparse.ArgumentParser:
     subs.add_parser("reset", help="Reset colony state")
     subs.add_parser("export-events", help="Export the event log")
 
+    init_mcp = subs.add_parser(
+        "init-mcp",
+        help="Generate MCP config for Claude Code integration",
+    )
+    init_mcp.add_argument(
+        "--url",
+        default="http://localhost:8080/mcp",
+        help="FormicOS MCP server URL (default: http://localhost:8080/mcp)",
+    )
+
     return parser
 
 
@@ -52,6 +62,85 @@ def main(argv: list[str] | None = None) -> None:
         print("Reset not yet implemented")
     elif args.command == "export-events":
         print("Event export not yet implemented")
+    elif args.command == "init-mcp":
+        _init_mcp(url=args.url)
+
+
+_BRIDGE_TEMPLATE = """\
+# FormicOS Developer Bridge
+
+This project uses FormicOS for institutional memory, strategic delegation,
+and autonomous background work. FormicOS MCP server: {url}
+
+## MCP Prompts (context injection — read-only)
+
+- **morning-status** — What happened, what's pending, project plan status
+- **delegate-task** — Plan a colony to handle a task, get blast radius estimate
+- **review-overnight-work** — Review autonomous actions, pending approvals, new knowledge
+- **knowledge-for-context** — Search institutional memory for relevant entries
+
+## MCP Tools (actions — may mutate state)
+
+- `spawn_colony` — Create and start a colony directly
+- `chat_queen` — Message the Queen for strategic guidance
+- `get_status` — Workspace status with threads and colonies
+- `approve` / `deny` — Review pending actions
+- `log_finding` — Record a discovery as a knowledge entry
+- `handoff_to_formicos` — Transfer work context to a new colony
+- `addon_status` — Check installed addon health
+- `toggle_addon` — Enable/disable addons
+- `trigger_addon` — Run addon handlers (reindex, etc.)
+
+## MCP Resources
+
+- `formicos://plan` — Project plan (global)
+- `formicos://procedures/{{workspace_id}}` — Operating procedures
+- `formicos://journal/{{workspace_id}}` — Recent journal entries
+- `formicos://knowledge/{{workspace}}` — Knowledge catalog
+- `formicos://briefing/{{workspace_id}}` — Proactive intelligence briefing
+
+## Shared Files
+
+- `.formicos/project_plan.md` — Milestones (both you and FormicOS read/write)
+- `.formicos/project_context.md` — Project instructions for colonies
+- `.formicos/operations/*/operating_procedures.md` — Autonomy rules
+- `.formicos/operations/*/queen_journal.md` — What FormicOS did (read-only)
+"""
+
+
+def _init_mcp(url: str = "http://localhost:8080/mcp") -> None:
+    """Generate .mcp.json and .formicos/DEVELOPER_QUICKSTART.md."""
+    import json
+    from pathlib import Path
+
+    cwd = Path.cwd()
+
+    # Write .mcp.json
+    mcp_config = {
+        "mcpServers": {
+            "formicos": {
+                "type": "http",
+                "url": url,
+            }
+        }
+    }
+    mcp_path = cwd / ".mcp.json"
+    mcp_path.write_text(json.dumps(mcp_config, indent=2) + "\n")
+    print(f"  Created {mcp_path}")
+
+    # Write .formicos/DEVELOPER_QUICKSTART.md
+    bridge_dir = cwd / ".formicos"
+    bridge_dir.mkdir(exist_ok=True)
+    bridge_path = bridge_dir / "DEVELOPER_QUICKSTART.md"
+    bridge_path.write_text(_BRIDGE_TEMPLATE.format(url=url))
+    print(f"  Created {bridge_path}")
+
+    print()
+    print("FormicOS MCP integration configured.")
+    print("Restart Claude Code to connect. Then try:")
+    print("  morning-status — get a complete briefing")
+    print("  delegate-task — hand off work to FormicOS")
+    print("  knowledge-for-context — search institutional memory")
 
 
 def _start_server(host: str | None = None, port: int | None = None) -> None:

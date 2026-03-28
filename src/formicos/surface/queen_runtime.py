@@ -8,6 +8,7 @@ adapter wiring). Engine imports only core.
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -34,6 +35,11 @@ from formicos.surface.proactive_intelligence import (
     generate_briefing,
     generate_config_recommendations,
     generate_evaporation_recommendations,
+)
+from formicos.surface.queen_budget import (
+    FALLBACK_BUDGET,
+    QueenContextBudget,
+    compute_queen_budget,
 )
 from formicos.surface.queen_shared import (
     PendingConfigProposal,
@@ -167,13 +173,15 @@ def _is_pinned(msg: Any) -> bool:  # noqa: ANN401
 
 def _compact_thread_history(
     queen_messages: list[Any],
+    token_budget: int = _THREAD_TOKEN_BUDGET,
+    recent_window: int = _RECENT_WINDOW,
 ) -> list[dict[str, str]]:
     """Build LLM message entries from Queen thread history with compaction.
 
-    When total estimated tokens exceed ``_THREAD_TOKEN_BUDGET``, older
-    messages are collapsed into one deterministic ``Earlier conversation:``
-    block.  Recent messages and pinned items (asks, active previews) are
-    always kept raw.
+    When total estimated tokens exceed *token_budget*, older messages are
+    collapsed into one deterministic ``Earlier conversation:`` block.
+    Recent messages and pinned items (asks, active previews) are always
+    kept raw.
 
     Returns a list of ``{role, content}`` dicts ready for the LLM prompt.
     """
@@ -183,7 +191,7 @@ def _compact_thread_history(
     total_tokens = sum(
         _estimate_tokens(m.content) for m in queen_messages
     )
-    if total_tokens <= _THREAD_TOKEN_BUDGET or total <= _RECENT_WINDOW:
+    if total_tokens <= token_budget or total <= recent_window:
         return [
             {
                 "role": "user" if m.role == "operator" else "assistant",
@@ -193,7 +201,7 @@ def _compact_thread_history(
         ]
 
     # Split into older (compactable) and recent (kept raw).
-    split_idx = max(0, total - _RECENT_WINDOW)
+    split_idx = max(0, total - recent_window)
     older = queen_messages[:split_idx]
     recent = queen_messages[split_idx:]
 
@@ -277,6 +285,11 @@ class QueenAgent:
         # Wave 63 Track 2: parallel plan aggregation tracker
         # Maps plan_id -> {colony_id: result_meta | None}
         self._pending_parallel: dict[str, dict[str, dict[str, Any] | None]] = {}
+        # Wave 74 Track 4: session-scoped tool call counters
+        self._tool_call_counts: dict[str, int] = {}
+        self._tool_last_status: dict[str, str] = {}
+        # Wave 74 Track 5c: per-workspace initial board population
+        self._board_populated_workspaces: set[str] = set()
 
     async def name_colony(
         self,
@@ -481,6 +494,16 @@ class QueenAgent:
         # Wave 63 Track 2: include failure reason in meta
         if colony_failed and failure_reason:
             result_meta["failureReason"] = failure_reason
+        # Wave 69 Track 3: file change count for diff badge
+        _artifacts = getattr(colony, "artifacts", [])
+        if _artifacts:
+            _file_arts = [
+                a for a in _artifacts
+                if a.get("artifact_type") in ("file", "code", "patch")
+                or a.get("mime_type", "").startswith("text/")
+            ]
+            if _file_arts:
+                result_meta["filesChanged"] = len(_file_arts)
 
         # Wave 63 Track 2: check parallel plan aggregation
         completed_plan_id = self._check_parallel_aggregation(colony_id, result_meta)
@@ -744,6 +767,119 @@ class QueenAgent:
         except Exception:
             log.exception("queen.emit_failed", workspace_id=workspace_id, thread_id=thread_id)
 
+    def emit_session_summary(
+        self, workspace_id: str, thread_id: str,
+    ) -> None:
+        """Write a session summary file for later startup injection.
+
+        Content assembled deterministically from projections — no LLM call.
+        File written to .formicos/sessions/{thread_id}.md.
+        """
+        thread = self._runtime.projections.get_thread(
+            workspace_id, thread_id,
+        )
+        if thread is None:
+            return
+
+        lines: list[str] = [
+            f"# Session Summary: {thread.name}",
+            f"**Thread:** {thread_id}",
+            f"**Status:** {thread.status}",
+            "",
+        ]
+
+        # Plan state (from plan file, if exists)
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir, str) and _data_dir:
+                _plan_path = (
+                    Path(_data_dir) / ".formicos" / "plans"
+                    / f"{thread_id}.md"
+                )
+                if _plan_path.is_file():
+                    _plan_text = _plan_path.read_text(
+                        encoding="utf-8",
+                    )[:1000]
+                    lines.append("## Active Plan")
+                    lines.append(_plan_text)
+                    lines.append("")
+        except (OSError, TypeError, AttributeError):
+            pass
+
+        # Colony outcomes this session
+        lines.append("## Colony Activity")
+        lines.append(
+            f"- {thread.completed_colony_count} completed, "
+            f"{thread.failed_colony_count} failed, "
+            f"{thread.colony_count} total"
+        )
+
+        # Workflow step status
+        if thread.workflow_steps:
+            completed = sum(
+                1 for s in thread.workflow_steps
+                if s.get("status") == "completed"
+            )
+            pending = sum(
+                1 for s in thread.workflow_steps
+                if s.get("status") == "pending"
+            )
+            lines.append(
+                f"- Workflow: {completed} steps completed,"
+                f" {pending} pending"
+            )
+
+        # Last few Queen decisions (last 5 queen messages)
+        queen_msgs = [
+            m for m in thread.queen_messages if m.role == "queen"
+        ]
+        if queen_msgs:
+            lines.append("")
+            lines.append("## Recent Queen Activity")
+            for msg in queen_msgs[-5:]:
+                content = msg.content[:200] if msg.content else ""
+                if content:
+                    lines.append(f"- {content}")
+
+        summary_text = "\n".join(lines)
+
+        # Write to file
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir, str) and _data_dir:
+                _session_dir = (
+                    Path(_data_dir) / ".formicos" / "sessions"
+                )
+                _session_dir.mkdir(parents=True, exist_ok=True)
+                _session_path = _session_dir / f"{thread_id}.md"
+                _session_path.write_text(
+                    summary_text, encoding="utf-8",
+                )
+        except (OSError, TypeError, AttributeError):
+            log.warning(
+                "session_summary.write_failed",
+                workspace_id=workspace_id,
+                thread_id=thread_id,
+            )
+
+        # Wave 71.0: append journal entry on session summary emission
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir, str) and _data_dir:
+                from formicos.surface.operational_state import (  # noqa: PLC0415
+                    append_journal_entry,
+                )
+                _tc = thread.colony_count if thread else 0
+                _dc = thread.completed_colony_count if thread else 0
+                _name = thread.name if thread else thread_id
+                append_journal_entry(
+                    _data_dir, workspace_id, "session",
+                    f"Session saved for '{_name}': "
+                    f"{_dc}/{_tc} colonies completed",
+                )
+        except (OSError, TypeError, AttributeError):
+            pass
+
     async def respond(self, workspace_id: str, thread_id: str) -> QueenResponse:
         """Generate a Queen response. May iterate tool calls up to _MAX_TOOL_ITERATIONS times.
 
@@ -756,13 +892,42 @@ class QueenAgent:
             await self._emit_queen_message(workspace_id, thread_id, msg)
             return QueenResponse(reply=msg)
 
+        # Wave 74 Track 5c: populate display board on first respond() per workspace
+        if workspace_id and workspace_id not in self._board_populated_workspaces:
+            try:
+                from formicos.surface.operational_state import post_sweep_observations  # noqa: PLC0415
+                from formicos.surface.operations_coordinator import build_operations_summary  # noqa: PLC0415
+
+                _data_dir_str = self._runtime.settings.system.data_dir
+                _summary = build_operations_summary(
+                    _data_dir_str, workspace_id, self._runtime.projections,
+                )
+                post_sweep_observations(
+                    _data_dir_str, workspace_id, _summary, self._runtime.projections,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            self._board_populated_workspaces.add(workspace_id)
+
         # Wave 63 Track 3: check for pending edit/delete confirmation
         pending_result = await self._apply_pending_action(thread, workspace_id, thread_id)
         if pending_result is not None:
             return pending_result
 
         queen_model = self._resolve_queen_model(workspace_id)
-        messages = self._build_messages(thread)
+
+        # Wave 68 Track 3: compute dynamic context budget (ADR-051)
+        _output_reserve = self._queen_max_tokens(workspace_id)
+        _ctx_window: int | None = None
+        _model_addr = queen_model
+        if _model_addr:
+            for _rec in self._runtime.settings.models.registry:
+                if _rec.address == _model_addr:
+                    _ctx_window = _rec.context_window
+                    break
+        budget = compute_queen_budget(_ctx_window, _output_reserve)
+
+        messages = self._build_messages(thread, budget=budget)
         tools = self._queen_tools()
         actions: list[dict[str, Any]] = []
         response = None
@@ -770,13 +935,16 @@ class QueenAgent:
 
         # Wave 26 B3: deterministic pre-spawn memory retrieval
         last_operator_msg = ""
+        _consulted: list[dict[str, Any]] = []
         for msg in reversed(thread.queen_messages):
             if msg.role == "operator":
                 last_operator_msg = msg.content
                 break
         if last_operator_msg:
-            memory_block = await self._runtime.retrieve_relevant_memory(
-                last_operator_msg, workspace_id, thread_id=thread_id,
+            memory_block, _memory_items = (
+                await self._runtime.retrieve_relevant_memory(
+                    last_operator_msg, workspace_id, thread_id=thread_id,
+                )
             )
             if memory_block:
                 # Insert after system prompt(s) but before conversation history
@@ -791,6 +959,15 @@ class QueenAgent:
                     "role": "system",
                     "content": memory_block,
                 })
+            # Wave 69: capture consulted entries for message metadata
+            for _item in _memory_items[:5]:
+                _consulted.append({
+                    "id": _item.get("id", ""),
+                    "title": str(_item.get("title", ""))[:80],
+                    "confidence": round(
+                        float(_item.get("confidence", 0.5)), 2,
+                    ),
+                })
 
         # Wave 63 Track 8: inject project context from workspace
         try:
@@ -798,7 +975,9 @@ class QueenAgent:
             if isinstance(_data_dir, str) and _data_dir:
                 _pc_path = Path(_data_dir) / ".formicos" / "project_context.md"
                 if _pc_path.is_file():
-                    _pc_text = _pc_path.read_text(encoding="utf-8")[:2000]
+                    _pc_text = _pc_path.read_text(
+                        encoding="utf-8",
+                    )[:budget.project_context * 4]
                     if _pc_text:
                         _pc_insert = 0
                         for _pi, _pm in enumerate(messages):
@@ -812,6 +991,118 @@ class QueenAgent:
                             "content": f"# Project Context\n{_pc_text}",
                         })
         except (AttributeError, TypeError, OSError):
+            pass
+
+        # Wave 70.0 Track 6: inject project plan (cross-thread)
+        try:
+            _data_dir_pp = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir_pp, str) and _data_dir_pp:
+                from formicos.surface.project_plan import (  # noqa: PLC0415
+                    load_project_plan,
+                    render_for_queen,
+                )
+
+                _pp_data = load_project_plan(_data_dir_pp)
+                _pp_text = render_for_queen(_pp_data)
+                if _pp_text:
+                    _pp_text = _pp_text[:budget.project_plan * 4]
+                    _pp_insert = 0
+                    for _ppi, _ppm in enumerate(messages):
+                        if _ppm.get("role") != "system":
+                            _pp_insert = _ppi
+                            break
+                    else:
+                        _pp_insert = len(messages)
+                    messages.insert(_pp_insert, {
+                        "role": "system",
+                        "content": _pp_text,
+                    })
+        except (AttributeError, TypeError, OSError):
+            pass
+
+        # Wave 71.0: inject operating procedures (budget-backed)
+        try:
+            _data_dir_op = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir_op, str) and _data_dir_op:
+                from formicos.surface.operational_state import (  # noqa: PLC0415
+                    render_procedures_for_queen,
+                )
+                _proc_text = render_procedures_for_queen(
+                    _data_dir_op, workspace_id,
+                )
+                if _proc_text:
+                    _proc_text = _proc_text[
+                        :budget.operating_procedures * 4
+                    ]
+                    _proc_insert = 0
+                    for _pri, _prm in enumerate(messages):
+                        if _prm.get("role") != "system":
+                            _proc_insert = _pri
+                            break
+                    else:
+                        _proc_insert = len(messages)
+                    messages.insert(_proc_insert, {
+                        "role": "system",
+                        "content": _proc_text,
+                    })
+        except (AttributeError, TypeError, OSError):
+            pass
+
+        # Wave 71.0: inject recent journal tail (budget-backed)
+        try:
+            _data_dir_jn = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir_jn, str) and _data_dir_jn:
+                from formicos.surface.operational_state import (  # noqa: PLC0415
+                    render_journal_for_queen,
+                )
+                _jn_text = render_journal_for_queen(
+                    _data_dir_jn, workspace_id,
+                )
+                if _jn_text:
+                    _jn_text = _jn_text[:budget.queen_journal * 4]
+                    _jn_insert = 0
+                    for _jni, _jnm in enumerate(messages):
+                        if _jnm.get("role") != "system":
+                            _jn_insert = _jni
+                            break
+                    else:
+                        _jn_insert = len(messages)
+                    messages.insert(_jn_insert, {
+                        "role": "system",
+                        "content": _jn_text,
+                    })
+        except (AttributeError, TypeError, OSError):
+            pass
+
+        # Wave 68: session continuity — inject prior session summary
+        # Wave 71.0: replaced hardcoded [:4000] with budget-backed cap
+        try:
+            _data_dir2 = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir2, str) and _data_dir2:
+                _session_path = (
+                    Path(_data_dir2) / ".formicos" / "sessions"
+                    / f"{thread_id}.md"
+                )
+                if _session_path.is_file():
+                    _session_text = _session_path.read_text(
+                        encoding="utf-8",
+                    )[:budget.thread_context * 4]
+                    if _session_text:
+                        _ss_insert = 0
+                        for _si, _sm in enumerate(messages):
+                            if _sm.get("role") != "system":
+                                _ss_insert = _si
+                                break
+                        else:
+                            _ss_insert = len(messages)
+                        messages.insert(_ss_insert, {
+                            "role": "system",
+                            "content": (
+                                "# Prior Session Context\n"
+                                f"{_session_text}"
+                            ),
+                        })
+        except (OSError, TypeError, AttributeError):
             pass
 
         # Wave 29: inject thread workflow context
@@ -898,6 +1189,95 @@ class QueenAgent:
         except Exception:
             log.debug("queen.briefing_injection_failed", workspace_id=workspace_id)
 
+        # Wave 71.0 Track 9: compact operational continuity cue
+        try:
+            _data_dir_ops = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir_ops, str) and _data_dir_ops:
+                from formicos.surface.operations_coordinator import (  # noqa: PLC0415
+                    build_operations_summary,
+                    render_continuity_block,
+                )
+
+                _ops_summary = build_operations_summary(
+                    _data_dir_ops, workspace_id,
+                    self._runtime.projections,
+                )
+                _ops_text = render_continuity_block(_ops_summary)
+                if _ops_text:
+                    # Cap at half the thread-context allocation
+                    _ops_cap = budget.thread_context * 2
+                    _ops_text = _ops_text[:_ops_cap]
+                    _ops_pos = 0
+                    for _oi, _om in enumerate(messages):
+                        if _om.get("role") != "system":
+                            _ops_pos = _oi
+                            break
+                    else:
+                        _ops_pos = len(messages)
+                    messages.insert(_ops_pos, {
+                        "role": "system",
+                        "content": _ops_text,
+                    })
+        except Exception:
+            log.debug("queen.ops_continuity_injection_failed", workspace_id=workspace_id)
+
+        # Wave 72 Track 7: warm-start continuation cue
+        # On the first returning turn, surface pending continuation opportunities.
+        # Placed after session/ops context so the Queen sees it as a proposal.
+        try:
+            _data_dir_cont = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir_cont, str) and _data_dir_cont:
+                from formicos.surface.continuation import (  # noqa: PLC0415
+                    build_warm_start_cue,
+                )
+
+                _cont_cue = build_warm_start_cue(
+                    _data_dir_cont, workspace_id,
+                    self._runtime.projections,
+                    max_candidates=3,
+                )
+                if _cont_cue:
+                    _cont_cap = budget.thread_context * 2
+                    _cont_cue = _cont_cue[:_cont_cap]
+                    _cont_pos = 0
+                    for _ci, _cm in enumerate(messages):
+                        if _cm.get("role") != "system":
+                            _cont_pos = _ci
+                            break
+                    else:
+                        _cont_pos = len(messages)
+                    messages.insert(_cont_pos, {
+                        "role": "system",
+                        "content": _cont_cue,
+                    })
+        except Exception:
+            log.debug("queen.warm_start_cue_failed", workspace_id=workspace_id)
+
+        # Wave 68 Track 4: deliberation frame injection (ADR-051)
+        if last_operator_msg and _DELIBERATION_RE.search(
+            last_operator_msg,
+        ):
+            _delib_frame = self._build_deliberation_frame(
+                workspace_id, thread_id,
+            )
+            if _delib_frame:
+                _delib_cap = budget.thread_context * 4
+                if len(_delib_frame) > _delib_cap:
+                    _delib_frame = (
+                        _delib_frame[:_delib_cap] + "\n...(truncated)"
+                    )
+                _delib_pos = 0
+                for _di, _dm in enumerate(messages):
+                    if _dm.get("role") != "system":
+                        _delib_pos = _di
+                        break
+                else:
+                    _delib_pos = len(messages)
+                messages.insert(_delib_pos, {
+                    "role": "system",
+                    "content": _delib_frame,
+                })
+
         # Wave 64 Track 4: heuristic cloud routing expansion
         # Extends Wave 62 propose_plan check with complexity heuristics,
         # @cloud tag, and auto-escalation on parse failure.
@@ -948,7 +1328,7 @@ class QueenAgent:
                 for m in messages
                 if m.get("role") == "system"
             )
-            if _sys_tokens > 2000:
+            if _sys_tokens > budget.system_prompt:
                 use_cloud = True
 
             if use_cloud:
@@ -1152,6 +1532,12 @@ class QueenAgent:
                     msg_meta = {}
                 msg_meta["tool_memory"] = tool_memory[:10]  # cap entries
 
+            # Wave 69: consulted knowledge entries in meta
+            if _consulted:
+                if msg_meta is None:
+                    msg_meta = {}
+                msg_meta["consulted_entries"] = _consulted
+
             # Wave 64 Track 4 (D): routing indicator in meta
             if msg_meta is None:
                 msg_meta = {}
@@ -1195,8 +1581,232 @@ class QueenAgent:
                     return min(caste_max, rec.max_output_tokens)
         return caste_max
 
-    def _build_messages(self, thread: Any) -> list[dict[str, str]]:  # noqa: ANN401
+    def _build_deliberation_frame(
+        self,
+        workspace_id: str,
+        thread_id: str,
+    ) -> str:
+        """Assemble a deterministic deliberation frame from projections.
+
+        No LLM calls. No network. Source-labeled sections so the Queen
+        can reason about exploratory operator messages with structured,
+        source-labeled evidence.
+        """
+        proj = self._runtime.projections
+        parts: list[str] = ["# Deliberation Context"]
+
+        # -- Institutional Memory Coverage --
+        ws_entries = [
+            e for e in proj.memory_entries.values()
+            if e.get("workspace_id") == workspace_id
+        ]
+        if ws_entries:
+            domain_stats: dict[str, list[float]] = {}
+            for entry in ws_entries:
+                for dom in entry.get("domains", []):
+                    alpha = entry.get("conf_alpha", 5.0)
+                    beta = entry.get("conf_beta", 5.0)
+                    denom = alpha + beta
+                    mean = alpha / denom if denom > 0 else 0.5
+                    domain_stats.setdefault(dom, []).append(mean)
+            if domain_stats:
+                parts.append("\n## Institutional Memory Coverage")
+                for dom, confs in sorted(
+                    domain_stats.items(),
+                    key=lambda x: -len(x[1]),
+                )[:10]:
+                    avg = sum(confs) / len(confs)
+                    parts.append(
+                        f"- {dom}: {len(confs)} entries, "
+                        f"avg confidence {avg:.2f}"
+                    )
+
+        # -- Recent Colony Outcomes --
+        ws_outcomes = sorted(
+            (
+                o for o in proj.colony_outcomes.values()
+                if o.workspace_id == workspace_id
+            ),
+            key=lambda o: o.colony_id,
+            reverse=True,
+        )[:5]
+        if ws_outcomes:
+            parts.append("\n## Recent Colony Outcomes")
+            for o in ws_outcomes:
+                marker = "ok" if o.succeeded else "FAIL"
+                parts.append(
+                    f"- [{marker}] strategy={o.strategy} "
+                    f"rounds={o.total_rounds} "
+                    f"cost=${o.total_cost:.4f}"
+                )
+
+        # -- Addon Corpus Coverage --
+        addon_parts: list[str] = []
+        try:
+            from formicos.surface.addon_loader import (  # noqa: PLC0415
+                AddonManifest,
+            )
+            manifests: list[AddonManifest] = []
+            _app_state = getattr(
+                getattr(self._runtime, "app", None),
+                "state",
+                None,
+            )
+            if _app_state is not None:
+                manifests = (
+                    getattr(_app_state, "addon_manifests", [])
+                    or []
+                )
+        except Exception:
+            manifests = []
+        for m in manifests:
+            ck = getattr(m, "content_kinds", [])
+            pg = getattr(m, "path_globs", [])
+            st = getattr(m, "search_tool", "")
+            if ck or pg or st:
+                line = f"- {m.name}: content {', '.join(ck)}"
+                if pg:
+                    line += f"; files {', '.join(pg)}"
+                if st:
+                    line += f"; search via {st}"
+                addon_parts.append(line)
+            elif m.tools:
+                names = [t.name for t in m.tools]
+                addon_parts.append(
+                    f"- {m.name}: "
+                    f"{m.description or 'addon'}; "
+                    f"tools: {', '.join(names)}"
+                )
+        if addon_parts:
+            parts.append("\n## Addon Corpus Coverage")
+            parts.extend(addon_parts)
+
+        # -- Wave 70.0: Bridge status (capability-based, no addon-name checks) --
+        if _app_state is not None:
+            _regs: list[Any] = getattr(_app_state, "addon_registrations", []) or []
+            for _reg in _regs:
+                _bhfn = (_reg.runtime_context or {}).get("get_bridge_health")
+                if callable(_bhfn):
+                    try:
+                        _bh = _bhfn()
+                        parts.append(
+                            f"\n## MCP Bridge: "
+                            f"{_bh.get('connectedServers', 0)} connected, "
+                            f"{_bh.get('unhealthyServers', 0)} unhealthy, "
+                            f"{_bh.get('totalRemoteTools', 0)} remote tools"
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    break  # Only one bridge expected
+
+        # -- Thread Progress --
+        thread = proj.get_thread(workspace_id, thread_id)
+        if thread is not None and thread.goal:
+            parts.append("\n## Thread Progress")
+            parts.append(f"Goal: {thread.goal}")
+            tc = thread.colony_count
+            dc = thread.completed_colony_count
+            fc = thread.failed_colony_count
+            if tc:
+                parts.append(
+                    f"Colonies: {tc} total, "
+                    f"{dc} completed, {fc} failed"
+                )
+
+        # -- Active Alerts --
+        try:
+            b = generate_briefing(workspace_id, proj)
+            alerts = [
+                i for i in b.insights
+                if i.severity in ("warning", "critical")
+            ][:3]
+            if alerts:
+                parts.append("\n## Active Alerts")
+                for a in alerts:
+                    parts.append(
+                        f"- [{a.severity.upper()}] "
+                        f"{a.title}: {a.detail}"
+                    )
+        except Exception:
+            pass
+
+        if len(parts) <= 1:
+            return ""
+        return "\n".join(parts)
+
+    def _build_override_block(self, workspace_id: str) -> str:
+        """Build workspace behavioral override text for Queen context (Wave 74)."""
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if not ws:
+            return ""
+        cfg = getattr(ws, "config", None)
+        if not isinstance(cfg, dict):
+            return ""
+        parts: list[str] = []
+
+        disabled = cfg.get("queen.disabled_tools", "")
+        if isinstance(disabled, str) and disabled:
+            try:
+                tools = json.loads(disabled)
+            except (json.JSONDecodeError, TypeError):
+                tools = []
+            if isinstance(tools, list) and tools:
+                parts.append(
+                    "DISABLED TOOLS (require operator confirmation): "
+                    + ", ".join(str(t) for t in tools)
+                )
+
+        custom = cfg.get("queen.custom_rules", "")
+        if isinstance(custom, str) and custom:
+            try:
+                rules = json.loads(custom)
+            except (json.JSONDecodeError, TypeError):
+                rules = custom
+            if rules:
+                parts.append(f"OPERATOR RULES:\n{rules}")
+
+        team_comp = cfg.get("queen.team_composition", "")
+        if isinstance(team_comp, str) and team_comp:
+            try:
+                overrides = json.loads(team_comp)
+            except (json.JSONDecodeError, TypeError):
+                overrides = None
+            if isinstance(overrides, dict) and overrides:
+                lines = ["TEAM COMPOSITION OVERRIDES:"]
+                for task_type, composition in overrides.items():
+                    lines.append(f"  {task_type}: {composition}")
+                parts.append("\n".join(lines))
+
+        round_budget = cfg.get("queen.round_budget", "")
+        if isinstance(round_budget, str) and round_budget:
+            try:
+                rb_overrides = json.loads(round_budget)
+            except (json.JSONDecodeError, TypeError):
+                rb_overrides = None
+            if isinstance(rb_overrides, dict) and rb_overrides:
+                lines = ["ROUND / BUDGET OVERRIDES:"]
+                for complexity, limits in rb_overrides.items():
+                    if isinstance(limits, dict):
+                        rounds = limits.get("rounds")
+                        budget = limits.get("budget")
+                        lines.append(
+                            f"  {complexity}: rounds={rounds},"
+                            f" budget={budget}"
+                        )
+                parts.append("\n".join(lines))
+
+        if not parts:
+            return ""
+        return "# Workspace Behavioral Overrides\n\n" + "\n\n".join(parts)
+
+    def _build_messages(
+        self,
+        thread: Any,  # noqa: ANN401
+        budget: QueenContextBudget | None = None,
+    ) -> list[dict[str, str]]:
         """Build LLM message list from thread's Queen conversation history."""
+        if budget is None:
+            budget = FALLBACK_BUDGET
         messages: list[dict[str, str]] = []
 
         # System prompt from Queen caste recipe
@@ -1208,7 +1818,22 @@ class QueenAgent:
             recipe = self._runtime.castes.castes.get("queen")
             if recipe:
                 system_prompt = recipe.system_prompt
+        # Wave 74 Track 6: self-assembling tool inventory from tool_specs()
+        if "{TOOL_INVENTORY}" in system_prompt:
+            all_specs = self._tool_dispatcher.tool_specs()
+            tool_names = [s["name"] for s in all_specs]
+            tool_section = f"## Tools ({len(tool_names)})\n{', '.join(sorted(tool_names))}"
+            system_prompt = system_prompt.replace("{TOOL_INVENTORY}", tool_section)
         messages.append({"role": "system", "content": system_prompt})
+
+        # Wave 74: Inject workspace behavioral overrides after base system prompt
+        workspace_id_early = (
+            thread.workspace_id if hasattr(thread, "workspace_id") else ""
+        )
+        if workspace_id_early:
+            override_block = self._build_override_block(workspace_id_early)
+            if override_block:
+                messages.append({"role": "system", "content": override_block})
 
         # Inject latest Queen notes (Wave 21 Track A, thread-scoped Wave 22 Track B)
         workspace_id = thread.workspace_id if hasattr(thread, "workspace_id") else ""
@@ -1255,10 +1880,10 @@ class QueenAgent:
                         f"[{entry.get('tool', '?')}] {entry.get('summary', '')[:300]}"
                     )
             if tool_mem_lines:
-                # Cap total to ~1500 tokens (~6000 chars)
+                _tool_mem_cap = budget.tool_memory * 4
                 joined = "\n".join(tool_mem_lines)
-                if len(joined) > 6000:
-                    joined = joined[:6000] + "\n...(truncated)"
+                if len(joined) > _tool_mem_cap:
+                    joined = joined[:_tool_mem_cap] + "\n...(truncated)"
                 messages.append({
                     "role": "system",
                     "content": (
@@ -1272,7 +1897,11 @@ class QueenAgent:
         # Wave 49: conversation history with deterministic compaction.
         # Token-aware — compacts older messages when thread exceeds budget
         # while preserving recent window, unresolved asks, and active previews.
-        compacted = _compact_thread_history(thread.queen_messages)
+        compacted = _compact_thread_history(
+            thread.queen_messages,
+            token_budget=budget.conversation_history,
+            recent_window=max(5, budget.conversation_history // 600),
+        )
         for entry in compacted:
             messages.append(entry)
 
@@ -1357,6 +1986,17 @@ class QueenAgent:
         lines.append(f"Goal: {thread.goal}")
         lines.append(f"Status: {thread.status}")
 
+        # Wave 68 Track 6: inject workspace taxonomy tags
+        _tag_raw = ws.config.get("taxonomy_tags")
+        if _tag_raw:
+            import json as _json  # noqa: PLC0415
+            try:
+                _tags = _json.loads(str(_tag_raw)) if isinstance(_tag_raw, str) else _tag_raw
+                if isinstance(_tags, list) and _tags:
+                    lines.append(f"Tags: {', '.join(str(t) for t in _tags)}")
+            except (ValueError, TypeError):
+                pass
+
         if thread.expected_outputs:
             parts: list[str] = []
             for out_type in thread.expected_outputs:
@@ -1410,6 +2050,30 @@ class QueenAgent:
                 col_info = f" (colony {col[:8]})" if col else ""
                 lines.append(f"  [{idx}] [{status}] {desc}{col_info}")
 
+        # Wave 68: inject plan file for persistent attention
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir, str) and _data_dir:
+                _plan_path = (
+                    Path(_data_dir) / ".formicos" / "plans"
+                    / f"{thread_id}.md"
+                )
+                if _plan_path.is_file():
+                    _plan_text = _plan_path.read_text(
+                        encoding="utf-8",
+                    )[:2000]
+                    if _plan_text:
+                        lines.append(f"\n{_plan_text}")
+        except (OSError, TypeError, AttributeError):
+            pass
+
+        # Wave 68 Track 6: gentle nudge for tagless new workspaces
+        if not _tag_raw and len(ws.threads) < 3:
+            lines.append(
+                "(Hint: use set_workspace_tags to add taxonomy hints "
+                "for better routing.)"
+            )
+
         return "\n".join(lines)
 
     def _queen_tools(self) -> list[dict[str, Any]]:
@@ -1440,6 +2104,15 @@ class QueenAgent:
                 return await self._thread_mgr.define_workflow_steps(
                     inputs, workspace_id, thread_id,
                 )
+
+        # Wave 74 Track 4: instrument tool call counter
+        tool_name = tc.get("name", "")
+        if tool_name:
+            self._tool_call_counts[tool_name] = self._tool_call_counts.get(tool_name, 0) + 1
+            status = "ok"
+            if result[1] is None and "failed" in result[0].lower():
+                status = "error"
+            self._tool_last_status[tool_name] = status
 
         return result
 

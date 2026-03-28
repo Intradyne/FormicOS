@@ -94,6 +94,7 @@ and the Queen welcome message to appear.
 | `formicos-llm` | 8008 → 8080 | llama.cpp LLM inference (GPU) |
 | `formicos-embed` | 8200 | Qwen3-Embedding sidecar (GPU) |
 | `formicos-qdrant` | 6333, 6334 | Qdrant vector store |
+| `formicos-docker-proxy` | -- (internal 2375) | Docker socket proxy for sandbox spawning |
 
 All services have health checks. FormicOS waits for the LLM, embedding
 sidecar, and Qdrant to be healthy before starting.

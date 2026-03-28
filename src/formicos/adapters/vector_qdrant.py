@@ -154,6 +154,7 @@ class QdrantVectorPort:
                 ("extracted_at", models.PayloadSchemaType.DATETIME),
                 ("source_colony", models.PayloadSchemaType.KEYWORD),
                 ("source_colony_id", models.PayloadSchemaType.KEYWORD),
+                ("hierarchy_path", models.PayloadSchemaType.KEYWORD),
             ]
             for field, schema in index_fields:
                 try:

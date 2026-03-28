@@ -32,6 +32,12 @@ tools:
           type: string
           description: "Rule to enable/disable"
 
+config:
+  - key: disabled_rules
+    type: string
+    default: ""
+    label: "Comma-separated rule names to disable"
+
 triggers:
   - type: cron
     schedule: "*/30 * * * *"

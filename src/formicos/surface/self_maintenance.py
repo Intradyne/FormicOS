@@ -11,6 +11,8 @@ colonies to synthesize knowledge.
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +22,7 @@ from formicos.core.types import AutonomyLevel, CasteSlot, MaintenancePolicy
 
 if TYPE_CHECKING:
     from formicos.surface.proactive_intelligence import KnowledgeInsight, ProactiveBriefing
+    from formicos.surface.projections import ProjectionStore
     from formicos.surface.runtime import Runtime
 
 log = structlog.get_logger()
@@ -40,6 +43,227 @@ _COST_PER_ROUND: dict[str, float] = {
     "archivist": 0.05,
     "coder": 0.12,
 }
+
+
+# ---------------------------------------------------------------------------
+# Wave 70 Track 8: Blast Radius Estimator
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BlastRadiusEstimate:
+    """Estimated scope and impact of a proposed autonomous action."""
+
+    score: float  # 0.0 (trivial) to 1.0 (high impact)
+    level: str  # "low", "medium", "high"
+    factors: list[str]
+    recommendation: str  # "proceed", "notify", "escalate"
+
+
+def estimate_blast_radius(
+    task: str,
+    caste: str = "coder",
+    max_rounds: int = 3,
+    strategy: str = "sequential",
+    workspace_id: str = "",
+    projections: ProjectionStore | None = None,
+) -> BlastRadiusEstimate:
+    """Estimate the blast radius of a proposed autonomous dispatch.
+
+    Uses deterministic heuristics only. No LLM calls.
+    """
+    score = 0.0
+    factors: list[str] = []
+
+    # Factor 1: task length as proxy for complexity
+    task_len = len(task)
+    if task_len > 500:
+        score += 0.2
+        factors.append("Long task description (complex scope)")
+    elif task_len > 200:
+        score += 0.1
+        factors.append("Medium-length task description")
+
+    # Factor 2: caste risk profile
+    caste_risk: dict[str, float] = {
+        "coder": 0.3,
+        "reviewer": 0.1,
+        "researcher": 0.1,
+        "archivist": 0.05,
+    }
+    risk = caste_risk.get(caste, 0.2)
+    score += risk
+    if risk >= 0.3:
+        factors.append(f"Caste '{caste}' can modify files")
+
+    # Factor 3: round count as proxy for complexity
+    if max_rounds > 5:
+        score += 0.15
+        factors.append(f"High round budget ({max_rounds} rounds)")
+    elif max_rounds > 3:
+        score += 0.05
+
+    # Factor 4: strategy
+    if strategy == "stigmergic":
+        score += 0.1
+        factors.append("Stigmergic strategy (multi-agent, harder to predict)")
+
+    # Factor 5: keyword signals in task text
+    # Keywords only carry full weight for castes that modify files (coder).
+    # Read-only castes (researcher, reviewer, archivist) get reduced weight
+    # because investigating a topic is not the same as changing it.
+    high_risk_keywords = [
+        "delete", "remove", "drop", "migrate", "refactor",
+        "rename", "replace all", "database", "schema", "deploy",
+        "production", "auth", "security", "permission",
+    ]
+    task_lower = task.lower()
+    matched = [kw for kw in high_risk_keywords if kw in task_lower]
+    if matched:
+        # Only coders can act on these keywords; read-only castes just investigate
+        kw_weight = 0.15 if caste in ("coder",) else 0.0
+        score += kw_weight * min(len(matched), 3)
+        factors.append(f"High-risk keywords: {', '.join(matched[:3])}")
+
+    # Factor 6: prior outcome history for this caste/strategy
+    if projections and workspace_id and hasattr(projections, "outcome_stats"):
+        stats = projections.outcome_stats(workspace_id)
+        for stat in stats:
+            if stat["strategy"] == strategy and caste in stat.get("caste_mix", ""):
+                if stat["success_rate"] < 0.5 and stat["total"] >= 3:
+                    score += 0.2
+                    factors.append(
+                        f"Low historical success rate for {strategy}/{caste}: "
+                        f"{stat['success_rate']:.0%}"
+                    )
+                break
+
+    score = min(1.0, max(0.0, score))
+
+    if score >= 0.6:
+        level = "high"
+        recommendation = "escalate"
+    elif score >= 0.3:
+        level = "medium"
+        recommendation = "notify"
+    else:
+        level = "low"
+        recommendation = "proceed"
+
+    return BlastRadiusEstimate(
+        score=round(score, 2),
+        level=level,
+        factors=factors,
+        recommendation=recommendation,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wave 70 Track 9: Graduated Autonomy Scoring
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AutonomyScore:
+    """Graduated autonomy trust score from outcome history."""
+
+    score: int  # 0-100
+    grade: str  # "A", "B", "C", "D", "F"
+    components: dict[str, float] = field(default_factory=lambda: {})
+    recommendation: str = ""
+
+
+def compute_autonomy_score(
+    workspace_id: str,
+    projections: ProjectionStore,
+) -> AutonomyScore:
+    """Compute graduated autonomy trust score from outcome history.
+
+    Components:
+    - success_rate (40%): fraction of successful colonies
+    - volume (20%): log-scaled colony count (caps at 50 colonies)
+    - cost_efficiency (20%): avg cost vs budget (lower is better)
+    - operator_trust (20%): follow-through rate minus kill rate
+    """
+    outcomes = [
+        o for o in projections.colony_outcomes.values()
+        if o.workspace_id == workspace_id
+    ]
+    if not outcomes:
+        return AutonomyScore(
+            score=0,
+            grade="F",
+            components={
+                "success_rate": 0.0, "volume": 0.0,
+                "cost_efficiency": 0.0, "operator_trust": 0.0,
+            },
+            recommendation="No outcome history. Start with supervised dispatch.",
+        )
+
+    successes = sum(1 for o in outcomes if o.succeeded)
+    success_rate = successes / len(outcomes)
+
+    # Volume (log-scaled, caps at 50)
+    volume = min(1.0, math.log(1 + len(outcomes)) / math.log(51))
+
+    # Cost efficiency: avg cost relative to estimated budget
+    avg_cost = sum(o.total_cost for o in outcomes) / len(outcomes)
+    cost_efficiency = 1.0 / (1.0 + avg_cost * 2)
+
+    # Operator trust: follow-through vs kills
+    behavior = getattr(projections, "operator_behavior", None)
+    operator_trust = 0.5  # neutral baseline
+    if behavior is not None:
+        total_acted = sum(behavior.suggestion_categories_acted_on.values())
+        total_kills = len(behavior.kill_records)
+        total_signals = total_acted + total_kills
+        if total_signals > 0:
+            operator_trust = total_acted / total_signals
+
+    components = {
+        "success_rate": round(success_rate, 2),
+        "volume": round(volume, 2),
+        "cost_efficiency": round(cost_efficiency, 2),
+        "operator_trust": round(operator_trust, 2),
+    }
+
+    raw = (
+        success_rate * 0.40
+        + volume * 0.20
+        + cost_efficiency * 0.20
+        + operator_trust * 0.20
+    )
+    score_val = max(0, min(100, int(round(raw * 100))))
+
+    if score_val >= 80:
+        grade, recommendation = "A", (
+            "Strong track record. Consider promoting to autonomous level."
+        )
+    elif score_val >= 65:
+        grade, recommendation = "B", (
+            "Good track record. Auto-notify with expanded categories "
+            "is appropriate."
+        )
+    elif score_val >= 50:
+        grade, recommendation = "C", (
+            "Mixed results. Auto-notify with limited categories recommended."
+        )
+    elif score_val >= 35:
+        grade, recommendation = "D", (
+            "Below average. Suggest-only mode recommended until outcomes improve."
+        )
+    else:
+        grade, recommendation = "F", (
+            "Poor track record. Suggest-only mode recommended. Review "
+            "recent colony failures."
+        )
+
+    return AutonomyScore(
+        score=score_val,
+        grade=grade,
+        components=components,
+        recommendation=recommendation,
+    )
 
 
 class MaintenanceDispatcher:
@@ -67,6 +291,8 @@ class MaintenanceDispatcher:
         policy = self._get_policy(workspace_id)
 
         if policy.autonomy_level == AutonomyLevel.suggest:
+            # Wave 71.0: queue suggest-only insights instead of dropping
+            self._queue_suggest_only(workspace_id, briefing)
             return []
 
         dispatched: list[str] = []
@@ -96,6 +322,55 @@ class MaintenanceDispatcher:
                 policy.autonomy_level == AutonomyLevel.auto_notify
                 and insight.category not in policy.auto_actions
             ):
+                # Wave 71.0: queue as self-rejected instead of dropping
+                self._queue_insight(
+                    workspace_id, insight,
+                    reason=f"Category '{insight.category}' not in auto_actions",
+                    self_rejected=True,
+                )
+                continue
+
+            # Wave 70 Track 8: blast radius gate
+            sc = insight.suggested_colony
+            estimate = estimate_blast_radius(
+                task=sc.task,
+                caste=sc.caste,
+                max_rounds=sc.max_rounds,
+                strategy=sc.strategy,
+                workspace_id=workspace_id,
+                projections=self._runtime.projections,
+            )
+            if estimate.recommendation == "escalate":
+                log.info(
+                    "maintenance.blast_radius_escalation",
+                    workspace_id=workspace_id,
+                    category=insight.category,
+                    score=estimate.score,
+                    factors=estimate.factors,
+                )
+                # Wave 71.0: queue instead of silently dropping
+                self._queue_insight(
+                    workspace_id, insight,
+                    blast_radius=estimate.score,
+                    reason=f"Blast radius escalation (score={estimate.score:.2f})",
+                )
+                continue
+            if (
+                policy.autonomy_level == AutonomyLevel.auto_notify
+                and estimate.recommendation == "notify"
+            ):
+                log.info(
+                    "maintenance.blast_radius_notify_skip",
+                    workspace_id=workspace_id,
+                    category=insight.category,
+                    score=estimate.score,
+                )
+                # Wave 71.0: queue instead of silently dropping
+                self._queue_insight(
+                    workspace_id, insight,
+                    blast_radius=estimate.score,
+                    reason=f"Blast radius notify (score={estimate.score:.2f})",
+                )
                 continue
 
             colony_id = await self._spawn_maintenance_colony(
@@ -111,6 +386,79 @@ class MaintenanceDispatcher:
                 budget_remaining -= cost
 
         return dispatched
+
+    # ------------------------------------------------------------------ #
+    # Wave 71.0: action queue integration                                  #
+    # ------------------------------------------------------------------ #
+
+    def _get_data_dir(self) -> str:
+        """Return the data directory string, or empty."""
+        try:
+            dd = self._runtime.settings.system.data_dir
+            return str(dd) if isinstance(dd, str) and dd else ""
+        except AttributeError:
+            return ""
+
+    def _queue_insight(
+        self,
+        workspace_id: str,
+        insight: KnowledgeInsight,
+        *,
+        blast_radius: float = 0.0,
+        reason: str = "",
+        self_rejected: bool = False,
+    ) -> None:
+        """Queue a proactive insight as a durable action record."""
+        data_dir = self._get_data_dir()
+        if not data_dir:
+            return
+        try:
+            from formicos.surface.action_queue import (  # noqa: PLC0415
+                queue_from_insight,
+            )
+
+            sc = insight.suggested_colony
+            sc_dict: dict[str, Any] | None = None
+            if sc is not None:
+                sc_dict = {
+                    "caste": sc.caste,
+                    "strategy": sc.strategy,
+                    "max_rounds": sc.max_rounds,
+                    "task": sc.task[:500],
+                    "estimated_cost": sc.estimated_cost,
+                }
+
+            queue_from_insight(
+                data_dir,
+                workspace_id,
+                insight_category=insight.category,
+                insight_title=insight.title,
+                insight_detail=str(insight.detail)[:500] if insight.detail else "",
+                suggested_colony=sc_dict,
+                blast_radius=blast_radius,
+                estimated_cost=sc.estimated_cost if sc else 0.0,
+                confidence=0.0,
+                reason=reason,
+                self_rejected=self_rejected,
+            )
+        except Exception:  # noqa: BLE001
+            log.debug(
+                "maintenance.queue_insight_failed",
+                workspace_id=workspace_id,
+            )
+
+    def _queue_suggest_only(
+        self,
+        workspace_id: str,
+        briefing: ProactiveBriefing,
+    ) -> None:
+        """Queue all suggest-only insights as pending_review."""
+        for insight in briefing.insights:
+            if insight.suggested_colony:
+                self._queue_insight(
+                    workspace_id, insight,
+                    reason="Suggest-only autonomy level",
+                )
 
     async def evaluate_distillation(
         self, workspace_id: str,
@@ -313,10 +661,15 @@ class MaintenanceDispatcher:
         )
 
         results: dict[str, list[str]] = {}
+        self.last_briefing_insights: dict[str, list[dict[str, object]]] = {}
         workspace_ids = list(self._runtime.projections.workspaces.keys())
         for ws_id in workspace_ids:
             try:
                 briefing = generate_briefing(ws_id, self._runtime.projections)
+                self.last_briefing_insights[ws_id] = [
+                    i.model_dump() if hasattr(i, "model_dump") else dict(i)
+                    for i in briefing.insights
+                ]
                 dispatched = await self.evaluate_and_dispatch(ws_id, briefing)
                 if dispatched:
                     results[ws_id] = dispatched
@@ -461,4 +814,10 @@ def _safe_str_list(val: Any) -> list[str]:
     return [str(item) for item in val]
 
 
-__all__ = ["MaintenanceDispatcher"]
+__all__ = [
+    "AutonomyScore",
+    "BlastRadiusEstimate",
+    "MaintenanceDispatcher",
+    "compute_autonomy_score",
+    "estimate_blast_radius",
+]

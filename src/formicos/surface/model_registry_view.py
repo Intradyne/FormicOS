@@ -24,6 +24,7 @@ def model_registry_view(settings: SystemSettings) -> list[dict[str, Any]]:
             "status": _derive_status(m.api_key_env, m.status),
             "costPerInputToken": m.cost_per_input_token,
             "costPerOutputToken": m.cost_per_output_token,
+            "hidden": m.hidden,
         }
         for m in settings.models.registry
     ]

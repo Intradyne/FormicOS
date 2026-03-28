@@ -57,8 +57,7 @@ The following changes always require an ADR:
 
 ### Event Union Changes
 
-The event union is intentionally closed at 55 types. Adding a new event
-type requires:
+The event union is ADR-gated. Adding a new event type requires:
 
 1. An ADR explaining why the new event is necessary
 2. Maintainer approval
@@ -78,8 +77,13 @@ type requires:
 ## CLA / DCO
 
 FormicOS requires a Contributor License Agreement (CLA) for external
-contributions. The CLA ensures that contributions can be distributed under
-the project's MIT license.
+contributions. The CLA gives Intradyne the rights needed to distribute
+contributions under the repository License and under commercial licensing
+terms, while keeping contributor-revenue mechanics on a contractual basis.
+
+The canonical contributor agreement is [CLA.md](CLA.md). Organizations
+whose employees contribute can sign the [Corporate CLA](CORPORATE_CLA.md)
+to blanket-authorize all their developers.
 
 **Status**: CLA enforcement requires admin-side configuration. See
 `docs/GITHUB_ADMIN_SETUP.md` for the setup steps that a repository
@@ -87,6 +91,9 @@ administrator must complete.
 
 Until the CLA app is fully configured, maintainers will manually verify
 contribution rights during PR review.
+
+DCO sign-off may be used in addition to the CLA, but it is not a substitute
+for the CLA.
 
 ## Succession
 
@@ -96,7 +103,8 @@ If the current maintainer team becomes inactive:
    request maintainer access by opening an issue
 2. If no response within 30 days, the project should be considered
    unmaintained
-3. Forks are encouraged under the MIT license
+3. Forks remain available under the AGPLv3 base license and any additional
+   permissions actually retained in the redistributed copy
 
 ## Code of Conduct
 
@@ -104,5 +112,10 @@ All participants must follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-FormicOS is licensed under the MIT License. See [LICENSE](LICENSE) for
-details.
+FormicOS is distributed under the [LICENSE](LICENSE) file in this repository:
+AGPLv3 as the base license, with Section 7 additional permissions and a
+commercial licensing path. Commercial payment mechanics live in
+[COMMERCIAL_TERMS.md](COMMERCIAL_TERMS.md). Token metering is specified in
+[METERING.md](METERING.md). Contributor rights and revenue-share mechanics
+live in [CLA.md](CLA.md). Machine-readable economic contracts for A2A agent
+participation are specified in [docs/A2A_ECONOMICS.md](docs/A2A_ECONOMICS.md).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -238,6 +239,7 @@ def routes(
 
         _EDITABLE = {
             "max_output_tokens", "time_multiplier", "tool_call_multiplier",
+            "hidden",
         }
         updates: dict[str, Any] = {
             k: v for k, v in body.items() if k in _EDITABLE
@@ -492,6 +494,16 @@ def routes(
             "outcomes": [asdict(o) for o, _ in recent],
         })
 
+    # -- Wave 67: knowledge hierarchy tree --
+
+    async def get_knowledge_tree(request: Request) -> JSONResponse:
+        """Return knowledge entry hierarchy as a tree grouped by domain."""
+        workspace_id = request.path_params["workspace_id"]
+        from formicos.surface.hierarchy import build_knowledge_tree  # noqa: PLC0415
+
+        branches = build_knowledge_tree(runtime.projections, workspace_id)
+        return JSONResponse({"branches": branches})
+
     # -- Wave 38 2B: escalation outcome matrix --
 
     async def get_escalation_matrix(request: Request) -> JSONResponse:
@@ -638,6 +650,36 @@ def routes(
             "entries_seeded": entry_count,
             "suggested_task": raw.get("suggested_demo_task", ""),
         }, status_code=201)
+
+    # -- Wave 73 B3: workspace creation --
+
+    async def create_workspace_endpoint(request: Request) -> JSONResponse:
+        """Create a new workspace."""
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return _err_response("INVALID_JSON")
+
+        name = body.get("name", "").strip()
+        if not name:
+            return _err_response(
+                "INVALID_PARAMETER",
+                message="Workspace name is required",
+                status_code=400,
+            )
+
+        if name in runtime.projections.workspaces:
+            return _err_response(
+                "INVALID_PARAMETER",
+                message=f"Workspace '{name}' already exists",
+                status_code=409,
+            )
+
+        workspace_id = await runtime.create_workspace(name)
+        return JSONResponse(
+            {"workspace_id": workspace_id, "name": name},
+            status_code=201,
+        )
 
     # -- Wave 39 1A: colony audit view --
 
@@ -982,6 +1024,109 @@ def routes(
             "colonies": colony_list,
         })
 
+    # --- Wave 74 B3: Queen context budget endpoint ---
+
+    async def get_queen_budget(_request: Request) -> JSONResponse:
+        """Return the Queen's 9-slot context budget allocation."""
+        from formicos.surface.queen_budget import (  # noqa: PLC0415
+            _FALLBACKS,
+            _FRACTIONS,
+        )
+
+        slots = [
+            {"name": name, "fraction": frac, "fallback_tokens": _FALLBACKS.get(name, 0)}
+            for name, frac in _FRACTIONS.items()
+        ]
+        return JSONResponse({"slots": slots})
+
+    # --- Wave 74 Track 4: Queen tool stats endpoint ---
+
+    async def get_queen_tool_stats(request: Request) -> JSONResponse:
+        """Return session-scoped Queen tool call counts."""
+        runtime = request.app.state.runtime
+        queen = runtime.queen
+        counts: dict[str, int] = getattr(queen, "_tool_call_counts", {})
+        statuses: dict[str, str] = getattr(queen, "_tool_last_status", {})
+        tools = [
+            {"name": name, "calls": count, "last_status": statuses.get(name, "unknown")}
+            for name, count in sorted(counts.items(), key=lambda x: -x[1])
+        ]
+        return JSONResponse({"tools": tools, "total_calls": sum(counts.values())})
+
+    # --- Wave 70.0 Track 9: autonomy status endpoint ---
+
+    async def get_autonomy_status(request: Request) -> JSONResponse:
+        """Return structured autonomy trust data for a workspace."""
+        import json as _json  # noqa: PLC0415
+
+        from formicos.core.types import MaintenancePolicy  # noqa: PLC0415
+        from formicos.surface.self_maintenance import (  # noqa: PLC0415
+            compute_autonomy_score,
+        )
+
+        workspace_id = request.path_params["workspace_id"]
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+
+        raw_policy = ws.config.get("maintenance_policy")
+        policy = MaintenancePolicy()
+        if raw_policy is not None:
+            try:
+                data = _json.loads(raw_policy) if isinstance(raw_policy, str) else raw_policy
+                policy = MaintenancePolicy(**data)
+            except Exception:  # noqa: BLE001
+                pass
+
+        dispatcher = getattr(runtime, "maintenance_dispatcher", None)
+        daily_spend = 0.0
+        active_maintenance = 0
+        if dispatcher is not None:
+            dispatcher._reset_daily_budget_if_needed()  # pyright: ignore[reportPrivateUsage]
+            daily_spend = dispatcher._daily_spend.get(workspace_id, 0.0)  # pyright: ignore[reportPrivateUsage]
+            active_maintenance = dispatcher._count_active_maintenance_colonies(  # pyright: ignore[reportPrivateUsage]
+                workspace_id,
+            )
+
+        budget_limit = policy.daily_maintenance_budget
+        remaining = max(0.0, budget_limit - daily_spend)
+
+        auto_score = compute_autonomy_score(workspace_id, runtime.projections)
+
+        # Build recent actions from colony outcomes
+        recent_actions: list[dict[str, Any]] = []
+        outcomes = sorted(
+            (
+                o for o in runtime.projections.colony_outcomes.values()
+                if o.workspace_id == workspace_id
+            ),
+            key=lambda o: getattr(o, "colony_id", ""),
+            reverse=True,
+        )
+        for o in outcomes[:10]:
+            recent_actions.append({
+                "colony_id": o.colony_id,
+                "strategy": o.strategy,
+                "outcome": "completed" if o.succeeded else "failed",
+                "cost": round(o.total_cost, 4),
+                "quality_score": round(o.quality_score, 2),
+            })
+
+        return JSONResponse({
+            "level": str(policy.autonomy_level),
+            "score": auto_score.score,
+            "grade": auto_score.grade,
+            "daily_budget": budget_limit,
+            "daily_spend": round(daily_spend, 4),
+            "remaining": round(remaining, 4),
+            "active_maintenance_colonies": active_maintenance,
+            "max_maintenance_colonies": policy.max_maintenance_colonies,
+            "auto_actions": policy.auto_actions,
+            "components": auto_score.components,
+            "recommendation": auto_score.recommendation,
+            "recent_actions": recent_actions,
+        })
+
     # --- Wave 64 Track 5: provider health endpoint ---
 
     async def get_provider_health(_request: Request) -> JSONResponse:
@@ -1280,6 +1425,874 @@ def routes(
         ))
         return JSONResponse({"step_index": step_index, "skipped": True})
 
+    # -- Wave 66 T1: Addon endpoints --
+
+    async def list_addons(request: Request) -> JSONResponse:
+        """List installed addons with health summaries."""
+        regs: list[Any] = getattr(request.app.state, "addon_registrations", [])
+        addons = []
+        for reg in regs:
+            m = reg.manifest
+            addons.append({
+                "name": m.name,
+                "version": m.version,
+                "description": m.description,
+                "status": reg.health_status,
+                "lastError": reg.last_error,
+                "tools": [
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "callCount": reg.tool_call_counts.get(t.name, 0),
+                    }
+                    for t in m.tools
+                ],
+                "handlers": [
+                    {
+                        "event": h.event,
+                        "lastFired": reg.last_handler_fire,
+                        "errorCount": reg.handler_error_count,
+                    }
+                    for h in m.handlers
+                ],
+                "triggers": [
+                    {
+                        "type": t.type,
+                        "schedule": t.schedule,
+                        "handler": t.handler,
+                        "lastFired": reg.trigger_fire_times.get(t.handler),
+                    }
+                    for t in m.triggers
+                ],
+                "panels": reg.registered_panels,
+                "config": [
+                    {
+                        "key": c.key,
+                        "type": c.type,
+                        "default": c.default,
+                        "label": c.label or c.key,
+                        "options": c.options,
+                    }
+                    for c in m.config
+                ],
+            })
+            # Wave 70.0: capability-based bridge health (no addon-name check)
+            _bhfn = (reg.runtime_context or {}).get("get_bridge_health")
+            if callable(_bhfn):
+                with contextlib.suppress(Exception):
+                    addons[-1]["bridgeHealth"] = _bhfn()
+        return JSONResponse(addons)
+
+    async def trigger_addon(request: Request) -> JSONResponse:
+        """Manually fire an addon trigger handler."""
+        from formicos.surface.addon_loader import _resolve_handler  # noqa: PLC0415
+
+        addon_name = request.path_params["addon_name"]
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        handler_ref = body.get("handler", "")
+        if not handler_ref:
+            return _err_response(
+                "MISSING_FIELD", message="handler is required",
+            )
+
+        regs: list[Any] = getattr(
+            request.app.state, "addon_registrations", [],
+        )
+        reg = next(
+            (r for r in regs if r.manifest.name == addon_name), None,
+        )
+        if reg is None:
+            return _err_response(
+                "ADDON_NOT_FOUND",
+                message=f"Addon '{addon_name}' not installed",
+                status_code=404,
+            )
+
+        if getattr(reg, "disabled", False):
+            return JSONResponse(
+                {"error": f"Addon '{addon_name}' is currently disabled"},
+                status_code=409,
+            )
+
+        try:
+            handler_fn = _resolve_handler(addon_name, handler_ref)
+        except (ValueError, AttributeError) as exc:
+            return JSONResponse(
+                {"error": str(exc)}, status_code=400,
+            )
+
+        import inspect  # noqa: PLC0415
+        try:
+            sig = inspect.signature(handler_fn)
+            accepts_ctx = "runtime_context" in sig.parameters
+            # Detect tool-convention handlers: (inputs, workspace_id, thread_id, *, ...)
+            positional_params = [
+                p for p in sig.parameters.values()
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                and p.name not in ("self", "cls", "runtime_context")
+            ]
+            has_tool_args = len(positional_params) >= 3
+        except (ValueError, TypeError):
+            accepts_ctx = False
+            has_tool_args = False
+
+        inputs = body.get("inputs", {})
+        trigger_ws_id = body.get("workspace_id", "")
+        trigger_thread_id = body.get("thread_id", "")
+
+        try:
+            if has_tool_args and accepts_ctx:
+                result = await handler_fn(
+                    inputs, trigger_ws_id, trigger_thread_id,
+                    runtime_context=reg.runtime_context,
+                )
+            elif has_tool_args:
+                result = await handler_fn(
+                    inputs, trigger_ws_id, trigger_thread_id,
+                )
+            elif accepts_ctx:
+                result = await handler_fn(
+                    runtime_context=reg.runtime_context,
+                )
+            else:
+                result = await handler_fn()
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse(
+                {"error": f"Trigger failed: {exc}"}, status_code=500,
+            )
+
+        # Record trigger fire time
+        from datetime import UTC, datetime  # noqa: PLC0415
+        reg.trigger_fire_times[handler_ref] = datetime.now(tz=UTC).isoformat()
+
+        return JSONResponse({
+            "addon": addon_name,
+            "handler": handler_ref,
+            "result": str(result) if result is not None else "ok",
+        })
+
+    # -- Wave 72.5 Track 1e: Soft addon disable toggle --
+
+    async def toggle_addon(request: Request) -> JSONResponse:
+        """Enable or disable an addon at runtime."""
+        addon_name = request.path_params["addon_name"]
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        disabled = bool(body.get("disabled", False))
+
+        regs: list[Any] = getattr(
+            request.app.state, "addon_registrations", [],
+        )
+        reg = next(
+            (r for r in regs if r.manifest.name == addon_name), None,
+        )
+        if reg is None:
+            return _err_response(
+                "ADDON_NOT_FOUND",
+                message=f"Addon '{addon_name}' not installed",
+                status_code=404,
+            )
+
+        reg.disabled = disabled
+        return JSONResponse({
+            "addon": addon_name,
+            "disabled": reg.disabled,
+        })
+
+    # -- Wave 66 T2: Addon config surface --
+
+    async def get_addon_config(request: Request) -> JSONResponse:
+        """Return addon config schema + current values for a workspace."""
+        addon_name = request.path_params["addon_name"]
+        workspace_id = request.query_params.get("workspace_id", "")
+
+        regs: list[Any] = getattr(
+            request.app.state, "addon_registrations", [],
+        )
+        reg = next(
+            (r for r in regs if r.manifest.name == addon_name), None,
+        )
+        if reg is None:
+            return _err_response(
+                "ADDON_NOT_FOUND",
+                message=f"Addon '{addon_name}' not installed",
+                status_code=404,
+            )
+
+        import json as _json  # noqa: PLC0415
+
+        manifest = reg.manifest
+        params = []
+        for cp in manifest.config:
+            # Current value from workspace config (if workspace_id given)
+            current = cp.default
+            if workspace_id:
+                dim = f"addon.{addon_name}.{cp.key}"
+                ws_proj = runtime.projections.workspaces.get(workspace_id)
+                if ws_proj is not None:
+                    ws_config = getattr(ws_proj, "config", {})
+                    if dim in ws_config:
+                        # Config values stored as JSON strings in projection
+                        try:
+                            current = _json.loads(ws_config[dim])
+                        except (ValueError, TypeError):
+                            current = ws_config[dim]
+            params.append({
+                "key": cp.key,
+                "type": cp.type,
+                "default": cp.default,
+                "label": cp.label or cp.key,
+                "options": cp.options,
+                "value": current,
+            })
+
+        return JSONResponse({
+            "addon": addon_name,
+            "config": params,
+        })
+
+    async def put_addon_config(request: Request) -> JSONResponse:
+        """Update addon config values for a workspace via WorkspaceConfigChanged."""
+        import json as _json  # noqa: PLC0415
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from formicos.core.events import WorkspaceConfigChanged  # noqa: PLC0415
+
+        addon_name = request.path_params["addon_name"]
+
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        workspace_id = body.get("workspace_id", "")
+        if not workspace_id:
+            return _err_response(
+                "MISSING_FIELD", message="workspace_id is required",
+            )
+        values: dict[str, Any] = body.get("values", {})
+        if not values:
+            return _err_response(
+                "MISSING_FIELD", message="values dict is required",
+            )
+
+        regs: list[Any] = getattr(
+            request.app.state, "addon_registrations", [],
+        )
+        reg = next(
+            (r for r in regs if r.manifest.name == addon_name), None,
+        )
+        if reg is None:
+            return _err_response(
+                "ADDON_NOT_FOUND",
+                message=f"Addon '{addon_name}' not installed",
+                status_code=404,
+            )
+
+        # Validate keys against manifest schema
+        valid_keys = {cp.key for cp in reg.manifest.config}
+        unknown = set(values.keys()) - valid_keys
+        if unknown:
+            return _err_response(
+                "MISSING_FIELD",
+                message=f"Unknown config keys: {sorted(unknown)}",
+            )
+
+        # Wave 73 B4: coerce values to match declared types
+        for param in reg.manifest.config:
+            if param.key in values:
+                val = values[param.key]
+                if param.type == "boolean" and isinstance(val, str):
+                    values[param.key] = val.lower() in ("true", "1", "yes")
+                elif param.type == "integer" and isinstance(val, str):
+                    with contextlib.suppress(ValueError):
+                        values[param.key] = int(val)
+
+        # Emit WorkspaceConfigChanged for each key
+        updated = []
+        for key, new_val in values.items():
+            dim = f"addon.{addon_name}.{key}"
+            # Get old value
+            old_val = None
+            ws_proj = runtime.projections.workspaces.get(workspace_id)
+            if ws_proj is not None:
+                ws_config = getattr(ws_proj, "config", {})
+                old_val = ws_config.get(dim)
+
+            await runtime.emit_and_broadcast(WorkspaceConfigChanged(
+                seq=0,
+                timestamp=datetime.now(tz=UTC),
+                address=workspace_id,
+                workspace_id=workspace_id,
+                field=dim,
+                old_value=old_val if isinstance(old_val, str) else (
+                    _json.dumps(old_val) if old_val is not None else None
+                ),
+                new_value=_json.dumps(new_val),
+            ))
+            updated.append(key)
+
+        return JSONResponse({
+            "addon": addon_name,
+            "workspace_id": workspace_id,
+            "updated": updated,
+        })
+
+    # Wave 69 Track 4: thread plan read endpoint
+    import re as _re
+    _PLAN_STEP_RE = _re.compile(
+        r"^- \[(\d+)\] \[(\w+)\] (.*)$",
+    )
+
+    async def get_thread_plan(request: Request) -> JSONResponse:
+        thread_id = request.path_params["thread_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"exists": False})
+
+        plan_path = Path(data_dir_str) / ".formicos" / "plans" / f"{thread_id}.md"
+        if not plan_path.is_file():
+            return JSONResponse({"exists": False})
+
+        try:
+            text = plan_path.read_text(encoding="utf-8")
+        except OSError:
+            return JSONResponse({"exists": False})
+
+        title = ""
+        approach = ""
+        steps: list[dict[str, Any]] = []
+
+        for line in text.splitlines():
+            if line.startswith("# Plan: "):
+                title = line[8:].strip()
+            elif line.startswith("**Approach:**"):
+                approach = line[len("**Approach:**"):].strip()
+            else:
+                m = _PLAN_STEP_RE.match(line)
+                if m:
+                    idx_str, status, desc = m.groups()
+                    step: dict[str, Any] = {
+                        "index": int(idx_str),
+                        "status": status,
+                        "description": desc,
+                    }
+                    # Parse optional colony ID: (colony abc123)
+                    col_match = _re.search(
+                        r"\(colony\s+(\S+)\)", desc,
+                    )
+                    if col_match:
+                        step["colony_id"] = col_match.group(1)
+                    # Parse optional note after em-dash
+                    if " \u2014 " in desc:
+                        step["note"] = desc.split(" \u2014 ", 1)[1]
+                    steps.append(step)
+
+        return JSONResponse({
+            "exists": True,
+            "title": title or "Plan",
+            "approach": approach,
+            "steps": steps,
+        })
+
+    # Wave 71.0 Track 5: action queue endpoints
+    async def list_operation_actions(request: Request) -> JSONResponse:
+        workspace_id = request.path_params["workspace_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({
+                "actions": [], "total": 0,
+                "counts_by_status": {}, "counts_by_kind": {},
+            })
+
+        from formicos.surface.action_queue import list_actions as _list_actions  # noqa: PLC0415
+
+        status_filter = request.query_params.get("status", "")
+        kind_filter = request.query_params.get("kind", "")
+        limit = min(int(request.query_params.get("limit", "100")), 500)
+        result = _list_actions(
+            data_dir_str, workspace_id,
+            status=status_filter, kind=kind_filter, limit=limit,
+        )
+        return JSONResponse(result)
+
+    async def approve_action(request: Request) -> JSONResponse:
+        workspace_id = request.path_params["workspace_id"]
+        action_id = request.path_params["action_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"error": "No data directory"}, status_code=500)
+
+        from formicos.core.types import CasteSlot as _CasteSlot  # noqa: PLC0415
+        from formicos.surface.action_queue import (  # noqa: PLC0415
+            STATUS_APPROVED,
+            STATUS_EXECUTED,
+            STATUS_FAILED,
+        )
+        from formicos.surface.action_queue import (
+            update_action as _update_action,
+        )
+
+        updated = _update_action(
+            data_dir_str, workspace_id, action_id,
+            {"status": STATUS_APPROVED},
+        )
+        if updated is None:
+            return JSONResponse({"error": "Action not found"}, status_code=404)
+
+        # If there is a maintenance dispatcher, attempt dispatch
+        dispatcher = getattr(request.app.state, "maintenance_dispatcher", None)
+        if dispatcher is not None and updated.get("payload", {}).get("suggested_colony"):
+            try:
+                sc = updated["payload"]["suggested_colony"]
+                colony_id: str = await runtime.spawn_colony(
+                    workspace_id=workspace_id,
+                    thread_id=updated.get("thread_id") or "maintenance",
+                    task=sc.get("task", updated.get("title", "")),
+                    castes=[_CasteSlot(caste=sc.get("caste", "researcher"))],
+                    strategy=sc.get("strategy", "sequential"),
+                    max_rounds=sc.get("max_rounds", 3),
+                )
+                _update_action(
+                    data_dir_str, workspace_id, action_id,
+                    {"status": STATUS_EXECUTED, "executed_at": datetime.now(UTC).isoformat()},
+                )
+                return JSONResponse({"ok": True, "action_id": action_id, "colony_id": colony_id})
+            except Exception as exc:  # noqa: BLE001
+                _update_action(
+                    data_dir_str, workspace_id, action_id,
+                    {"status": STATUS_FAILED, "operator_reason": str(exc)},
+                )
+                return JSONResponse({"ok": True, "action_id": action_id, "error": str(exc)})
+
+        # Wave 72: handle workflow_template approval — save as learned template
+        if updated.get("kind") == "workflow_template":
+            try:
+                payload = updated.get("payload", {})
+                from formicos.core.types import CasteSlot as _CasteSlot2  # noqa: PLC0415
+                from formicos.surface.template_manager import (  # noqa: PLC0415
+                    ColonyTemplate,
+                    new_template_id,
+                    save_template,
+                )
+
+                castes_list = payload.get("castes", ["researcher"])
+                tmpl = ColonyTemplate(
+                    template_id=new_template_id(),
+                    name=updated.get("title", "Learned template"),
+                    description=updated.get("detail", ""),
+                    castes=[_CasteSlot2(caste=c) for c in castes_list],
+                    strategy=payload.get("strategy", "sequential"),
+                    learned=True,
+                    task_category="",
+                )
+                await save_template(tmpl)
+                _update_action(
+                    data_dir_str, workspace_id, action_id,
+                    {"status": STATUS_EXECUTED, "executed_at": datetime.now(UTC).isoformat()},
+                )
+                return JSONResponse({
+                    "ok": True, "action_id": action_id,
+                    "template_id": tmpl.template_id,
+                })
+            except Exception as exc:  # noqa: BLE001
+                _update_action(
+                    data_dir_str, workspace_id, action_id,
+                    {"status": STATUS_FAILED, "operator_reason": str(exc)},
+                )
+                return JSONResponse({"ok": True, "action_id": action_id, "error": str(exc)})
+
+        # Wave 72: handle procedure_suggestion approval — append to procedures
+        if updated.get("kind") == "procedure_suggestion":
+            try:
+                from formicos.surface.operational_state import (  # noqa: PLC0415
+                    append_procedure_rule,
+                )
+
+                payload = updated.get("payload", {})
+                heading = payload.get("heading", "General")
+                rule = payload.get("rule", updated.get("title", ""))
+                append_procedure_rule(data_dir_str, workspace_id, heading, rule)
+                _update_action(
+                    data_dir_str, workspace_id, action_id,
+                    {"status": STATUS_EXECUTED, "executed_at": datetime.now(UTC).isoformat()},
+                )
+                return JSONResponse({"ok": True, "action_id": action_id, "appended": True})
+            except Exception as exc:  # noqa: BLE001
+                _update_action(
+                    data_dir_str, workspace_id, action_id,
+                    {"status": STATUS_FAILED, "operator_reason": str(exc)},
+                )
+                return JSONResponse({"ok": True, "action_id": action_id, "error": str(exc)})
+
+        return JSONResponse({"ok": True, "action_id": action_id})
+
+    async def reject_action(request: Request) -> JSONResponse:
+        workspace_id = request.path_params["workspace_id"]
+        action_id = request.path_params["action_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"error": "No data directory"}, status_code=500)
+
+        import contextlib  # noqa: PLC0415
+
+        from formicos.surface.action_queue import (  # noqa: PLC0415
+            STATUS_REJECTED,
+        )
+        from formicos.surface.action_queue import (
+            update_action as _update_action,
+        )
+
+        body: dict[str, Any] = {}
+        with contextlib.suppress(Exception):
+            body = await request.json()
+
+        reason = body.get("reason", "")
+
+        updated = _update_action(
+            data_dir_str, workspace_id, action_id,
+            {"status": STATUS_REJECTED, "operator_reason": reason},
+        )
+        if updated is None:
+            return JSONResponse({"error": "Action not found"}, status_code=404)
+
+        return JSONResponse({"ok": True, "action_id": action_id})
+
+    # Wave 72 Track 2: Knowledge review processing
+    async def review_action(request: Request) -> JSONResponse:
+        """Process a knowledge review decision (confirm or invalidate)."""
+        workspace_id = request.path_params["workspace_id"]
+        action_id = request.path_params["action_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"error": "No data directory"}, status_code=500)
+
+        import contextlib  # noqa: PLC0415
+
+        from formicos.surface.action_queue import (  # noqa: PLC0415
+            STATUS_EXECUTED,
+        )
+        from formicos.surface.action_queue import (
+            read_actions as _read_actions,
+        )
+        from formicos.surface.action_queue import (
+            update_action as _update_action,
+        )
+
+        body: dict[str, Any] = {}
+        with contextlib.suppress(Exception):
+            body = await request.json()
+
+        decision = body.get("decision", "")
+        reason = body.get("reason", "")
+
+        if decision not in ("confirm", "invalidate"):
+            return JSONResponse(
+                {"error": "decision must be 'confirm' or 'invalidate'"},
+                status_code=400,
+            )
+
+        # Find the action and extract entry_id from payload
+        actions = _read_actions(data_dir_str, workspace_id)
+        target = None
+        for act in actions:
+            if act.get("action_id") == action_id:
+                target = act
+                break
+        if target is None:
+            return JSONResponse({"error": "Action not found"}, status_code=404)
+
+        entry_id = target.get("payload", {}).get("entry_id", "")
+        if not entry_id:
+            return JSONResponse({"error": "No entry_id in action payload"}, status_code=400)
+
+        entry = runtime.projections.memory_entries.get(entry_id)
+        if entry is None:
+            return JSONResponse(
+                {"error": f"Entry {entry_id} not found"},
+                status_code=404,
+            )
+
+        if decision == "confirm":
+            # Reuse the replay-safe feedback path: positive operator feedback
+            from formicos.core.events import MemoryConfidenceUpdated  # noqa: PLC0415
+
+            old_alpha = float(entry.get("conf_alpha", 5.0))
+            old_beta = float(entry.get("conf_beta", 5.0))
+            new_alpha = old_alpha + 1.0
+            new_beta = old_beta
+            await runtime.emit_and_broadcast(MemoryConfidenceUpdated(
+                seq=0,
+                timestamp=datetime.now(UTC),
+                address=f"{workspace_id}/review",
+                entry_id=entry_id,
+                old_alpha=old_alpha,
+                old_beta=old_beta,
+                new_alpha=new_alpha,
+                new_beta=new_beta,
+                new_confidence=new_alpha / (new_alpha + new_beta),
+                workspace_id=workspace_id,
+                reason=f"review_confirmed: {reason}" if reason else "review_confirmed",
+            ))
+        else:
+            # Reuse the operator overlay invalidation path
+            from formicos.core.events import KnowledgeEntryOperatorAction  # noqa: PLC0415
+
+            await runtime.emit_and_broadcast(KnowledgeEntryOperatorAction(
+                seq=0,
+                timestamp=datetime.now(UTC),
+                address=f"{workspace_id}/{entry_id}",
+                entry_id=entry_id,
+                workspace_id=workspace_id,
+                action="invalidate",
+                actor="operator",
+                reason=f"review_invalidated: {reason}" if reason else "review_invalidated",
+            ))
+
+        # Mark the action as executed
+        _update_action(
+            data_dir_str, workspace_id, action_id,
+            {
+                "status": STATUS_EXECUTED,
+                "operator_reason": reason,
+                "executed_at": datetime.now(UTC).isoformat(),
+            },
+        )
+
+        return JSONResponse({
+            "ok": True,
+            "action_id": action_id,
+            "entry_id": entry_id,
+            "decision": decision,
+        })
+
+    # --- Wave 72 Track 10B: maintenance-policy GET/PUT ---
+
+    async def get_maintenance_policy(request: Request) -> JSONResponse:
+        """Return current maintenance policy for a workspace."""
+        from formicos.core.types import MaintenancePolicy  # noqa: PLC0415
+
+        workspace_id = request.path_params["workspace_id"]
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+
+        raw = ws.config.get("maintenance_policy")
+        if raw is None:
+            return JSONResponse(MaintenancePolicy().model_dump())
+        if isinstance(raw, str):
+            try:
+                return JSONResponse(json.loads(raw))
+            except (ValueError, TypeError):
+                return JSONResponse(MaintenancePolicy().model_dump())
+        if isinstance(raw, dict):
+            return JSONResponse(dict(raw))  # type: ignore[arg-type]
+        return JSONResponse(MaintenancePolicy().model_dump())
+
+    async def put_maintenance_policy(request: Request) -> JSONResponse:
+        """Update maintenance policy for a workspace."""
+        from formicos.core.events import WorkspaceConfigChanged  # noqa: PLC0415
+        from formicos.core.types import AutonomyLevel, MaintenancePolicy  # noqa: PLC0415
+
+        workspace_id = request.path_params["workspace_id"]
+        ws = runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return _err_response("WORKSPACE_NOT_FOUND")
+
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        autonomy_level = body.get("autonomy_level", "suggest")
+        valid_levels = {e.value for e in AutonomyLevel}
+        if autonomy_level not in valid_levels:
+            return _err_response(
+                "INVALID_PARAMETER",
+                message=f"autonomy_level must be one of {sorted(valid_levels)}",
+            )
+
+        budget = float(body.get("daily_maintenance_budget", 1.0))
+        if budget <= 0:
+            return _err_response(
+                "INVALID_PARAMETER",
+                message="daily_maintenance_budget must be > 0",
+            )
+
+        policy = MaintenancePolicy(
+            autonomy_level=AutonomyLevel(autonomy_level),
+            auto_actions=body.get("auto_actions", []),
+            max_maintenance_colonies=int(body.get("max_maintenance_colonies", 2)),
+            daily_maintenance_budget=budget,
+        )
+
+        old_raw = ws.config.get("maintenance_policy")
+        old_json = str(old_raw) if old_raw is not None else None
+        await runtime.emit_and_broadcast(WorkspaceConfigChanged(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address=workspace_id,
+            workspace_id=workspace_id,
+            field="maintenance_policy",
+            old_value=old_json,
+            new_value=policy.model_dump_json(),
+        ))
+        return JSONResponse({"status": "updated", "policy": policy.model_dump()})
+
+    # --- Wave 72 Track 10C: add model endpoint ---
+
+    async def add_model(request: Request) -> JSONResponse:
+        """Add a new model to the registry."""
+        try:
+            body: dict[str, Any] = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        address = str(body.get("address", "")).strip()
+        if not address:
+            return _err_response("MISSING_FIELD", message="address is required")
+
+        # Check for duplicates
+        for m in settings.models.registry:
+            if m.address == address:
+                return _err_response(
+                    "VALIDATION_ERROR", message=f"model '{address}' already exists",
+                )
+
+        provider = str(body.get("provider", address.split("/")[0] if "/" in address else "custom"))
+        try:
+            new_model = ModelRecord(
+                address=address,
+                provider=provider,
+                endpoint=body.get("endpoint"),
+                api_key_env=body.get("api_key_env"),
+                context_window=int(body.get("context_window", 8192)),
+                supports_tools=bool(body.get("supports_tools", True)),
+                supports_vision=bool(body.get("supports_vision", False)),
+                cost_per_input_token=body.get("cost_per_input_token"),
+                cost_per_output_token=body.get("cost_per_output_token"),
+                max_output_tokens=int(body.get("max_output_tokens", 4096)),
+                hidden=bool(body.get("hidden", False)),
+            )
+        except (ValueError, TypeError) as exc:
+            return _err_response("VALIDATION_FAILED", message=f"invalid fields: {exc}")
+
+        settings.models.registry.append(new_model)
+        save_model_registry(config_path, settings)
+        log.info("model.added", address=address)
+        return JSONResponse(new_model.model_dump(), status_code=201)
+
+    # Wave 70.0 Track 5: project plan read endpoint
+    async def get_project_plan(request: Request) -> JSONResponse:
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"exists": False})
+
+        from formicos.surface.project_plan import load_project_plan  # noqa: PLC0415
+
+        plan = load_project_plan(data_dir_str)
+        return JSONResponse(plan)
+
+    # -- Wave 71.0 Track 3: Journal / Procedures endpoints --
+
+    async def get_queen_journal(request: Request) -> JSONResponse:
+        """Return structured journal entries for a workspace."""
+        from formicos.surface.operational_state import (  # noqa: PLC0415
+            get_journal_summary,
+        )
+
+        workspace_id = request.path_params["workspace_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"exists": False, "entries": []})
+
+        return JSONResponse(get_journal_summary(data_dir_str, workspace_id))
+
+    async def get_operating_procedures(request: Request) -> JSONResponse:
+        """Return operating procedures for a workspace."""
+        from formicos.surface.operational_state import (  # noqa: PLC0415
+            get_procedures_summary,
+        )
+
+        workspace_id = request.path_params["workspace_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({"exists": False, "content": ""})
+
+        return JSONResponse(get_procedures_summary(data_dir_str, workspace_id))
+
+    async def put_operating_procedures(request: Request) -> JSONResponse:
+        """Update operating procedures for a workspace."""
+        from formicos.surface.operational_state import (  # noqa: PLC0415
+            save_procedures,
+        )
+
+        workspace_id = request.path_params["workspace_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return _err_response(
+                "DATA_DIR_NOT_SET", message="data_dir not configured",
+            )
+
+        try:
+            body = await request.json()
+        except Exception:
+            return _err_response("INVALID_JSON")
+
+        content = body.get("content", "")
+        if not isinstance(content, str):
+            return _err_response(
+                "VALIDATION_ERROR", message="content must be a string",
+            )
+
+        save_procedures(data_dir_str, workspace_id, content)
+        return JSONResponse({"updated": True})
+
+    # Wave 71.0 Track 9: Operations summary endpoint
+    async def get_operations_summary(request: Request) -> JSONResponse:
+        """Return synthesized operational summary for a workspace."""
+        from formicos.surface.operations_coordinator import (  # noqa: PLC0415
+            build_operations_summary,
+        )
+
+        workspace_id = request.path_params["workspace_id"]
+        data_dir = getattr(settings, "system", None)
+        data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+        if not data_dir_str:
+            return JSONResponse({
+                "workspace_id": workspace_id,
+                "pending_review_count": 0,
+                "active_milestone_count": 0,
+                "stalled_thread_count": 0,
+                "last_operator_activity_at": None,
+                "idle_for_minutes": None,
+                "operator_active": False,
+                "continuation_candidates": [],
+                "sync_issues": [],
+                "recent_progress": [],
+            })
+
+        proj = runtime.projections if runtime else None
+        return JSONResponse(build_operations_summary(
+            data_dir_str, workspace_id, proj,
+        ))
+
     return [
         Route("/api/v1/knowledge-graph", get_knowledge_graph),
         # Wave 60: entry relationships + operator feedback
@@ -1308,6 +2321,7 @@ def routes(
         Route("/api/v1/models/{address:path}", update_model_policy, methods=["PATCH"]),
         Route("/api/v1/workspaces/{workspace_id:str}/briefing", get_briefing),
         Route("/api/v1/workspaces/{workspace_id:str}/outcomes", get_workspace_outcomes),
+        Route("/api/v1/workspaces/{workspace_id:str}/knowledge-tree", get_knowledge_tree),
         Route("/api/v1/workspaces/{workspace_id:str}/escalation-matrix", get_escalation_matrix),
         Route(
             "/api/v1/workspaces/{workspace_id:str}/config-recommendations",
@@ -1326,6 +2340,8 @@ def routes(
             post_dismiss_autonomy, methods=["POST"],
         ),
         Route("/api/v1/workspaces/create-demo", create_demo_workspace, methods=["POST"]),
+        # Wave 73 B3: workspace creation
+        Route("/api/v1/workspaces", create_workspace_endpoint, methods=["POST"]),
         # Wave 55: learning summary
         Route(
             "/api/v1/workspaces/{workspace_id:str}/learning-summary",
@@ -1359,6 +2375,41 @@ def routes(
             "/api/v1/workspaces/{workspace_id:str}/forager/domains",
             get_domain_strategies, methods=["GET"],
         ),
+        # Wave 71.0 Track 3: Journal / Procedures
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/queen-journal",
+            get_queen_journal, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operating-procedures",
+            get_operating_procedures, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operating-procedures",
+            put_operating_procedures, methods=["PUT"],
+        ),
+        # Wave 71.0 Track 5: Action queue endpoints
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operations/actions",
+            list_operation_actions, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operations/actions/{action_id:str}/approve",
+            approve_action, methods=["POST"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operations/actions/{action_id:str}/reject",
+            reject_action, methods=["POST"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operations/actions/{action_id:str}/review",
+            review_action, methods=["POST"],
+        ),
+        # Wave 71.0 Track 9: Operations summary
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/operations/summary",
+            get_operations_summary, methods=["GET"],
+        ),
         # Wave 63 Track 6: Knowledge CRUD
         Route(
             "/api/v1/knowledge/{entry_id:str}",
@@ -1389,4 +2440,50 @@ def routes(
             "/api/v1/workspaces/{workspace_id:str}/threads/{thread_id:str}/steps/{step_index:int}",
             delete_workflow_step, methods=["DELETE"],
         ),
+        # Wave 66 T1: addon endpoints
+        Route("/api/v1/addons", list_addons, methods=["GET"]),
+        Route(
+            "/api/v1/addons/{addon_name:str}/trigger",
+            trigger_addon, methods=["POST"],
+        ),
+        Route(
+            "/api/v1/addons/{addon_name:str}/toggle",
+            toggle_addon, methods=["POST"],
+        ),
+        # Wave 69: thread plan read endpoint
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/threads/{thread_id:str}/plan",
+            get_thread_plan, methods=["GET"],
+        ),
+        # Wave 70.0 Track 5: project plan read endpoint
+        Route("/api/v1/project-plan", get_project_plan, methods=["GET"]),
+        # Wave 66 T2: addon config surface
+        Route(
+            "/api/v1/addons/{addon_name:str}/config",
+            get_addon_config, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/addons/{addon_name:str}/config",
+            put_addon_config, methods=["PUT"],
+        ),
+        # Wave 74 B3: Queen context budget
+        Route("/api/v1/queen-budget", get_queen_budget),
+        # Wave 70.0 Track 9: autonomy status
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/autonomy-status",
+            get_autonomy_status, methods=["GET"],
+        ),
+        # Wave 72 Track 10B: maintenance policy
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/maintenance-policy",
+            get_maintenance_policy, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/maintenance-policy",
+            put_maintenance_policy, methods=["PUT"],
+        ),
+        # Wave 72 Track 10C: add model
+        Route("/api/v1/models", add_model, methods=["POST"]),
+        # Wave 74 Track 4: Queen tool stats
+        Route("/api/v1/queen-tool-stats", get_queen_tool_stats, methods=["GET"]),
     ]

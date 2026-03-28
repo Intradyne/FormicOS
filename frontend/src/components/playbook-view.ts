@@ -163,6 +163,7 @@ export class FcPlaybookView extends LitElement {
               <fc-template-editor
                 .mode=${this.editorMode}
                 .template=${this.editorTemplate}
+                .governance=${this.runtimeConfig?.governance ?? null}
                 @saved=${() => this._onTemplateSaved()}
                 @cancel=${() => this._closeOverlay()}
               ></fc-template-editor>

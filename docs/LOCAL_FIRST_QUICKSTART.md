@@ -87,7 +87,7 @@ Watch for healthy containers:
 docker compose ps
 ```
 
-All four services (`formicos-colony`, `formicos-llm`, `formicos-embed`, `formicos-qdrant`) should show `healthy`.
+All five services (`formicos-colony`, `formicos-llm`, `formicos-embed`, `formicos-qdrant`, `formicos-docker-proxy`) should show `healthy`.
 
 You can also confirm the app has replayed and bootstrapped:
 ```bash
@@ -128,6 +128,9 @@ You'll see:
 
 - **Queen tab** -- chat with the Queen, see active colonies, approve/deny requests
 - **Knowledge tab** -- inspect unified knowledge entries, score explanations, proactive briefing context, and the graph
+- **Workspace tab** -- workspace configuration, thread overview, and governance display
+- **Operations tab** -- colony detail, round history, and approval queue
+- **Addons tab** -- browse and manage loaded addons
 - **Playbook tab** -- browse built-in templates before you spawn
 - **Tree navigator** -- click workspaces, threads, and colonies to drill down
 - **Models tab** -- see registered models (local + cloud), context windows, slot utilization

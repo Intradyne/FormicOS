@@ -26,6 +26,7 @@ def build_snapshot(
     probed_local: dict[str, dict[str, Any]] | None = None,
     provider_health: dict[str, str] | None = None,
     registry: CapabilityRegistry | None = None,
+    addon_registrations: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Build the full operator state snapshot matching types.ts OperatorStateSnapshot."""
     return {
@@ -39,7 +40,76 @@ def build_snapshot(
         "castes": _build_castes(castes),
         "runtimeConfig": _build_runtime_config(settings, probed=probed_local),
         "skillBankStats": skill_bank_stats or {"total": 0, "avgConfidence": 0.0},
+        "addons": _build_addons(addon_registrations),
     }
+
+
+def _build_addons(
+    registrations: list[Any] | None,
+) -> list[dict[str, Any]]:
+    """Build addon summaries from AddonRegistration objects."""
+    if not registrations:
+        return []
+    result: list[dict[str, Any]] = []
+    for reg in registrations:
+        manifest = reg.manifest
+        if getattr(manifest, "hidden", False):
+            continue
+        result.append({
+            "name": manifest.name,
+            "version": manifest.version,
+            "description": manifest.description,
+            "tools": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "handler": t.handler,
+                    "parameters": t.parameters,
+                    "callCount": reg.tool_call_counts.get(t.name, 0),
+                }
+                for t in manifest.tools
+            ],
+            "handlers": [
+                {
+                    "event": h.event,
+                    "lastFired": reg.last_handler_fire,
+                    "errorCount": reg.handler_error_count,
+                }
+                for h in manifest.handlers
+            ],
+            "triggers": [
+                {
+                    "type": t.type,
+                    "schedule": t.schedule,
+                    "handler": t.handler,
+                    "lastFired": reg.trigger_fire_times.get(t.handler),
+                }
+                for t in manifest.triggers
+            ],
+            "panels": [
+                {
+                    "target": p.get("target", ""),
+                    "displayType": p.get("display_type", "status_card"),
+                    "path": p.get("path", ""),
+                    "addonName": p.get("addon_name", manifest.name),
+                }
+                for p in reg.registered_panels
+            ],
+            "config": [
+                {
+                    "key": c.key,
+                    "type": c.type,
+                    "default": c.default,
+                    "label": c.label,
+                    "options": c.options,
+                }
+                for c in manifest.config
+            ],
+            "status": reg.health_status,
+            "lastError": reg.last_error,
+            "disabled": getattr(reg, "disabled", False),
+        })
+    return result
 
 
 def _build_tree(store: ProjectionStore) -> list[dict[str, Any]]:
@@ -323,7 +393,7 @@ def _build_protocol_status(
 
         mcp_tools = len(MCP_TOOL_NAMES)
     except Exception:  # noqa: BLE001
-        mcp_tools = 19  # known tool count from mcp_server.py
+        mcp_tools = 27  # known tool count from mcp_server.py
     try:
         from formicos.surface.agui_endpoint import AGUI_EVENT_TYPES
 

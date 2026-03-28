@@ -433,6 +433,44 @@ export interface SkillBankStats {
   avgConfidence: number;
 }
 
+export interface AddonToolSummary {
+  name: string;
+  description: string;
+  callCount: number;
+}
+
+export interface AddonHandlerSummary {
+  event: string;
+  lastFired: string | null;
+  errorCount: number;
+}
+
+export interface AddonTriggerSummary {
+  type: string;
+  schedule: string;
+  handler: string;
+  lastFired: string | null;
+}
+
+export interface AddonPanelSummary {
+  target: string;
+  displayType: string;
+  path: string;
+  addonName: string;
+}
+
+export interface AddonSummary {
+  name: string;
+  version: string;
+  description: string;
+  tools: AddonToolSummary[];
+  handlers: AddonHandlerSummary[];
+  triggers: AddonTriggerSummary[];
+  panels: AddonPanelSummary[];
+  status: 'healthy' | 'degraded' | 'error';
+  lastError: string | null;
+}
+
 export interface OperatorStateSnapshot {
   tree: TreeNode[];
   merges: MergeEdge[];
@@ -444,6 +482,7 @@ export interface OperatorStateSnapshot {
   castes: CasteDefinition[];
   runtimeConfig: RuntimeConfig;
   skillBankStats: SkillBankStats;
+  addons: AddonSummary[];
 }
 
 // Events
@@ -1338,3 +1377,18 @@ export interface WSStateMessage {
 }
 
 export type WSMessage = WSEventMessage | WSStateMessage;
+
+// Wave 67.5: provenance chain (append-only audit trail on knowledge entries)
+export interface ProvenanceChainItem {
+  event_type: string;
+  timestamp: string;
+  actor_id: string;
+  detail: string;
+  confidence_delta: number | null;
+}
+
+export interface ProvenanceResponse {
+  entry_id: string;
+  chain: ProvenanceChainItem[];
+  total: number;
+}

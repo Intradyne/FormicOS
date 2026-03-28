@@ -1,0 +1,40 @@
+name: mcp-bridge
+version: "1.0.0"
+description: "Bridge remote MCP servers into FormicOS — discover and call external tools"
+author: "formicos-core"
+
+tools:
+  - name: discover_mcp_tools
+    description: "Discover tools available on connected MCP servers"
+    handler: discovery.py::handle_discover_tools
+    parameters:
+      type: object
+      properties:
+        server:
+          type: string
+          description: "Optional server name to query (omit for all connected servers)"
+
+  - name: call_mcp_tool
+    description: "Call a tool on a remote MCP server"
+    handler: discovery.py::handle_call_tool
+    parameters:
+      type: object
+      properties:
+        server:
+          type: string
+          description: "Name of the MCP server"
+        tool:
+          type: string
+          description: "Tool name to call"
+        arguments:
+          type: object
+          description: "Arguments to pass to the tool"
+      required:
+        - server
+        - tool
+
+config:
+  - key: mcp_servers
+    type: string
+    default: "[]"
+    label: "MCP server configurations (JSON array of {name, url})"

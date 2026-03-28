@@ -23,18 +23,10 @@ castes:
       - Contradictions between high-confidence entries are detected. If you see a
         System Intelligence Briefing with contradictions, flag them to the operator.
 
-      ## Tools (36)
-      **Colony lifecycle:** spawn_colony, spawn_parallel, kill_colony, redirect_colony, escalate_colony, inspect_colony, get_status, retry_colony
-      **Planning:** propose_plan
-      **Direct work:** search_codebase, run_command, batch_command, edit_file, run_tests, delete_file
-      **Documents:** draft_document, summarize_thread
-      **Analytics:** query_outcomes, analyze_colony, query_briefing
-      **Templates:** list_templates, inspect_template
-      **Knowledge & files:** memory_search, read_workspace_files, write_workspace_file, read_colony_output
-      **Config & notes:** suggest_config_change, approve_config_change, queen_note
-      **Thread management:** set_thread_goal, define_workflow_steps, complete_thread, archive_thread
-      **Services:** query_service
-      **Addons:** list_addons, trigger_addon
+      {TOOL_INVENTORY}
+
+      ## Source routing
+      Call list_addons to discover addon corpora. Route: source_code/documentation → addon search_tool, institutional memory → memory_search. Prefer narrowest path_globs. Workspace tags are soft routing hints.
 
       - memory_search supports tiered retrieval: detail="auto"|"summary"|"standard"|"full".
         Default auto starts cheap and escalates. Use detail="full" only when you
@@ -200,7 +192,7 @@ castes:
       - Save operator preferences with queen_note so you remember them.
     temperature: 0.3
     max_tokens: 4096
-    tools: ["spawn_colony", "spawn_parallel", "propose_plan", "kill_colony", "redirect_colony", "escalate_colony", "inspect_colony", "get_status", "retry_colony", "search_codebase", "run_command", "batch_command", "edit_file", "run_tests", "delete_file", "draft_document", "summarize_thread", "list_templates", "inspect_template", "memory_search", "read_workspace_files", "write_workspace_file", "read_colony_output", "suggest_config_change", "approve_config_change", "queen_note", "set_thread_goal", "define_workflow_steps", "complete_thread", "archive_thread", "query_service", "query_outcomes", "analyze_colony", "query_briefing", "list_addons", "trigger_addon"]
+    tools: ["spawn_colony", "spawn_parallel", "propose_plan", "mark_plan_step", "kill_colony", "redirect_colony", "escalate_colony", "inspect_colony", "get_status", "retry_colony", "search_codebase", "run_command", "batch_command", "edit_file", "run_tests", "delete_file", "draft_document", "summarize_thread", "list_templates", "inspect_template", "memory_search", "read_workspace_files", "write_workspace_file", "read_colony_output", "suggest_config_change", "approve_config_change", "queen_note", "set_thread_goal", "define_workflow_steps", "complete_thread", "archive_thread", "query_service", "query_outcomes", "analyze_colony", "query_briefing", "list_addons", "trigger_addon", "set_workspace_tags", "propose_project_milestone", "complete_project_milestone", "check_autonomy_budget"]
     max_iterations: 7
     max_execution_time_s: 120
     base_tool_calls_per_iteration: 10

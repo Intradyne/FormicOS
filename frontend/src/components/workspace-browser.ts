@@ -2,6 +2,9 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { voidTokens, sharedStyles } from '../styles/shared.js';
 import './atoms.js';
+import './addon-panel.js';
+
+interface AddonPanel { target: string; display_type: string; path: string; addon_name: string; }
 
 interface WsFile { name: string; bytes: number; }
 
@@ -152,6 +155,7 @@ export class FcWorkspaceBrowser extends LitElement {
   `];
 
   @property() workspaceId = '';
+  @property({ type: Array }) addonPanels: AddonPanel[] = [];
 
   @state() private _files: WsFile[] = [];
   @state() private _loading = true;
@@ -247,6 +251,14 @@ export class FcWorkspaceBrowser extends LitElement {
           <fc-btn variant="ghost" sm @click=${() => void this._loadFiles()}>Refresh</fc-btn>
         </div>
       </div>
+
+      ${this.addonPanels.filter(p => p.target === 'workspace').map(p => html`
+        <fc-addon-panel
+          src="/addons/${p.addon_name}${p.path}"
+          display-type="${p.display_type}"
+          label="${p.addon_name}">
+        </fc-addon-panel>
+      `)}
 
       ${this._renderProjectContext()}
 

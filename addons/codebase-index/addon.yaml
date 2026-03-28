@@ -3,6 +3,18 @@ version: "1.0.0"
 description: "Semantic code search via embedding index"
 author: "formicos-core"
 
+content_kinds:
+  - source_code
+path_globs:
+  - "**/*.py"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.go"
+  - "**/*.rs"
+  - "**/*.java"
+search_tool: semantic_search_code
+
 tools:
   - name: semantic_search_code
     description: "Search codebase by meaning, not just text"
@@ -32,9 +44,29 @@ tools:
             type: string
           description: "Optional list of relative file paths to reindex. Omit for full reindex."
 
+config:
+  - key: chunk_size
+    type: integer
+    default: 500
+    label: "Chunk size in characters for code splitting"
+  - key: skip_dirs
+    type: string
+    default: "__pycache__,.git,node_modules,.venv,venv"
+    label: "Comma-separated directories to skip during indexing"
+
+panels:
+  - target: knowledge
+    display_type: status_card
+    path: /status
+    handler: status.py::get_status
+
+routes:
+  - path: /status
+    handler: status.py::get_status
+
 triggers:
   - type: cron
     schedule: "0 3 * * *"
     handler: indexer.py::on_scheduled_reindex
   - type: manual
-    handler: indexer.py::incremental_reindex
+    handler: search.py::handle_reindex

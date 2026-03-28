@@ -1,5 +1,6 @@
 name: hello-world
 version: "1.0.0"
+hidden: true
 description: "Trivial test addon — validates the addon loader pipeline"
 author: "formicos-core"
 
