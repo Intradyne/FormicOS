@@ -296,9 +296,8 @@ def _composite_key(
         + W["freshness"] * freshness
         + W["status"] * status
         + W["thread"] * thread_bonus
-        # Wave 59.5: graph_proximity only has real values in _search_thread_boosted;
-        # here it's always 0.0 to keep the weight dict consistent across both paths.
-        + W.get("graph_proximity", 0.0) * 0.0
+        # Wave 67.5: graph_proximity now populated by _search_vector via PPR
+        + W.get("graph_proximity", 0.0) * float(item.get("_graph_proximity", 0.0))
         + pin_boost
     )
     return -(raw * fed_penalty)
@@ -324,6 +323,67 @@ class KnowledgeCatalog:
         self._retrieval_metrics = RetrievalMetrics()
 
     _THREAD_BONUS = 1.0  # Wave 32 A3: normalized to [0,1], weight 0.08 scales contribution
+
+    # ------------------------------------------------------------------
+    # Wave 67.5: shared graph scoring (ADR-050 D3)
+    # ------------------------------------------------------------------
+
+    async def _enrich_with_graph_scores(
+        self,
+        seed_entity_ids: list[str],
+        workspace_id: str,
+    ) -> dict[str, float]:
+        """PPR walk from seed entities, return {entry_id: proximity_score}."""
+        if (
+            self._kg_adapter is None
+            or self._projections is None
+            or not seed_entity_ids
+        ):
+            return {}
+
+        try:
+            pr_scores = await self._kg_adapter.personalized_pagerank(
+                seed_entity_ids, workspace_id,
+            )
+        except Exception:  # noqa: BLE001
+            log.warning("knowledge_catalog.ppr_failed")
+            return {}
+
+        if not pr_scores:
+            return {}
+
+        # Reverse-map entity ids -> entry ids via projections
+        # Build reverse lookup: node_id -> entry_id
+        node_to_entry: dict[str, str] = {
+            nid: eid
+            for eid, nid in self._projections.entry_kg_nodes.items()
+        }
+        result: dict[str, float] = {}
+        for entity_id, score in pr_scores.items():
+            entry_id = node_to_entry.get(entity_id)
+            if entry_id:
+                result[entry_id] = max(result.get(entry_id, 0.0), score)
+        return result
+
+    async def _compute_graph_scores(
+        self,
+        query: str,
+        workspace_id: str,
+    ) -> dict[str, float]:
+        """Standard-path graph scoring: embed query -> match entities -> PPR."""
+        if self._kg_adapter is None:
+            return {}
+
+        try:
+            matched = await self._kg_adapter.match_entities_by_embedding(
+                query, workspace_id,
+            )
+        except Exception:  # noqa: BLE001
+            log.warning("knowledge_catalog.entity_match_failed")
+            return {}
+
+        seed_ids = [m["id"] for m in matched if m.get("id")]
+        return await self._enrich_with_graph_scores(seed_ids, workspace_id)
 
     async def search(
         self,
@@ -410,7 +470,10 @@ class KnowledgeCatalog:
         else:
             tasks.append(_empty())
 
-        institutional, legacy = await asyncio.gather(*tasks)
+        # Wave 67.5: graph scoring in parallel with vector search (ADR-050)
+        tasks.append(self._compute_graph_scores(query, workspace_id))
+
+        institutional, legacy, graph_scores = await asyncio.gather(*tasks)
 
         # Merge, deduplicate, sort
         seen: set[str] = set()
@@ -424,12 +487,52 @@ class KnowledgeCatalog:
         # Wave 39: apply operator overlays (skip muted/invalidated, boost pinned)
         merged = self._apply_operator_overlays(merged)
 
+        # Wave 67.5: inject graph proximity scores onto items
+        for item in merged:
+            item["_graph_proximity"] = graph_scores.get(item.get("id", ""), 0.0)
+
         # Wave 35 C2: per-workspace weights (ADR-044 D4)
         from formicos.surface.knowledge_constants import get_workspace_weights  # noqa: PLC0415
 
         ws_weights = get_workspace_weights(workspace_id, self._projections)
         merged.sort(key=lambda item: _composite_key(item, weights=ws_weights))
-        return merged[:top_k]
+        top_results = merged[:top_k]
+
+        # Wave 67.5: score breakdown parity with thread path
+        from formicos.engine.scoring_math import exploration_score  # noqa: PLC0415
+        from formicos.surface.trust import federated_retrieval_penalty  # noqa: PLC0415
+
+        for item in top_results:
+            semantic = float(item.get("score", 0.0))
+            alpha = float(item.get("conf_alpha", 5.0))
+            beta_p = float(item.get("conf_beta", 5.0))
+            thompson = exploration_score(alpha, beta_p)
+            freshness = _compute_freshness(item.get("created_at", ""))
+            status_bonus = _STATUS_BONUS.get(str(item.get("status", "")), 0.0)
+            pin_boost = float(item.get("_pin_boost", 0.0))
+            fed_penalty = federated_retrieval_penalty(item)
+            gp = float(item.get("_graph_proximity", 0.0))
+            raw = (
+                ws_weights["semantic"] * semantic
+                + ws_weights["thompson"] * thompson
+                + ws_weights["freshness"] * freshness
+                + ws_weights["status"] * status_bonus
+                + ws_weights.get("graph_proximity", 0.0) * gp
+                + pin_boost
+            )
+            item["_score_breakdown"] = {
+                "semantic": semantic,
+                "thompson": thompson,
+                "freshness": freshness,
+                "status": status_bonus,
+                "thread": 0.0,
+                "cooccurrence": 0.0,
+                "graph_proximity": gp,
+                "composite": raw * fed_penalty,
+                "weights": dict(ws_weights),
+            }
+
+        return top_results
 
     def _projection_keyword_fallback(
         self,
@@ -537,52 +640,29 @@ class KnowledgeCatalog:
         # Wave 39: apply operator overlays (skip muted/invalidated, boost pinned)
         merged = self._apply_operator_overlays(merged)
 
-        # Wave 59.5: graph-augmented retrieval — discover neighbors of top-3
+        # Wave 67.5: graph-augmented retrieval via shared PPR helper (ADR-050 D3)
         graph_scores: dict[str, float] = {}
         if self._kg_adapter is not None and self._projections is not None:
             seed_items = sorted(
                 merged, key=lambda x: -float(x.get("score", 0.0)),
             )[:3]
-            for seed in seed_items:
-                seed_entry_id = seed.get("id", "")
-                node_id = self._projections.entry_kg_nodes.get(
-                    seed_entry_id, "",
-                )
-                if not node_id:
-                    continue
-                try:
-                    neighbors = await self._kg_adapter.get_neighbors(
-                        node_id,
-                        workspace_id=workspace_id,
-                    )
-                    for nbr in neighbors:
-                        # Wave 60: fix node_id bug — get_neighbors()
-                        # returns from_node/to_node, not node_id
-                        other_node = (
-                            nbr["to_node"] if nbr["from_node"] == node_id
-                            else nbr["from_node"]
-                        )
-                        # Reverse lookup: find entry_id for this KG node
-                        for eid, nid in (
-                            self._projections.entry_kg_nodes.items()
-                        ):
-                            if nid == other_node and eid not in seen:
-                                entry_data = (
-                                    self._projections.memory_entries.get(eid)
-                                )
-                                if entry_data:
-                                    item = _normalize_institutional(
-                                        entry_data, score=0.0,
-                                    )
-                                    merged.append(item)
-                                    seen.add(eid)
-                                    graph_scores[eid] = 1.0
-                                break
-                except Exception:  # noqa: BLE001
-                    log.warning(
-                        "knowledge_catalog.graph_neighbor_lookup_failed",
-                        seed_id=seed_entry_id,
-                    )
+            seed_entity_ids = [
+                self._projections.entry_kg_nodes[sid]
+                for sid in (s.get("id", "") for s in seed_items)
+                if sid and sid in self._projections.entry_kg_nodes
+            ]
+            graph_scores = await self._enrich_with_graph_scores(
+                seed_entity_ids, workspace_id,
+            )
+            # Inject graph-discovered entries not yet in merged
+            if graph_scores:
+                for eid, _score in graph_scores.items():
+                    if eid not in seen:
+                        entry_data = self._projections.memory_entries.get(eid)
+                        if entry_data:
+                            item = _normalize_institutional(entry_data, score=0.0)
+                            merged.append(item)
+                            seen.add(eid)
 
         # Wave 34 A3: composite sort with co-occurrence (ADR-044)
         cooc_scores: dict[str, float] = {}

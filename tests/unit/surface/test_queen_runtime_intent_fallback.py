@@ -28,7 +28,7 @@ def _make_runtime_with_thread(thread: object, response: LLMResponse) -> MagicMoc
     runtime.settings.governance.max_redirects_per_colony = 1
     runtime.settings.routing.tau_threshold = 0.5
     runtime.vector_store = None
-    runtime.retrieve_relevant_memory = AsyncMock(return_value="")
+    runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
     return runtime
 
 

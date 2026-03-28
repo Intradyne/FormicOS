@@ -11,11 +11,14 @@ submitting a pull request.
 - [SECURITY.md](SECURITY.md) — how to report vulnerabilities (do not open
   public issues for security bugs)
 
+Before contributing, also review [CLA.md](CLA.md) for the contributor license
+terms, commercial relicensing grant, and revenue-share program.
+
 ## Contribution Flow
 
 1. Check existing issues or open a new one describing the change
 2. Fork the repository and create a feature branch
-3. Sign the CLA when prompted (see [GOVERNANCE.md](GOVERNANCE.md))
+3. Sign the CLA when prompted (see [CLA.md](CLA.md))
 4. Make your changes following the architecture rules below
 5. Run the full CI pipeline locally (lint, typecheck, layer-check, tests,
    frontend build)
@@ -26,6 +29,20 @@ submitting a pull request.
 
 Look for issues labeled `good-first-issue` for tasks suitable for new
 contributors. These are scoped to avoid touching architectural seams.
+
+## Contributor License Agreement
+
+FormicOS requires a signed [CLA](CLA.md) for external code contributions. The
+CLA is what allows Intradyne to keep the AGPLv3 distribution and also offer
+commercial licenses for the same codebase. Contributors who sign the CLA
+also become eligible for the revenue-share program described in the CLA.
+
+If your employer owns the IP in your contributions, your employer can sign
+the [Corporate CLA](CORPORATE_CLA.md) to blanket-authorize all employees.
+This avoids each contributor needing individual employer authorization.
+
+DCO sign-off may be used as a supplementary provenance signal, but it does not
+replace the CLA because it does not grant commercial relicensing rights.
 
 ## Environment Setup
 
@@ -210,7 +227,7 @@ Before making an architectural choice, check `docs/decisions/` for existing ADRs
 | [006](docs/decisions/006-trunk-based-development.md) | Trunk-based development with feature flags |
 
 See [docs/decisions/INDEX.md](docs/decisions/INDEX.md) for the full list
-(47 ADRs covering event sourcing, knowledge metabolism, federation,
+(51 ADRs covering event sourcing, knowledge metabolism, federation,
 parallel planning, and more).
 
 If your change contradicts an ADR, stop and flag the conflict.
@@ -227,7 +244,7 @@ These are the most important files and directories to understand:
 | `src/formicos/engine/runner.py` | Colony round execution loop |
 | `src/formicos/surface/projections.py` | Event replay into in-memory read models |
 | `src/formicos/surface/queen_runtime.py` | Queen orchestration and tool dispatch |
-| `src/formicos/surface/knowledge_catalog.py` | Federated knowledge retrieval with 6-signal scoring |
+| `src/formicos/surface/knowledge_catalog.py` | Federated knowledge retrieval with 7-signal scoring |
 | `docs/contracts/` | Frozen integration seams — do not modify without maintainer approval |
 | `docs/decisions/` | Architecture Decision Records (ADR files present in the repo) |
 | `docs/specs/` | Executable specifications (pytest-bdd scenarios) |

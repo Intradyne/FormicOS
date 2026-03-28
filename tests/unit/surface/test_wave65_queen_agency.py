@@ -240,15 +240,29 @@ class TestDraftDocument:
 
 class TestListAddons:
     def test_list_addons_shows_addon_tools(self) -> None:
-        """list_addons reports registered addon tool specs."""
+        """list_addons reports registered addon manifests with capabilities."""
+        from formicos.surface.addon_loader import AddonManifest, AddonToolSpec
+
         runtime = _make_runtime()
         dispatcher = QueenToolDispatcher(runtime)
-        dispatcher._addon_tool_specs = [  # pyright: ignore[reportPrivateUsage]
-            {"name": "semantic_search", "description": "Search code"},
+        dispatcher._addon_manifests = [  # pyright: ignore[reportPrivateUsage]
+            AddonManifest(
+                name="codebase-index",
+                description="Search code",
+                content_kinds=["source_code"],
+                search_tool="semantic_search",
+                tools=[
+                    AddonToolSpec(
+                        name="semantic_search",
+                        description="Search code",
+                        handler="search.py::handle",
+                    ),
+                ],
+            ),
         ]
 
         result, meta = dispatcher._list_addons()  # pyright: ignore[reportPrivateUsage]
 
         assert "semantic_search" in result
-        assert "Addon Tools (1)" in result
+        assert "codebase-index" in result
         assert "Search code" in result

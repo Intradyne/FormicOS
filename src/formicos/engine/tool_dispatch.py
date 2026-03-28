@@ -607,6 +607,14 @@ CASTE_TOOL_POLICIES: dict[str, CasteToolPolicy] = {
         }),
         denied_tools=frozenset({"code_execute"}),
     ),
+    "forager": CasteToolPolicy(
+        caste="forager",
+        allowed_categories=frozenset({
+            ToolCategory.vector_query, ToolCategory.search_web,
+            ToolCategory.network_out,
+        }),
+        denied_tools=frozenset({"code_execute"}),
+    ),
 }
 
 

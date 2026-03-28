@@ -263,7 +263,9 @@ uv run pytest tests/unit/addons/test_my_addon.py -v
 | hello-world | `hello` | -- | -- |
 | proactive-intelligence | `query_briefing` | -- | -- |
 | codebase-index | `semantic_search_code`, `reindex_codebase` | -- | daily cron, manual |
+| docs-index | `semantic_search_docs`, `reindex_docs` | -- | manual |
 | git-control | `git_smart_commit`, `git_branch_analysis`, `git_create_branch`, `git_stash` | `ColonyCompleted` (auto-stage) | -- |
+| mcp-bridge | `discover_mcp_tools`, `call_mcp_tool` | -- | -- |
 
 ## Architecture
 

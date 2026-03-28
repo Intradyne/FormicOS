@@ -75,4 +75,25 @@ def exploration_score(
     return min(ts_draw + ucb_weight * ucb_bonus, 1.0)
 
 
-__all__ = ["exploration_score"]
+def rescale_preserving_mean(
+    alpha: float, beta: float, max_ess: float = 150.0,
+) -> tuple[float, float]:
+    """Rescale Beta parameters to cap effective sample size.
+
+    Mathematically equivalent to exponential decay with
+    gamma = 1 - 1/max_ess.  Default cap of 150 (not 100) lets
+    high-evidence entries stabilize without becoming immovable.
+    100 would be too aggressive per production Thompson Sampling
+    literature (Russo et al. recommend N_eff ~ 200 for
+    nonstationary environments).
+
+    Preserves the posterior mean: alpha/(alpha+beta) is unchanged.
+    """
+    ess = alpha + beta
+    if ess <= max_ess:
+        return alpha, beta
+    scale = max_ess / ess
+    return alpha * scale, beta * scale
+
+
+__all__ = ["exploration_score", "rescale_preserving_mean"]

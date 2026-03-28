@@ -127,8 +127,8 @@ class TestEnsureCollection:
 
         await port.ensure_collection("test_col")
 
-        # Should create 6 payload indexes
-        assert port._client.create_payload_index.await_count == 6
+        # Should create 7 payload indexes (6 original + hierarchy_path from Wave 67)
+        assert port._client.create_payload_index.await_count == 7
 
 
 # ---------------------------------------------------------------------------

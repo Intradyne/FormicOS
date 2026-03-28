@@ -240,6 +240,36 @@ export interface ProposalData {
   recommendation?: string;
 }
 
+/** Wave 70.5: Blast radius metadata from proposal action dict. */
+export interface BlastRadiusData {
+  score: number;
+  level: 'low' | 'medium' | 'high';
+  factors: string[];
+  recommendation: 'proceed' | 'notify' | 'escalate';
+}
+
+/** Wave 70.5: Autonomy status from GET /api/v1/workspaces/{id}/autonomy-status. */
+export interface AutonomyStatusData {
+  level: string;
+  score: number;
+  grade: string;
+  daily_budget: number;
+  daily_spend: number;
+  remaining: number;
+  active_maintenance_colonies: number;
+  max_maintenance_colonies: number;
+  auto_actions: string[];
+  components: Record<string, number>;
+  recommendation: string;
+  recent_actions: Array<{
+    colony_id: string;
+    strategy: string;
+    outcome: string;
+    cost: number;
+    quality_score: number;
+  }>;
+}
+
 /** Wave 63: Edit proposal card from Queen's edit_file tool. */
 export interface EditProposalMeta {
   filePath: string;
@@ -372,6 +402,7 @@ export interface ModelRegistryEntry {
   maxOutputTokens: number;
   timeMultiplier: number;
   toolCallMultiplier: number;
+  hidden: boolean;
 }
 
 export interface ModelDefaults {
@@ -647,6 +678,56 @@ export interface SkillBankStats {
   avgConfidence: number;
 }
 
+export interface AddonToolSummary {
+  name: string;
+  description: string;
+  handler: string;
+  parameters: Record<string, any>;
+  callCount: number;
+}
+
+export interface AddonHandlerSummary {
+  event: string;
+  lastFired: string | null;
+  errorCount: number;
+}
+
+export interface AddonTriggerSummary {
+  type: string;
+  schedule: string;
+  handler: string;
+  lastFired: string | null;
+}
+
+export interface AddonPanelSummary {
+  target: string;
+  displayType: string;
+  path: string;
+  addonName: string;
+}
+
+export interface AddonConfigParam {
+  key: string;
+  type: 'boolean' | 'string' | 'integer' | 'cron' | 'select';
+  default: any;
+  label: string;
+  options: string[];
+}
+
+export interface AddonSummary {
+  name: string;
+  version: string;
+  description: string;
+  tools: AddonToolSummary[];
+  handlers: AddonHandlerSummary[];
+  triggers: AddonTriggerSummary[];
+  panels: AddonPanelSummary[];
+  config: AddonConfigParam[];
+  status: 'healthy' | 'degraded' | 'error';
+  lastError: string | null;
+  disabled: boolean;
+}
+
 export interface OperatorStateSnapshot {
   tree: TreeNode[];
   merges: MergeEdge[];
@@ -658,6 +739,7 @@ export interface OperatorStateSnapshot {
   castes: CasteDefinition[];
   runtimeConfig: RuntimeConfig;
   skillBankStats: SkillBankStats;
+  addons: AddonSummary[];
 }
 
 export interface SkillEntry {
@@ -913,6 +995,60 @@ export interface WorkflowStepCompletedEvent {
   colonyId: string;
   status: string;
   artifactTypes: string[];
+}
+
+// Wave 67.5: provenance chain (append-only audit trail on knowledge entries)
+export interface ProvenanceChainItem {
+  event_type: string;
+  timestamp: string;
+  actor_id: string;
+  detail: string;
+  confidence_delta: number | null;
+}
+
+export interface ProvenanceResponse {
+  entry_id: string;
+  chain: ProvenanceChainItem[];
+  total: number;
+}
+
+// Wave 69: Consulted knowledge entry metadata on Queen messages
+export interface ConsultedEntry {
+  id: string;
+  title: string;
+  confidence: number;
+}
+
+// Wave 69: Parsed plan step from thread plan file
+export interface PlanStep {
+  index: number;
+  status: string;
+  description: string;
+  colony_id?: string;
+  note?: string;
+}
+
+export interface ThreadPlan {
+  exists: boolean;
+  title?: string;
+  approach?: string;
+  steps?: PlanStep[];
+}
+
+/** Wave 69: unified search result from /workspaces/{id}/search endpoint. */
+export interface UnifiedSearchResult {
+  source: string;           // 'memory' | 'codebase-index' | 'docs-index'
+  source_label: string;     // human-readable source name
+  id: string;               // entry ID or composite key
+  title: string;
+  snippet: string;
+  score: number;
+  metadata: Record<string, unknown>;  // source-specific metadata
+}
+
+export interface UnifiedSearchResponse {
+  results: UnifiedSearchResult[];
+  total: number;
 }
 
 // Wave 16 event types

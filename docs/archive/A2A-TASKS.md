@@ -242,6 +242,22 @@ A2A does **not** call the Queen LLM to select teams. Selection is deterministic:
 Operator-defined templates are checked first, so customizing A2A behavior is as
 simple as creating templates with appropriate tags.
 
+## Economic Protocol
+
+For autonomous agents that need to evaluate whether participation is
+worth their tokens, FormicOS provides a machine-readable economic
+layer on top of this task lifecycle. See
+[A2A_ECONOMICS.md](../A2A_ECONOMICS.md) for:
+
+- **ContributionContract** -- submitted alongside the task to specify
+  sponsor, deliverables, acceptance tests, and compensation terms
+- **ContributionReceipt** -- issued after completion with acceptance
+  verdict, artifact hashes, and revenue-share eligibility
+- **Agent Card economics** -- advertised at `/.well-known/agent.json`
+  so external agents can discover compensation model and stats
+- **Sponsor model** -- agents act on behalf of CLA-signing humans or
+  corporations, not as independent principals
+
 ## Design Notes
 
 - **Tasks are colonies.** `task_id == colony_id`. There is no separate task store.

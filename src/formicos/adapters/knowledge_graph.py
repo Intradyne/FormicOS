@@ -523,6 +523,165 @@ class KnowledgeGraphAdapter:
         return created
 
     # ------------------------------------------------------------------
+    # Wave 67.5: Embedding-based entity matching for PPR seeding
+    # ------------------------------------------------------------------
+
+    async def match_entities_by_embedding(
+        self,
+        query: str,
+        workspace_id: str,
+        *,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Find KG entities semantically similar to query.
+
+        Falls back to normalized substring matching on entity names
+        if no embedding function is available.
+        """
+        db = await self._ensure_db()
+        cursor = await db.execute(
+            "SELECT id, name, entity_type, summary FROM kg_nodes WHERE workspace_id = ?",
+            [workspace_id],
+        )
+        rows = list(await cursor.fetchall())
+        if not rows:
+            return []
+
+        # Bound cost: skip embedding for large workspaces
+        if len(rows) > 500 or (self._async_embed_fn is None and self._embed_fn is None):
+            return self._substring_entity_match(query, rows, limit)
+
+        candidate_texts = [
+            f"{row['name']} {row['summary'] or ''}"  # pyright: ignore[reportIndexIssue]
+            for row in rows
+        ]
+        all_texts = [query] + candidate_texts
+        embeddings = await self._embed_for_similarity(all_texts)
+        if embeddings is None:
+            return self._substring_entity_match(query, rows, limit)
+
+        query_vec = embeddings[0]
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for i, cand_vec in enumerate(embeddings[1:]):
+            sim = _cosine_similarity(query_vec, cand_vec)
+            scored.append((sim, {
+                "id": rows[i]["id"],  # pyright: ignore[reportIndexIssue]
+                "name": rows[i]["name"],  # pyright: ignore[reportIndexIssue]
+                "entity_type": rows[i]["entity_type"],  # pyright: ignore[reportIndexIssue]
+                "score": sim,
+            }))
+        scored.sort(key=lambda x: -x[0])
+        return [item for _, item in scored[:limit]]
+
+    @staticmethod
+    def _substring_entity_match(
+        query: str,
+        rows: list[Any],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Fallback: substring matching on entity names."""
+        normalized_query = _normalize(query)
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            if _normalize(row["name"]) in normalized_query:  # pyright: ignore[reportIndexIssue]
+                results.append({
+                    "id": row["id"],  # pyright: ignore[reportIndexIssue]
+                    "name": row["name"],  # pyright: ignore[reportIndexIssue]
+                    "entity_type": row["entity_type"],  # pyright: ignore[reportIndexIssue]
+                    "score": 1.0,
+                })
+                if len(results) >= limit:
+                    break
+        return results
+
+    # ------------------------------------------------------------------
+    # Wave 67.5: Personalized PageRank (ADR-050 D1)
+    # ------------------------------------------------------------------
+
+    async def personalized_pagerank(
+        self,
+        seed_ids: list[str],
+        workspace_id: str,
+        *,
+        damping: float = 0.5,
+        iterations: int = 20,
+    ) -> dict[str, float]:
+        """Iterative PPR from seed entities.
+
+        Builds a bounded local adjacency list by expanding outward from seeds
+        up to 3 hops, then runs power iteration with restart bias toward seeds.
+        Returns {entity_id: score} normalized so max = 1.0.
+        """
+        if not seed_ids:
+            return {}
+
+        # Build local adjacency via bounded expansion (3 hops)
+        adj_sets: dict[str, set[str]] = {}
+        frontier = set(seed_ids)
+        visited: set[str] = set()
+
+        for _hop in range(3):
+            next_frontier: set[str] = set()
+            for node_id in frontier:
+                if node_id in visited:
+                    continue
+                visited.add(node_id)
+                try:
+                    neighbors = await self.get_neighbors(
+                        node_id, workspace_id=workspace_id,
+                    )
+                except Exception:  # noqa: BLE001
+                    continue
+                node_adj = adj_sets.setdefault(node_id, set())
+                for nbr in neighbors:
+                    other = (
+                        nbr["to_node"] if nbr["from_node"] == node_id
+                        else nbr["from_node"]
+                    )
+                    node_adj.add(other)
+                    adj_sets.setdefault(other, set()).add(node_id)
+                    next_frontier.add(other)
+            frontier = next_frontier - visited
+
+        # Convert to lists for iteration; sets above prevent duplicate
+        # edges when the same relationship is discovered from both endpoints.
+        adjacency: dict[str, list[str]] = {k: list(v) for k, v in adj_sets.items()}
+        all_nodes = set(adjacency.keys())
+        if not all_nodes:
+            return {}
+
+        # Initialize reset vector: uniform over seeds
+        reset: dict[str, float] = {}
+        valid_seeds = [s for s in seed_ids if s in all_nodes]
+        if not valid_seeds:
+            return {}
+        seed_weight = 1.0 / len(valid_seeds)
+        for s in valid_seeds:
+            reset[s] = seed_weight
+
+        # Initialize PR scores
+        pr: dict[str, float] = {n: reset.get(n, 0.0) for n in all_nodes}
+
+        # Power iteration
+        for _ in range(iterations):
+            new_pr: dict[str, float] = {}
+            for node in all_nodes:
+                incoming_mass = 0.0
+                for neighbor in adjacency.get(node, []):
+                    degree = len(adjacency.get(neighbor, []))
+                    if degree > 0:
+                        incoming_mass += pr.get(neighbor, 0.0) / degree
+                new_pr[node] = (1 - damping) * reset.get(node, 0.0) + damping * incoming_mass
+            pr = new_pr
+
+        # Normalize max score to 1.0
+        max_score = max(pr.values()) if pr else 1.0
+        if max_score > 0:
+            pr = {k: v / max_score for k, v in pr.items()}
+
+        return pr
+
+    # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------
 

@@ -75,6 +75,7 @@ class MemoryStore:
                 "created_at": entry.get("created_at", ""),
                 "trajectory_data": entry.get("trajectory_data", []),
                 "sub_type": str(entry.get("sub_type", "")),
+                "hierarchy_path": entry.get("hierarchy_path", "/"),
             },
         )
         await self._vector.upsert(collection=COLLECTION_NAME, docs=[doc])

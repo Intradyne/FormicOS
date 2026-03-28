@@ -15,7 +15,7 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -46,7 +46,10 @@ from formicos.surface.agui_endpoint import AGUI_EVENT_TYPES
 from formicos.surface.colony_manager import ColonyManager
 from formicos.surface.mcp_server import MCP_TOOL_NAMES, create_mcp_server
 from formicos.surface.projections import ProjectionStore
-from formicos.surface.queen_runtime import QueenAgent
+from formicos.surface.queen_runtime import (
+    QueenAgent,
+    _parse_projection_timestamp,  # pyright: ignore[reportPrivateUsage]
+)
 from formicos.surface.registry import CapabilityRegistry, ProtocolEntry, ToolEntry
 from formicos.surface.routes import (
     a2a_routes,
@@ -736,6 +739,23 @@ def create_app(
             _addons_dir = Path("/app/addons")  # Docker layout
         _addon_manifests = discover_addons(_addons_dir)
         _addon_registrations = []
+        # Wave 70.0: initialise MCP bridge (lazy connections, no I/O here)
+        from formicos.addons.mcp_bridge.client import McpBridge  # noqa: PLC0415
+
+        _mcp_bridge = McpBridge()
+        # Load server config from settings if available
+        import json as _json  # noqa: PLC0415
+        _mcp_servers_raw = getattr(
+            getattr(runtime, "settings", None), "mcp_servers", "[]",
+        )
+        if isinstance(_mcp_servers_raw, str):
+            try:
+                _mcp_servers_raw = _json.loads(_mcp_servers_raw)
+            except (ValueError, TypeError):
+                _mcp_servers_raw = []
+        if isinstance(_mcp_servers_raw, list):
+            _mcp_bridge.configure(_mcp_servers_raw)
+
         _addon_runtime_context: dict[str, Any] = {
             "vector_port": getattr(runtime, "memory_store", None),
             "embed_fn": getattr(runtime, "embed_fn", None),
@@ -746,6 +766,8 @@ def create_app(
             "settings": getattr(runtime, "settings", {}),
             "projections": getattr(runtime, "projections", None),
             "runtime": runtime,
+            "mcp_bridge": _mcp_bridge,
+            "get_bridge_health": _mcp_bridge.get_bridge_health,
         }
         for _manifest in _addon_manifests:
             _reg = register_addon(
@@ -766,7 +788,7 @@ def create_app(
                 version=_manifest.version,
                 tools=_reg.registered_tools,
                 handlers=_reg.registered_handlers,
-                panels=[p.get("id", "") for p in _manifest.panels],
+                panels=[p.get("target", "") for p in _manifest.panels],
             ))
             log.info(
                 "app.addon_loaded",
@@ -778,8 +800,12 @@ def create_app(
         # Expose addon tool specs for Queen tool list and wire into dispatcher
         app.state.addon_tool_specs = build_addon_tool_specs(_addon_manifests)  # type: ignore[attr-defined]
         app.state.addon_manifests = _addon_manifests  # type: ignore[attr-defined]
+        app.state.addon_registrations = _addon_registrations  # type: ignore[attr-defined]
+        runtime.addon_registrations = _addon_registrations  # type: ignore[attr-defined]
+        ws_manager._addon_registrations = _addon_registrations  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         if queen is not None:
             queen._tool_dispatcher._addon_tool_specs = app.state.addon_tool_specs  # pyright: ignore[reportPrivateUsage]
+            queen._tool_dispatcher._addon_manifests = _addon_manifests  # pyright: ignore[reportPrivateUsage]
             queen._tool_dispatcher._addon_runtime_context = _addon_runtime_context  # pyright: ignore[reportPrivateUsage]
 
         # Wave 65 Track 4: wire TriggerDispatcher for addon cron/manual triggers
@@ -822,6 +848,16 @@ def create_app(
                                 params=list(sig.parameters.keys()),
                             )
                             continue
+                        # Track trigger fire time on registration
+                        _match_reg = next(
+                            (r for r in _addon_registrations
+                             if r.manifest.name == addon_name),
+                            None,
+                        )
+                        if _match_reg is not None:
+                            _match_reg.trigger_fire_times[handler_ref] = (
+                                datetime.now(UTC).isoformat()
+                            )
                         await runtime.emit_and_broadcast(ServiceTriggerFired(
                             seq=0,
                             timestamp=datetime.now(UTC),
@@ -848,6 +884,7 @@ def create_app(
         )
 
         _maint_dispatcher = MaintenanceDispatcher(runtime)
+        app.state.maintenance_dispatcher = _maint_dispatcher  # type: ignore[attr-defined]
 
         # Wave 30 A7: scheduled maintenance timer
         _maint_interval = int(os.environ.get(
@@ -858,7 +895,10 @@ def create_app(
             router: Any = service_router,
             interval_s: int = _maint_interval,
         ) -> None:
-            """Periodic dispatch of consolidation services + proactive briefings."""
+            """Periodic dispatch of consolidation services only.
+
+            Proactive dispatch moved to _operational_sweep_loop (Wave 72).
+            """
             while True:
                 await asyncio.sleep(interval_s)
                 for svc in [
@@ -878,12 +918,204 @@ def create_app(
                             service=svc,
                         )
 
-                # Wave 45.5: evaluate proactive briefings and dispatch
-                # forage signals + maintenance colonies for each workspace
-                await _maint_dispatcher.run_proactive_dispatch()
-
         _maint_task = asyncio.create_task(_maintenance_loop())
         _maint_task.add_done_callback(_log_task_exception)
+
+        # Wave 71.0 Track 6: operational sweep loop (30-minute default)
+        _ops_sweep_interval = int(os.environ.get(
+            "FORMICOS_OPS_SWEEP_INTERVAL_S", "1800",
+        ))
+
+        async def _operational_sweep_loop(
+            interval_s: int = _ops_sweep_interval,
+        ) -> None:
+            """Consolidated operational sweep (Wave 72 Track 6).
+
+            Order:
+            1. run_proactive_dispatch()
+            2. Team A scan_knowledge_for_review() — stub until Team A lands
+            3. queue_continuation_proposals()
+            4. execute_idle_continuations()
+            5. Team C extract_workflow_patterns() — stub until Team C lands
+            6. Team C detect_operator_patterns() — stub until Team C lands
+            7. Approved-action processing + compaction
+            """
+            while True:
+                await asyncio.sleep(interval_s)
+                data_dir_str = str(data_dir)
+                workspace_ids = list(
+                    runtime.projections.workspaces.keys(),
+                )
+
+                # --- Step 1: Proactive dispatch (moved from _maintenance_loop) ---
+                try:
+                    await _maint_dispatcher.run_proactive_dispatch()
+                except Exception:  # noqa: BLE001
+                    log.debug("ops_sweep.proactive_dispatch_failed")
+
+                # --- Step 2: Team A knowledge review (stub) ---
+                for ws_id in workspace_ids:
+                    try:
+                        from formicos.surface.knowledge_review import (  # noqa: PLC0415
+                            scan_knowledge_for_review,
+                        )
+
+                        await scan_knowledge_for_review(
+                            data_dir_str, ws_id, runtime.projections,
+                            briefing_insights=getattr(
+                                _maint_dispatcher, "last_briefing_insights", {},
+                            ).get(ws_id),
+                        )
+                    except ImportError:
+                        pass  # Team A not landed yet
+                    except Exception:  # noqa: BLE001
+                        log.debug(
+                            "ops_sweep.knowledge_review_failed",
+                            workspace_id=ws_id,
+                        )
+
+                # --- Steps 3-4: Continuation proposals + idle execution ---
+                for ws_id in workspace_ids:
+                    try:
+                        from formicos.surface.continuation import (  # noqa: PLC0415
+                            execute_idle_continuations,
+                            queue_continuation_proposals,
+                        )
+
+                        await queue_continuation_proposals(
+                            data_dir_str, ws_id,
+                            runtime.projections, _maint_dispatcher,
+                        )
+                        await execute_idle_continuations(
+                            data_dir_str, ws_id,
+                            runtime.projections, _maint_dispatcher,
+                        )
+                    except Exception:  # noqa: BLE001
+                        log.debug(
+                            "ops_sweep.continuation_failed",
+                            workspace_id=ws_id,
+                        )
+
+                # --- Steps 5-6: Team C workflow/operator patterns (stubs) ---
+                for ws_id in workspace_ids:
+                    try:
+                        from formicos.surface.workflow_learning import (  # noqa: PLC0415
+                            detect_operator_patterns,
+                            extract_workflow_patterns,
+                        )
+
+                        await extract_workflow_patterns(
+                            data_dir_str, ws_id, runtime.projections,
+                        )
+                        await detect_operator_patterns(
+                            data_dir_str, ws_id, runtime.projections,
+                        )
+                    except ImportError:
+                        pass  # Team C not landed yet
+                    except Exception:  # noqa: BLE001
+                        log.debug(
+                            "ops_sweep.workflow_learning_failed",
+                            workspace_id=ws_id,
+                        )
+
+                # --- Step 7: Approved-action processing + compaction ---
+                try:
+                    from formicos.surface.action_queue import (  # noqa: PLC0415
+                        STATUS_APPROVED,
+                        STATUS_EXECUTED,
+                        STATUS_FAILED,
+                        compact_action_log,
+                        update_action,
+                    )
+                    from formicos.surface.action_queue import (
+                        read_actions as _read_actions,
+                    )
+
+                    for ws_id in workspace_ids:
+                        compact_action_log(data_dir_str, ws_id)
+
+                        actions = _read_actions(data_dir_str, ws_id)
+                        for act in actions:
+                            if act.get("status") != STATUS_APPROVED:
+                                continue
+                            sc = act.get("payload", {}).get(
+                                "suggested_colony",
+                            )
+                            if not sc:
+                                continue
+                            try:
+                                from datetime import (  # noqa: PLC0415
+                                    UTC as _UTC,
+                                )
+                                from datetime import (
+                                    datetime as _dt,
+                                )
+
+                                from formicos.core.types import (  # noqa: PLC0415
+                                    CasteSlot as _CS,
+                                )
+
+                                await runtime.spawn_colony(
+                                    workspace_id=ws_id,
+                                    thread_id=act.get(
+                                        "thread_id", "maintenance",
+                                    ) or "maintenance",
+                                    task=sc.get(
+                                        "task", act.get("title", ""),
+                                    ),
+                                    castes=[
+                                        _CS(
+                                            caste=sc.get(
+                                                "caste", "researcher",
+                                            ),
+                                        ),
+                                    ],
+                                    strategy=sc.get(
+                                        "strategy", "sequential",
+                                    ),
+                                    max_rounds=sc.get("max_rounds", 3),
+                                )
+                                update_action(
+                                    data_dir_str, ws_id,
+                                    act["action_id"],
+                                    {
+                                        "status": STATUS_EXECUTED,
+                                        "executed_at": _dt.now(
+                                            _UTC,
+                                        ).isoformat(),
+                                    },
+                                )
+                            except Exception:  # noqa: BLE001
+                                update_action(
+                                    data_dir_str, ws_id,
+                                    act["action_id"],
+                                    {"status": STATUS_FAILED},
+                                )
+                except Exception:  # noqa: BLE001
+                    log.debug("ops_sweep.action_processing_failed")
+
+                # --- Step 8: Post sweep observations to display board ---
+                try:
+                    from formicos.surface.operational_state import (  # noqa: PLC0415
+                        post_sweep_observations as _post_sweep,
+                    )
+                    from formicos.surface.operations_coordinator import (  # noqa: PLC0415
+                        build_operations_summary as _build_ops,
+                    )
+
+                    for ws_id in workspace_ids:
+                        _ops_summary = _build_ops(
+                            data_dir_str, ws_id, runtime.projections,
+                        )
+                        _post_sweep(
+                            data_dir_str, ws_id, _ops_summary,
+                            runtime.projections,
+                        )
+                except Exception:  # noqa: BLE001
+                    log.debug("ops_sweep.display_board_posting_failed")
+
+        _ops_sweep_task = asyncio.create_task(_operational_sweep_loop())
+        _ops_sweep_task.add_done_callback(_log_task_exception)
 
         # Telemetry bus (Wave 17 A2): start with JSONL sink + optional OTel
         from formicos.adapters.telemetry_jsonl import JSONLSink
@@ -921,6 +1153,24 @@ def create_app(
                     addon_name=_reg.manifest.name,
                     reason="shutdown",
                 ))
+        # Wave 68: emit session summaries for recently active threads
+        _cutoff = datetime.now(UTC) - timedelta(minutes=30)
+        for _ws_id, _ws in projections.workspaces.items():
+            for _tid, _thr in _ws.threads.items():
+                if not _thr.queen_messages:
+                    continue
+                _last_msg = _thr.queen_messages[-1]
+                _ts = _parse_projection_timestamp(_last_msg.timestamp)
+                if _ts and _ts > _cutoff:
+                    try:
+                        queen.emit_session_summary(_ws_id, _tid)
+                    except Exception:
+                        log.warning(
+                            "shutdown.session_summary_failed",
+                            workspace_id=_ws_id,
+                            thread_id=_tid,
+                        )
+
         await telemetry_bus.stop()
         await event_store.close()
         log.info("app.stopped")
@@ -950,6 +1200,39 @@ def create_app(
     }
 
     routes: list[Any] = []
+
+    # Wave 66 T3: catch-all addon route handler (resolves from app.state at request time)
+    async def _addon_route_handler(request: Any) -> Any:
+        import inspect as _ri  # noqa: PLC0415
+
+        from starlette.responses import JSONResponse  # noqa: PLC0415
+
+        addon_name = request.path_params.get("addon_name", "")
+        route_path = "/" + request.path_params.get("path", "")
+        regs: list[Any] = getattr(request.app.state, "addon_registrations", [])
+        for reg in regs:
+            for aroute in reg.registered_routes:
+                if aroute["addon_name"] == addon_name and aroute["path"] == route_path:
+                    handler_fn = aroute["handler"]
+                    try:
+                        _accepts = "runtime_context" in _ri.signature(handler_fn).parameters
+                    except (ValueError, TypeError):
+                        _accepts = False
+                    ctx = reg.runtime_context
+                    if _accepts:
+                        result = await handler_fn({}, "", "", runtime_context=ctx)
+                    else:
+                        result = await handler_fn({}, "", "")
+                    return JSONResponse(result)
+        return JSONResponse({"error": "addon route not found"}, status_code=404)
+
+    from starlette.routing import Route  # noqa: PLC0415
+    routes.append(Route(
+        "/addons/{addon_name:str}/{path:path}",
+        _addon_route_handler,
+        methods=["GET"],
+    ))
+
     routes.extend(health_routes(**shared_deps))
     routes.extend(api_routes(**shared_deps))
     routes.extend(colony_io_routes(**shared_deps))

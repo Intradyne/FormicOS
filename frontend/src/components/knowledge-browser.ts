@@ -2,11 +2,24 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { voidTokens, sharedStyles } from '../styles/shared.js';
 import { timeAgo } from '../helpers.js';
-import type { KnowledgeItemDetail, KnowledgeItemPreview, ContradictionPair, TrustRationale, KnowledgeProvenance, ForagerProvenance } from '../types.js';
+import type { KnowledgeItemDetail, KnowledgeItemPreview, ContradictionPair, TrustRationale, KnowledgeProvenance, ForagerProvenance, ProvenanceChainItem, UnifiedSearchResult, UnifiedSearchResponse } from '../types.js';
 import './atoms.js';
+import './addon-panel.js';
 import './knowledge-view.js';
+import './knowledge-search-results.js';
+import './knowledge-health-card.js';
 
-type SubView = 'catalog' | 'graph';
+interface AddonPanel { target: string; display_type: string; path: string; addon_name: string; }
+
+type SubView = 'catalog' | 'graph' | 'tree';
+
+interface TreeBranch {
+  path: string;
+  label: string;
+  entryCount: number;
+  confidence: { alpha: number; beta: number; mean: number };
+  children: TreeBranch[];
+}
 type FilterId = '' | 'skill' | 'experience';
 type SortBy = 'newest' | 'confidence' | 'relevance';
 type ThreadFilter = 'all' | 'thread' | 'workspace' | 'global';
@@ -258,6 +271,25 @@ export class FcKnowledgeBrowser extends LitElement {
       text-decoration-color: rgba(255,255,255,0.1);
     }
     .rel-link:hover { color: var(--v-fg); text-decoration-color: rgba(232,88,26,0.3); }
+    /* Wave 67.5: provenance timeline */
+    .provenance-section {
+      margin-top: 8px; padding: 6px 8px; background: rgba(255,255,255,0.02);
+      border-radius: 4px; border: 1px solid var(--v-border);
+    }
+    .prov-header {
+      font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+      color: var(--v-fg-muted); margin-bottom: 4px;
+    }
+    .prov-item {
+      font-size: 9px; font-family: var(--f-mono); color: var(--v-fg-dim); line-height: 1.8;
+      display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+    }
+    .prov-time { color: var(--v-fg-muted); min-width: 50px; }
+    .prov-type { font-weight: 600; color: var(--v-accent); font-size: 8px; }
+    .prov-detail { flex: 1; }
+    .prov-delta { font-weight: 700; font-size: 8px; }
+    .prov-delta-pos { color: var(--v-success, #2DD4A8); }
+    .prov-delta-neg { color: var(--v-accent, #F06464); }
     /* Wave 63: inline edit + create forms */
     .edit-overlay, .create-overlay {
       padding: 12px; margin-bottom: 10px;
@@ -276,6 +308,87 @@ export class FcKnowledgeBrowser extends LitElement {
     .form-textarea { min-height: 80px; resize: vertical; }
     .form-row { display: flex; gap: 6px; margin-bottom: 6px; }
     .form-actions { display: flex; gap: 6px; margin-top: 8px; }
+    /* Wave 67: hierarchy tree view */
+    .tree-branch {
+      padding: 6px 8px; margin-bottom: 2px; border-radius: 6px; cursor: pointer;
+      border: 1px solid transparent; transition: all 0.15s;
+    }
+    .tree-branch:hover { border-color: var(--v-border); background: rgba(255,255,255,0.02); }
+    .tree-branch-header { display: flex; align-items: center; gap: 8px; }
+    .tree-chevron {
+      font-size: 9px; color: var(--v-fg-dim); width: 12px; text-align: center;
+      transition: transform 0.15s; display: inline-block;
+    }
+    .tree-chevron.open { transform: rotate(90deg); }
+    .tree-label { font-family: var(--f-mono); font-size: 12px; color: var(--v-fg); font-weight: 600; }
+    .tree-count {
+      font-family: var(--f-mono); font-size: 9px; color: var(--v-fg-dim);
+      background: rgba(255,255,255,0.04); padding: 1px 5px; border-radius: 4px;
+    }
+    .tree-conf-bar { width: 60px; height: 3px; background: rgba(255,255,255,0.04); border-radius: 2px; overflow: hidden; }
+    .tree-conf-fill { height: 100%; border-radius: 2px; }
+    .tree-conf-pct { font-family: var(--f-mono); font-size: 9px; color: var(--v-fg-dim); min-width: 32px; text-align: right; }
+    .tree-children { padding-left: 20px; }
+    .tree-empty { font-size: 11px; color: var(--v-fg-dim); padding: 20px; text-align: center; }
+    /* Wave 69: Search-first layout */
+    .search-hero {
+      margin-bottom: 16px;
+    }
+    .search-hero-input {
+      width: 100%; padding: 10px 14px; border-radius: 10px;
+      border: 1px solid var(--v-border); background: var(--v-surface);
+      color: var(--v-fg); font-size: 14px; font-family: var(--f-body);
+      outline: none; box-sizing: border-box;
+      transition: border-color 0.15s;
+    }
+    .search-hero-input::placeholder { color: var(--v-fg-dim); }
+    .search-hero-input:focus { border-color: var(--v-accent); }
+    .quick-stats {
+      font-family: var(--f-mono); font-size: 10.5px; color: var(--v-fg-muted);
+      margin-top: 8px; padding-left: 2px;
+    }
+    .quick-stats .sep { margin: 0 6px; color: var(--v-fg-dim); }
+    /* Wave 69 Track 9: Filter pills */
+    .filter-strip {
+      display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .filter-group-label {
+      font-size: 8px; font-family: var(--f-mono); color: var(--v-fg-dim);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-right: 2px;
+    }
+    .qf-pill {
+      padding: 4px 10px; border-radius: 12px;
+      font-family: var(--f-mono); font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      background: var(--v-surface); border: 1px solid var(--v-border);
+      cursor: pointer; transition: all 0.15s; user-select: none; color: var(--v-fg-dim);
+    }
+    .qf-pill.active {
+      background: rgba(232,88,26,0.08); border-color: rgba(232,88,26,0.3);
+      color: var(--v-accent);
+    }
+    .qf-pill:hover:not(.active) { border-color: rgba(232,88,26,0.15); }
+    /* Wave 69 Track 8: Detail mode toggle */
+    .detail-mode-toggle {
+      font-size: 9px; font-family: var(--f-mono); padding: 3px 10px; border-radius: 8px;
+      cursor: pointer; border: 1px solid var(--v-border); background: transparent;
+      color: var(--v-fg-dim); transition: all 0.15s; user-select: none; margin-left: auto;
+    }
+    .detail-mode-toggle.active {
+      background: rgba(232,88,26,0.08); border-color: rgba(232,88,26,0.2);
+      color: var(--v-accent);
+    }
+    .detail-mode-toggle:hover { border-color: rgba(232,88,26,0.25); color: var(--v-accent); }
+    /* Wave 69: Simple entry card (non-detail mode) */
+    .simple-conf {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 9px; font-family: var(--f-mono); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .simple-conf-high { color: var(--v-success, #2DD4A8); }
+    .simple-conf-medium { color: var(--v-warn, #F5B731); }
+    .simple-conf-low { color: var(--v-danger, #F06464); }
   `];
 
   @property() workspaceId = '';
@@ -283,6 +396,8 @@ export class FcKnowledgeBrowser extends LitElement {
   @property() sourceColonyId = '';
   /** Current thread ID for thread-scoped filtering (Wave 29). */
   @property() threadId = '';
+  /** Addon panels targeting this tab (Wave 66 T3). */
+  @property({ type: Array }) addonPanels: AddonPanel[] = [];
 
   @state() private subView: SubView = 'catalog';
   @state() private items: KnowledgeItemPreview[] = [];
@@ -313,12 +428,34 @@ export class FcKnowledgeBrowser extends LitElement {
   @state() private _createContent = '';
   @state() private _createCategory = 'experience';
   @state() private _createDomain = '';
+  /** Wave 67: hierarchy tree data. */
+  @state() private _treeBranches: TreeBranch[] = [];
+  @state() private _treeLoading = false;
+  @state() private _treeExpanded: Set<string> = new Set();
+  /** Wave 67.5: provenance chain cache. */
+  @state() private _provCache: Record<string, ProvenanceChainItem[]> = {};
+  /** Wave 69 Track 8: Detail mode toggle (off = simple, on = power-user). */
+  @state() private _detailMode = false;
+  /** Wave 72 Track 4: Ingest/reindex status. */
+  @state() private _ingestStatus = '';
+  @state() private _reindexStatus = '';
+  /** Wave 69 Track 7: Unified search results from /workspaces/{id}/search. */
+  @state() private _unifiedResults: UnifiedSearchResult[] = [];
+  @state() private _unifiedSearchActive = false;
+  @state() private _unifiedLoading = false;
+  /** Wave 69 Track 9: Quick filter state. */
+  @state() private _sourceFilter: 'all' | 'memory' | 'docs' | 'code' = 'all';
+  @state() private _domainFilter = '';
+  @state() private _statusFilter: 'all' | 'verified' | 'candidate' = 'all';
+  /** Wave 69: Quick stats for search-first view. */
+  @state() private _quickStats: { entryCount: number; domainCount: number } | null = null;
 
   private _debounceTimer = 0;
 
   connectedCallback() {
     super.connectedCallback();
     void this._fetchItems();
+    void this._fetchQuickStats();
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -407,7 +544,97 @@ export class FcKnowledgeBrowser extends LitElement {
   private _onSearchInput(e: Event) {
     this.searchQuery = (e.target as HTMLInputElement).value;
     clearTimeout(this._debounceTimer);
-    this._debounceTimer = window.setTimeout(() => void this._fetchItems(), 300);
+    if (!this._detailMode) {
+      // Wave 69: In simple mode, use unified search
+      this._debounceTimer = window.setTimeout(() => void this._unifiedSearch(), 300);
+    } else {
+      this._debounceTimer = window.setTimeout(() => void this._fetchItems(), 300);
+    }
+  }
+
+  /** Wave 69 Track 7: Search across memory + addon indices via unified endpoint. */
+  private async _unifiedSearch() {
+    const q = this.searchQuery.trim();
+    if (!q) {
+      this._unifiedResults = [];
+      this._unifiedSearchActive = false;
+      return;
+    }
+    if (!this.workspaceId) return;
+    this._unifiedLoading = true;
+    this._unifiedSearchActive = true;
+    try {
+      const params = new URLSearchParams({ q, limit: '10' });
+      if (this._sourceFilter !== 'all') {
+        params.set('sources', this._sourceFilter);
+      }
+      const resp = await fetch(
+        `/api/v1/workspaces/${this.workspaceId}/search?${params}`,
+      );
+      if (resp.ok) {
+        const data = await resp.json() as UnifiedSearchResponse;
+        let results = data.results;
+        // Client-side domain filter
+        if (this._domainFilter) {
+          results = results.filter(r => {
+            const domains = (r.metadata?.domains as string[]) ?? [];
+            return domains.includes(this._domainFilter);
+          });
+        }
+        // Client-side status filter
+        if (this._statusFilter !== 'all') {
+          results = results.filter(r => {
+            const status = (r.metadata?.status as string) ?? '';
+            return status === this._statusFilter;
+          });
+        }
+        this._unifiedResults = results;
+      } else {
+        this._unifiedResults = [];
+      }
+    } catch {
+      this._unifiedResults = [];
+    }
+    this._unifiedLoading = false;
+  }
+
+  /** Wave 69: Fetch quick stats for the search-first landing. */
+  private async _fetchQuickStats() {
+    if (!this.workspaceId) return;
+    try {
+      const resp = await fetch(`/api/v1/knowledge?workspace=${this.workspaceId}&limit=1`);
+      if (resp.ok) {
+        const data = await resp.json() as { items: KnowledgeItemPreview[]; total: number };
+        const domainSet = new Set<string>();
+        // Use full items list to count domains (fetch a larger batch)
+        const resp2 = await fetch(`/api/v1/knowledge?workspace=${this.workspaceId}&limit=200`);
+        if (resp2.ok) {
+          const data2 = await resp2.json() as { items: KnowledgeItemPreview[]; total: number };
+          for (const it of data2.items) {
+            for (const d of it.domains) domainSet.add(d);
+          }
+        }
+        this._quickStats = { entryCount: data.total, domainCount: domainSet.size };
+      }
+    } catch { /* best-effort */ }
+  }
+
+  /** Wave 69 Track 9: Set source filter and re-search. */
+  private _setSourceFilter(f: 'all' | 'memory' | 'docs' | 'code') {
+    this._sourceFilter = f;
+    if (this._unifiedSearchActive) void this._unifiedSearch();
+  }
+
+  /** Wave 69 Track 9: Set domain filter and re-search. */
+  private _setDomainFilter(d: string) {
+    this._domainFilter = this._domainFilter === d ? '' : d;
+    if (this._unifiedSearchActive) void this._unifiedSearch();
+  }
+
+  /** Wave 69 Track 9: Set status filter and re-search. */
+  private _setStatusFilter(s: 'all' | 'verified' | 'candidate') {
+    this._statusFilter = s;
+    if (this._unifiedSearchActive) void this._unifiedSearch();
   }
 
   private _setFilter(f: FilterId) {
@@ -428,6 +655,7 @@ export class FcKnowledgeBrowser extends LitElement {
     this.expandedId = id;
     // Wave 60: fetch relationships alongside detail
     void this._fetchRelationships(id);
+    void this._fetchProvenance(id);
     if (this.detailCache[id] || this.detailLoadingId === id) {
       return;
     }
@@ -601,6 +829,40 @@ export class FcKnowledgeBrowser extends LitElement {
     } catch (err) { console.warn('fetchRelationships failed:', err); }
   }
 
+  // --- Wave 67.5: fetch provenance chain ---
+  private async _fetchProvenance(entryId: string) {
+    if (this._provCache[entryId]) return;
+    try {
+      const resp = await fetch(`/api/v1/knowledge/${encodeURIComponent(entryId)}/provenance`);
+      if (resp.ok) {
+        const data = await resp.json() as { chain: ProvenanceChainItem[] };
+        this._provCache = { ...this._provCache, [entryId]: data.chain ?? [] };
+      }
+    } catch { /* non-critical */ }
+  }
+
+  private _renderProvenance(entryId: string) {
+    const chain = this._provCache[entryId];
+    if (!chain || chain.length === 0) return nothing;
+    return html`
+      <div class="provenance-section">
+        <div class="prov-header">Provenance</div>
+        ${chain.map(item => html`
+          <div class="prov-item">
+            <span class="prov-time">${timeAgo(item.timestamp)}</span>
+            <span class="prov-type">${item.event_type.replace(/([A-Z])/g, ' $1').trim()}</span>
+            <span class="prov-detail">${item.detail}</span>
+            ${item.confidence_delta != null ? html`
+              <span class="prov-delta ${item.confidence_delta >= 0 ? 'prov-delta-pos' : 'prov-delta-neg'}">
+                ${item.confidence_delta >= 0 ? '+' : ''}${(item.confidence_delta * 100).toFixed(1)}%
+              </span>
+            ` : nothing}
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
   // --- Wave 60 B2: submit operator feedback ---
   private async _submitFeedback(entryId: string, positive: boolean) {
     if (this._feedbackSent[entryId]) return;
@@ -642,19 +904,166 @@ export class FcKnowledgeBrowser extends LitElement {
         ${this.sourceColonyId
           ? html`<fc-pill color="var(--v-fg-dim)" sm>colony: ${this.sourceColonyId.slice(0, 12)}</fc-pill>`
           : nothing}
-        <div class="sub-tabs">
-          <span class="sub-tab ${this.subView === 'catalog' ? 'active' : ''}"
-            @click=${() => { this.subView = 'catalog'; }}>Catalog</span>
-          <span class="sub-tab ${this.subView === 'graph' ? 'active' : ''}"
-            @click=${() => { this.subView = 'graph'; }}>Graph</span>
-        </div>
+        <span class="detail-mode-toggle ${this._detailMode ? 'active' : ''}"
+          @click=${() => { this._detailMode = !this._detailMode; }}
+          title="${this._detailMode ? 'Switch to simple view' : 'Switch to detail view'}">
+          ${this._detailMode ? '◆ Detail' : '◇ Simple'}
+        </span>
+        ${this._detailMode ? html`
+          <div class="sub-tabs">
+            <span class="sub-tab ${this.subView === 'catalog' ? 'active' : ''}"
+              @click=${() => { this.subView = 'catalog'; }}>Catalog</span>
+            <span class="sub-tab ${this.subView === 'graph' ? 'active' : ''}"
+              @click=${() => { this.subView = 'graph'; }}>Graph</span>
+            <span class="sub-tab ${this.subView === 'tree' ? 'active' : ''}"
+              @click=${() => { this.subView = 'tree'; void this._fetchTree(); }}>Tree</span>
+          </div>
+        ` : nothing}
       </div>
 
-      ${this.subView === 'graph'
+      <fc-knowledge-health-card .workspaceId=${this.workspaceId}
+        style="margin-bottom:10px"></fc-knowledge-health-card>
+
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <button class="promote-btn" @click=${() => this._ingestUpload()}>Upload &amp; Ingest</button>
+        <button class="promote-btn" @click=${() => void this._triggerReindex('docs-index')}>Reindex Docs</button>
+        <button class="promote-btn" @click=${() => void this._triggerReindex('codebase-index')}>Reindex Code</button>
+        <button class="promote-btn" @click=${() => void this._fetch()}>Refresh Library</button>
+        ${this._ingestStatus ? html`
+          <span style="font-size:10px;font-family:var(--f-mono);color:var(--v-fg-dim)">${this._ingestStatus}</span>
+        ` : nothing}
+        ${this._reindexStatus ? html`
+          <span style="font-size:10px;font-family:var(--f-mono);color:var(--v-fg-dim)">${this._reindexStatus}</span>
+        ` : nothing}
+      </div>
+
+      ${this.addonPanels.filter(p => p.target === 'knowledge').map(p => html`
+        <fc-addon-panel
+          src="/addons/${p.addon_name}${p.path}"
+          display-type="${p.display_type}"
+          label="${p.addon_name}">
+        </fc-addon-panel>
+      `)}
+
+      ${!this._detailMode
+        ? this._renderSearchFirst()
+        : this.subView === 'graph'
         ? html`<div class="graph-container">
             <fc-knowledge-view .workspaceId=${this.workspaceId} .graphOnly=${true}></fc-knowledge-view>
           </div>`
+        : this.subView === 'tree'
+        ? this._renderTreeView()
         : this._renderCatalog()}
+    `;
+  }
+
+  /** Wave 69 Track 7: Search-first default view. */
+  private _renderSearchFirst() {
+    const stats = this._quickStats;
+    const topDomains = this.healthStats?.topDomains ?? [];
+    return html`
+      <div class="search-hero">
+        <input class="search-hero-input" type="text"
+          placeholder="Search knowledge, docs, code..."
+          .value=${this.searchQuery}
+          @input=${this._onSearchInput}>
+        ${stats ? html`
+          <div class="quick-stats">
+            ${stats.entryCount} entries<span class="sep">·</span>${stats.domainCount} domains
+          </div>
+        ` : nothing}
+      </div>
+
+      ${this._renderFilterStrip(topDomains)}
+
+      ${this._unifiedLoading
+        ? html`<div class="loading">Searching\u2026</div>`
+        : this._unifiedSearchActive
+          ? html`<fc-knowledge-search-results
+              .results=${this._unifiedResults}
+              .activeWorkspaceId=${this.workspaceId}
+              @entry-selected=${(e: CustomEvent) => {
+                this.expandedId = e.detail.id;
+                this._detailMode = true;
+                this.subView = 'catalog';
+                void this._toggleDetail(e.detail.id);
+              }}
+            ></fc-knowledge-search-results>`
+          : this._renderSimpleCatalog()}
+    `;
+  }
+
+  /** Wave 69 Track 9: Source / domain / status filter pills. */
+  private _renderFilterStrip(topDomains: [string, number][]) {
+    return html`
+      <div class="filter-strip">
+        <span class="filter-group-label">Source</span>
+        ${(['all', 'memory', 'docs', 'code'] as const).map(s => html`
+          <span class="qf-pill ${this._sourceFilter === s ? 'active' : ''}"
+            @click=${() => this._setSourceFilter(s)}>${s}</span>
+        `)}
+        <span class="divider"></span>
+        ${topDomains.length > 0 ? html`
+          <span class="filter-group-label">Domain</span>
+          ${topDomains.slice(0, 6).map(([d]) => html`
+            <span class="qf-pill ${this._domainFilter === d ? 'active' : ''}"
+              @click=${() => this._setDomainFilter(d)}>${d}</span>
+          `)}
+          <span class="divider"></span>
+        ` : nothing}
+        <span class="filter-group-label">Status</span>
+        ${(['all', 'verified', 'candidate'] as const).map(s => html`
+          <span class="qf-pill ${this._statusFilter === s ? 'active' : ''}"
+            @click=${() => this._setStatusFilter(s)}>${s}</span>
+        `)}
+      </div>
+    `;
+  }
+
+  /** Wave 69: Simplified catalog for non-detail mode (no score bars, no Beta, no provenance). */
+  private _renderSimpleCatalog() {
+    if (this.loading) return html`<div class="loading">Loading knowledge entries\u2026</div>`;
+    const sorted = this.sorted;
+    if (sorted.length === 0) {
+      return this.total === 0 && !this.searchQuery.trim()
+        ? html`<div class="glass empty-state">
+            <div style="margin-bottom:8px;font-weight:600;color:var(--v-fg)">No knowledge entries yet.</div>
+            <div>Knowledge is extracted automatically when colonies complete.</div>
+          </div>`
+        : html`<div class="glass empty-state">No entries match the current filter.</div>`;
+    }
+    return html`<div class="entry-list">${sorted.map(e => this._renderSimpleEntry(e))}</div>`;
+  }
+
+  /** Wave 69 Track 8: Simple entry card (detail mode off). */
+  private _renderSimpleEntry(e: KnowledgeItemPreview) {
+    const conf = this._betaConf(e);
+    const level = conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
+    const label = level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low';
+    const snippet = e.summary || e.content_preview || '';
+    return html`
+      <div class="glass entry-card" @click=${() => {
+        this.expandedId = e.id;
+        this._detailMode = true;
+        this.subView = 'catalog';
+        void this._toggleDetail(e.id);
+      }} style="cursor:pointer">
+        <div class="entry-header">
+          <span class="entry-title">${e.title || e.id.slice(0, 24)}</span>
+          <fc-pill class="type-${e.canonical_type}" sm>${e.canonical_type}</fc-pill>
+          <fc-pill class="status-${e.status}" sm>${e.status}</fc-pill>
+        </div>
+        ${snippet ? html`
+          <div class="entry-content" style="max-height:40px">${snippet.slice(0, 160)}</div>
+        ` : nothing}
+        <div class="entry-meta">
+          <div class="simple-conf">
+            <fc-dot status=${level === 'high' ? 'loaded' : level === 'medium' ? 'pending' : 'error'}></fc-dot>
+            <span class="simple-conf-${level}">${label}</span>
+          </div>
+          ${e.domains.slice(0, 3).map(d => html`<span class="domain-tag">${d}</span>`)}
+        </div>
+      </div>
     `;
   }
 
@@ -728,6 +1137,124 @@ export class FcKnowledgeBrowser extends LitElement {
             </div>`;
         })}
       </div>`;
+  }
+
+  /* ---- Wave 67: hierarchy tree view ---- */
+
+  private async _fetchTree() {
+    if (!this.workspaceId || this._treeLoading) return;
+    this._treeLoading = true;
+    try {
+      const res = await fetch(`/api/v1/workspaces/${this.workspaceId}/knowledge-tree`);
+      if (res.ok) {
+        const data = await res.json();
+        this._treeBranches = data.branches ?? [];
+      }
+    } catch { /* ignore */ }
+    this._treeLoading = false;
+  }
+
+  private _toggleBranch(path: string) {
+    const next = new Set(this._treeExpanded);
+    if (next.has(path)) next.delete(path); else next.add(path);
+    this._treeExpanded = next;
+  }
+
+  private _filterByBranch(path: string) {
+    this.searchQuery = `path:${path}`;
+    this.subView = 'catalog';
+    void this._fetchItems();
+  }
+
+  private _confColor(mean: number): string {
+    if (mean >= 0.7) return 'var(--v-tier-high, #2DD4A8)';
+    if (mean >= 0.4) return 'var(--v-tier-moderate, #F5B731)';
+    return 'var(--v-tier-exploratory, #F06464)';
+  }
+
+  // Wave 72 Track 4: Upload & Ingest (ported from knowledge-view.ts)
+  private _ingestUpload() {
+    if (!this.workspaceId) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.txt,.md,.py,.json,.yaml,.yml,.csv';
+    input.onchange = async () => {
+      if (!input.files?.length) return;
+      const form = new FormData();
+      for (const file of Array.from(input.files)) {
+        form.append(file.name, file);
+      }
+      this._ingestStatus = 'Ingesting...';
+      try {
+        const resp = await fetch(
+          `/api/v1/workspaces/${this.workspaceId}/ingest`,
+          { method: 'POST', body: form },
+        );
+        if (resp.ok) {
+          const data = await resp.json() as { ingested?: Array<{ name: string; chunks: number }> };
+          const items = (data.ingested ?? []) as Array<{ name: string; chunks: number }>;
+          const names = items.map((i: { name: string; chunks: number }) => `${i.name} (${i.chunks})`).join(', ');
+          this._ingestStatus = items.length > 0 ? `Ingested: ${names}` : 'No files ingested.';
+        } else {
+          this._ingestStatus = 'Ingest failed.';
+        }
+      } catch {
+        this._ingestStatus = 'Ingest error.';
+      }
+    };
+    input.click();
+  }
+
+  private async _triggerReindex(addonName: string) {
+    this._reindexStatus = `Reindexing ${addonName}...`;
+    try {
+      const resp = await fetch(`/api/v1/addons/${addonName}/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handler: '' }),
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { result?: string };
+        this._reindexStatus = `${addonName}: ${data.result ?? 'ok'}`;
+      } else {
+        this._reindexStatus = `${addonName}: failed`;
+      }
+    } catch {
+      this._reindexStatus = `${addonName}: error`;
+    }
+  }
+
+  private _renderTreeView() {
+    if (this._treeLoading) return html`<div class="tree-empty">Loading hierarchy...</div>`;
+    if (this._treeBranches.length === 0) return html`<div class="tree-empty">No hierarchy branches yet. Entries will be organized as knowledge is created.</div>`;
+    return html`<div style="margin-top: 8px;">
+      ${this._treeBranches.map(b => this._renderBranch(b, 0))}
+    </div>`;
+  }
+
+  private _renderBranch(branch: TreeBranch, depth: number) {
+    const expanded = this._treeExpanded.has(branch.path);
+    const hasChildren = branch.children.length > 0;
+    const pct = (branch.confidence.mean * 100).toFixed(0);
+    return html`
+      <div class="tree-branch" style="padding-left: ${depth * 20 + 8}px;">
+        <div class="tree-branch-header">
+          <span class="tree-chevron ${expanded ? 'open' : ''}"
+            @click=${(e: Event) => { e.stopPropagation(); if (hasChildren) this._toggleBranch(branch.path); }}
+            style="visibility: ${hasChildren ? 'visible' : 'hidden'}">▶</span>
+          <span class="tree-label" @click=${() => this._filterByBranch(branch.path)}>${branch.label}</span>
+          <span class="tree-count">${branch.entryCount}</span>
+          <div class="tree-conf-bar">
+            <div class="tree-conf-fill" style="width: ${pct}%; background: ${this._confColor(branch.confidence.mean)};"></div>
+          </div>
+          <span class="tree-conf-pct">${pct}%</span>
+        </div>
+      </div>
+      ${expanded && hasChildren ? html`<div class="tree-children">
+        ${branch.children.map(c => this._renderBranch(c, depth + 1))}
+      </div>` : nothing}
+    `;
   }
 
   private _renderCatalog() {
@@ -870,7 +1397,7 @@ export class FcKnowledgeBrowser extends LitElement {
 
   /** Render horizontal stacked bar for score breakdown (Wave 35 A3). */
   private _renderScoreBar(e: KnowledgeItemPreview) {
-    const sb = (e as Record<string, unknown>).score_breakdown as Record<string, number> | undefined;
+    const sb = ((e as Record<string, unknown>).score_breakdown ?? (e as Record<string, unknown>)._score_breakdown) as Record<string, number> | undefined;
     if (!sb) return nothing;
     const signals = ['semantic', 'thompson', 'freshness', 'status', 'thread', 'cooccurrence', 'graph_proximity'] as const;
     const weights = (sb as Record<string, unknown>).weights as Record<string, number> | undefined ?? {};
@@ -1042,6 +1569,7 @@ export class FcKnowledgeBrowser extends LitElement {
                 ${e.domains.map(d => html`<span class="domain-tag">${d}</span>`)}
                 ${e.tool_refs.map(t => html`<span class="domain-tag">${t}</span>`)}
               </div>` : nothing}
+            ${this._renderScoreBar(e)}
             <div class="entry-actions">
               <button class="detail-toggle" @click=${() => void this._toggleDetail(e.id)}>
                 ${isExpanded ? 'Hide detail' : 'Inspect'}
@@ -1092,7 +1620,6 @@ export class FcKnowledgeBrowser extends LitElement {
               Observations: ${Math.max(0, Math.round(((e.conf_alpha ?? 5) + (e.conf_beta ?? 5)) - 10))}<br>
               Decay: ${(e as Record<string, unknown>).decay_class ?? 'ephemeral'}<br>
               ${(e as Record<string, unknown>).prediction_error_count ? html`Pred. errors: ${(e as Record<string, unknown>).prediction_error_count}<br>` : nothing}
-              ${this._renderScoreBar(e)}
             </div>
             ${e.last_accessed ? html`
               <div style="font-size:8px;font-family:var(--f-mono);color:var(--v-fg-dim);margin-top:2px">${timeAgo(e.last_accessed)}</div>
@@ -1113,6 +1640,7 @@ export class FcKnowledgeBrowser extends LitElement {
               ${this._renderTrustPanel(detail)}
             ` : nothing}
             ${this._renderRelationships(e.id)}
+            ${this._renderProvenance(e.id)}
           </div>
         ` : nothing}
       </div>`;

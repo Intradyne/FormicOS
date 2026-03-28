@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -16,6 +20,85 @@ if TYPE_CHECKING:
     from formicos.surface.knowledge_catalog import KnowledgeCatalog
     from formicos.surface.projections import ProjectionStore
     from formicos.surface.runtime import Runtime
+
+log = structlog.get_logger()
+
+# ---------------------------------------------------------------------------
+# Wave 69 Track 6: Addon result parsing (module-level for testability)
+# ---------------------------------------------------------------------------
+
+# Regex to extract structured results from addon markdown output.
+_ADDON_RESULT_RE = re.compile(
+    r"\*\*(.+?)\*\*\s*(?:\(score:\s*([\d.]+)\))?"
+)
+
+# Map UI source tokens to addon content_kinds.
+_SOURCE_TO_KINDS: dict[str, list[str]] = {
+    "docs": ["documentation"],
+    "code": ["source_code"],
+}
+
+
+def _parse_addon_results(
+    raw: str,
+    addon_name: str,
+    source_label: str,
+    content_kinds: list[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Parse addon markdown output into structured result dicts."""
+    results: list[dict[str, Any]] = []
+    blocks = raw.split("\n\n")
+    for block in blocks:
+        if len(results) >= limit:
+            break
+        m = _ADDON_RESULT_RE.search(block)
+        if not m:
+            continue
+        path_part = m.group(1).strip()
+        score_str = m.group(2)
+        score = float(score_str) if score_str else 0.0
+
+        # Extract snippet from code block or remaining text
+        snippet = ""
+        code_start = block.find("```")
+        if code_start >= 0:
+            code_end = block.find("```", code_start + 3)
+            if code_end >= 0:
+                # Skip language marker on first line
+                inner = block[code_start + 3 : code_end]
+                first_nl = inner.find("\n")
+                snippet = (
+                    inner[first_nl + 1 :] if first_nl >= 0 else inner
+                )[:200]
+            else:
+                snippet = block[code_start + 3 :][:200]
+        else:
+            snippet = block[m.end() :][:200].strip()
+
+        # Parse file path and line range
+        file_path = path_part
+        line_range = ""
+        if ":" in path_part:
+            parts = path_part.rsplit(":", 1)
+            if parts[1] and parts[1][0].isdigit():
+                file_path = parts[0]
+                line_range = parts[1]
+
+        results.append({
+            "source": addon_name,
+            "source_label": source_label,
+            "id": f"{addon_name}:{path_part}",
+            "title": path_part,
+            "snippet": snippet,
+            "score": round(score, 4),
+            "metadata": {
+                "file_path": file_path,
+                "line_range": line_range,
+                "content_kinds": content_kinds,
+            },
+        })
+    return results
 
 
 def routes(
@@ -343,6 +426,22 @@ def routes(
             "total": len(annotations),
         })
 
+    # Wave 67.5: provenance chain endpoint
+    async def get_entry_provenance(request: Request) -> JSONResponse:
+        """Return the append-only provenance chain for a knowledge entry."""
+        if projections is None:
+            return _err_response("KNOWLEDGE_CATALOG_UNAVAILABLE")
+        item_id = request.path_params["item_id"]
+        entry = projections.memory_entries.get(item_id)
+        if entry is None:
+            return _err_response("KNOWLEDGE_ITEM_NOT_FOUND")
+        chain = entry.get("provenance_chain", [])
+        return JSONResponse({
+            "entry_id": item_id,
+            "chain": chain,
+            "total": len(chain),
+        })
+
     async def get_entry_overlay_status(request: Request) -> JSONResponse:
         """Get operator overlay status for a knowledge entry."""
         if projections is None:
@@ -394,6 +493,209 @@ def routes(
         ))
         return JSONResponse({"ok": True, "workspace_id": workspace_id, "overridden": True})
 
+    # ------------------------------------------------------------------
+    # Wave 69 Track 6: Unified search across memory + addon indices
+    # ------------------------------------------------------------------
+
+    async def _search_memory_source(
+        query: str, workspace_id: str, limit: int,
+    ) -> list[dict[str, Any]]:
+        """Search institutional memory and return source-labeled results."""
+        if knowledge_catalog is None:
+            return []
+        items = await knowledge_catalog.search(
+            query=query, workspace_id=workspace_id, top_k=limit,
+        )
+        return [
+            {
+                "source": "memory",
+                "source_label": "Institutional Memory",
+                "id": it.get("id", ""),
+                "title": it.get("title", ""),
+                "snippet": (
+                    it.get("summary") or it.get("content_preview") or ""
+                )[:200],
+                "score": round(it.get("score", 0), 4),
+                "metadata": {
+                    "confidence": round(it.get("confidence", 0.5), 2),
+                    "status": it.get("status", ""),
+                    "domains": it.get("domains", []),
+                    "sub_type": it.get("sub_type", ""),
+                },
+            }
+            for it in items
+        ]
+
+    async def _search_addon_source(
+        addon_name: str,
+        manifest: Any,
+        reg: Any,
+        query: str,
+        workspace_id: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Search a single addon index and return source-labeled results."""
+        search_tool_name = getattr(manifest, "search_tool", "")
+        content_kinds = getattr(manifest, "content_kinds", [])
+        tool_spec = None
+        for t in manifest.tools:
+            if t.name == search_tool_name:
+                tool_spec = t
+                break
+        if tool_spec is None:
+            # Fallback: try first tool with 'search' in name
+            for t in manifest.tools:
+                if "search" in t.name.lower():
+                    tool_spec = t
+                    break
+        if tool_spec is None:
+            return []
+
+        try:
+            from formicos.surface.addon_loader import (  # noqa: PLC0415
+                _resolve_handler,  # pyright: ignore[reportPrivateUsage]
+            )
+
+            handler = _resolve_handler(addon_name, tool_spec.handler)
+        except Exception:  # noqa: BLE001
+            log.debug(
+                "unified_search.handler_resolve_failed",
+                addon=addon_name,
+            )
+            return []
+
+        rc = getattr(reg, "runtime_context", {}) or {}
+        _accepts_ctx = "runtime_context" in inspect.signature(handler).parameters
+
+        try:
+            if _accepts_ctx:
+                raw = await handler(
+                    {"query": query, "top_k": limit},
+                    workspace_id,
+                    "",
+                    runtime_context=rc,
+                )
+            else:
+                raw = await handler(
+                    {"query": query, "top_k": limit},
+                    workspace_id,
+                    "",
+                )
+        except Exception:  # noqa: BLE001
+            log.debug(
+                "unified_search.addon_search_failed",
+                addon=addon_name,
+            )
+            return []
+
+        if not isinstance(raw, str):
+            return []
+
+        return _parse_addon_results(
+            raw, addon_name, manifest.description or addon_name,
+            content_kinds, limit,
+        )
+
+    async def unified_search(request: Request) -> JSONResponse:
+        """Search across institutional memory and addon indices.
+
+        GET /api/v1/workspaces/{workspace_id}/search?q=...&sources=memory,docs,code&limit=10
+        """
+        workspace_id = request.path_params["workspace_id"]
+        query = request.query_params.get("q", "").strip()
+        if not query:
+            return _err_response("QUERY_REQUIRED")
+
+        sources_raw = request.query_params.get("sources", "")
+        requested_sources = (
+            [s.strip() for s in sources_raw.split(",") if s.strip()]
+            if sources_raw
+            else []
+        )
+        try:
+            limit = max(1, min(
+                int(request.query_params.get("limit", "10")), 20,
+            ))
+        except ValueError:
+            return _err_response("LIMIT_INVALID")
+
+        include_memory = not requested_sources or "memory" in requested_sources
+
+        # Determine which addon sources to query
+        regs: list[Any] = getattr(
+            request.app.state, "addon_registrations", [],
+        )
+        manifests: list[Any] = getattr(
+            request.app.state, "addon_manifests", [],
+        )
+
+        # Build mapping: addon_name -> (manifest, registration)
+        reg_by_name: dict[str, Any] = {}
+        for r in regs:
+            reg_by_name[r.manifest.name] = r
+
+        addon_tasks: list[tuple[str, Any, Any]] = []
+        for m in manifests:
+            search_tool = getattr(m, "search_tool", "")
+            if not search_tool:
+                # Check if any tool has 'search' in name
+                has_search = any(
+                    "search" in t.name.lower() for t in m.tools
+                )
+                if not has_search:
+                    continue
+
+            content_kinds = getattr(m, "content_kinds", [])
+            if requested_sources:
+                # Check if this addon matches any requested source
+                matches = False
+                if m.name in requested_sources:
+                    matches = True
+                else:
+                    for src_token in requested_sources:
+                        expected_kinds = _SOURCE_TO_KINDS.get(src_token, [])
+                        if expected_kinds and any(
+                            k in content_kinds for k in expected_kinds
+                        ):
+                            matches = True
+                            break
+                if not matches:
+                    continue
+
+            reg = reg_by_name.get(m.name)
+            if reg is not None:
+                addon_tasks.append((m.name, m, reg))
+
+        # Fan out searches in parallel
+        tasks: list[Any] = []
+        if include_memory:
+            tasks.append(_search_memory_source(query, workspace_id, limit))
+        for addon_name, manifest, reg in addon_tasks:
+            tasks.append(
+                _search_addon_source(
+                    addon_name, manifest, reg, query, workspace_id, limit,
+                ),
+            )
+
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect results: memory first, then addon groups
+        all_results: list[dict[str, Any]] = []
+        for result in raw_results:
+            if isinstance(result, BaseException):
+                log.debug(
+                    "unified_search.source_error",
+                    error=str(result),
+                )
+                continue
+            if isinstance(result, list):
+                all_results.extend(result)  # pyright: ignore[reportUnknownArgumentType]
+
+        return JSONResponse({
+            "results": all_results,
+            "total": len(all_results),
+        })
+
     return [
         Route("/api/v1/knowledge", list_knowledge, methods=["GET"]),
         Route(
@@ -430,11 +732,20 @@ def routes(
             get_entry_annotations, methods=["GET"],
         ),
         Route(
+            "/api/v1/knowledge/{item_id:str}/provenance",
+            get_entry_provenance, methods=["GET"],
+        ),
+        Route(
             "/api/v1/knowledge/{item_id:str}/overlay",
             get_entry_overlay_status, methods=["GET"],
         ),
         Route(
             "/api/v1/knowledge/config-override",
             override_config_suggestion, methods=["POST"],
+        ),
+        # Wave 69 Track 6: Unified search
+        Route(
+            "/api/v1/workspaces/{workspace_id:str}/search",
+            unified_search, methods=["GET"],
         ),
     ]

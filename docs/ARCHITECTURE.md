@@ -25,7 +25,7 @@ maintenance lifecycle, also read [KNOWLEDGE_LIFECYCLE.md](KNOWLEDGE_LIFECYCLE.md
                   v                      v
 +------------------------------------------------------------------+
 |                            CORE LAYER                            |
-|  events.py (55 types) | ports.py | types.py | crdt.py | settings |
+|  events.py (69 types) | ports.py | types.py | crdt.py | settings |
 +------------------------------------------------------------------+
 ```
 

@@ -1,4 +1,4 @@
-# FormicOS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Stigmergic Multi-Agent Colony Framework
+# FormicOS -- Stigmergic Multi-Agent Colony Framework
 
 Open-source Python system: AI agents coordinate through shared environmental
 signals (pheromones), not direct messaging. Tree-structured data model.
@@ -6,14 +6,17 @@ Event-sourced (69 events, closed union). Single operator. Local-first with
 cloud model support. Bayesian knowledge metabolism with Thompson Sampling
 retrieval. Federated knowledge exchange via Computational CRDTs.
 Multi-colony orchestration via DelegationPlan DAG parallelism.
+MCP developer bridge (27 tools, 9 resources, 6 prompts) for Claude Code
+integration. Queen Command & Control surface with behavioral overrides,
+display board, tool tracking, and context budget visibility.
 
 ## Architecture
 
-Four layers, strict inward dependency. **ENFORCED BY CI ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â backward imports fail the build.**
+Four layers, strict inward dependency. **ENFORCED BY CI -- backward imports fail the build.**
 
 | Layer | Responsibility | May import |
 |----------|--------------------------------------|----------------------|
-| Core | Types, events (65), port interfaces, CRDTs | NOTHING |
+| Core | Types, events (69), port interfaces, CRDTs | NOTHING |
 | Engine | Colony execution, pure computation | Core only |
 | Adapters | Tech bindings (LLM, SQLite, Qdrant, MCP) | Core only |
 | Surface | Wiring, HTTP/WS/CLI, lifecycle | Core, Engine, Adapters |
@@ -39,15 +42,15 @@ Current repo state:
 Colonies produce knowledge entries (skills, experiences) via LLM extraction,
 5-axis security scanning (prompt injection, data exfiltration, credential
 leakage, code safety, credential detection via detect-secrets), and
-transcript harvest (hook position 4.5 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â extracts bug root causes,
+transcript harvest (hook position 4.5 -- extracts bug root causes,
 conventions, tool configurations). Entries carry Bayesian confidence
 posteriors (`Beta(alpha, beta)`) evolved by Thompson Sampling, with
-decay classes (ephemeral ÃƒÅ½Ã‚Â³=0.98, stable ÃƒÅ½Ã‚Â³=0.995, permanent ÃƒÅ½Ã‚Â³=1.0) and
+decay classes (ephemeral gamma=0.98, stable gamma=0.995, permanent gamma=1.0) and
 a 180-day gamma cap. Entries have granular sub-types within their category:
-skills ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ technique/pattern/anti_pattern; experiences ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢
-decision/convention/learning/bug. Retrieval uses a 6-signal composite
-score (ADR-044):
-`0.38*semantic + 0.25*thompson + 0.15*freshness + 0.10*status + 0.07*thread + 0.05*cooccurrence`.
+skills -> technique/pattern/anti_pattern; experiences ->
+decision/convention/learning/bug. Retrieval uses a 7-signal composite
+score (ADR-044, rebalanced Wave 59.5):
+`0.38*semantic + 0.25*thompson + 0.10*freshness + 0.10*status + 0.07*thread + 0.04*cooccurrence + 0.06*graph_proximity`.
 All signals normalized to [0, 1]. Co-occurrence uses sigmoid normalization
 (`1 - e^{-0.6w}`). Thread-scoped entries get a thread_bonus of 1.0
 (weighted at 0.07) when retrieved by same-thread colonies.
@@ -72,7 +75,7 @@ earned autonomy, learned template health, recent outcome digest, and
 popular unexamined. Three rules
 (contradiction, coverage gap, stale cluster) include `suggested_colony`
 configurations for auto-dispatch. Distillation candidates
-(dense co-occurrence clusters with ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥5 entries and avg weight >3.0)
+(dense co-occurrence clusters with >=5 entries and avg weight >3.0)
 are identified during maintenance and synthesized by archivist colonies.
 
 ### Self-maintenance (ADR-046)
@@ -83,14 +86,51 @@ opted-in categories, notify operator), `autonomous` (dispatch all eligible).
 Policy controls: `auto_actions` list, `max_maintenance_colonies`, and
 `daily_maintenance_budget`. Budget tracking resets daily at UTC midnight.
 
+Blast radius estimation gates dispatch: 6 heuristic factors (task length,
+caste risk, round count, strategy, keywords coder-only, outcome history)
+produce a score. Thresholds: >=0.6 escalate, >=0.3 notify, <0.3 proceed.
+`auto_notify` skips both escalate and notify; `autonomous` skips only
+escalate.
+
+Autonomy scoring: 4 weighted components (success_rate, volume,
+cost_efficiency, operator_trust) produce a grade (A-F) and level
+(full/standard/limited/restricted). `check_autonomy_budget` Queen tool
+surfaces daily budget truth.
+
+### Workflow learning (Wave 72)
+
+Deterministic extractors in `surface/workflow_learning.py` propose actions
+through the existing action queue. No LLM calls, no new events.
+
+**Pattern recognition** (Track 8): `extract_workflow_patterns()` scans colony
+outcomes for repeating `(strategy, caste_set)` fingerprints. Requires
+`>=3` successful occurrences across `>=2` distinct threads. Proposes
+`kind="workflow_template"` actions. On approval, saves a
+`ColonyTemplate(learned=True)`.
+
+**Procedure suggestions** (Track 9): `detect_operator_patterns()` finds
+repeated rejection or manual approval patterns in the action queue. Proposes
+`kind="procedure_suggestion"` actions. On approval, appends a rule to
+workspace operating procedures via `append_procedure_rule()`.
+
+See `docs/AUTONOMOUS_OPERATIONS.md` for the full autonomy operator runbook.
+
+### Project plan (Wave 70)
+
+One project plan per data root at `.formicos/project_plan.md`. Shared
+parser/helper in `project_plan.py`. Queen gets a dedicated `project_plan`
+context budget slot (5%, 400-token fallback). `propose_project_milestone`
+and `complete_project_milestone` Queen tools. `GET /api/v1/project-plan`
+returns structured JSON for frontend rendering.
+
 ### Adaptive evaporation (Wave 42)
 
 Pheromone evaporation in stigmergic mode is bounded adaptive, not fixed.
 The rate interpolates linearly from `_EVAPORATE_MAX=0.95` (healthy) to
 `_EVAPORATE_MIN=0.85` (stagnating) based on two signals: branching factor
 (`exp(entropy)` over pheromone edge weights) and convergence stall count.
-High branching (ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥2.0) or zero stalls ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ normal rate. Low branching + stalls
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ faster evaporation to break attractors. Stall influence capped at 4
+High branching (>=2.0) or zero stalls -> normal rate. Low branching + stalls
+-> faster evaporation to break attractors. Stall influence capped at 4
 rounds. Control law is runner-local (`runner.py`), no surface imports.
 
 ### Web foraging (Wave 44)
@@ -107,7 +147,7 @@ scores content without LLM. `WebSearch` adapter provides pluggable search.
 `Forager` surface module orchestrates the cycle with deterministic query
 templates.
 
-Replay surface: 4 foraging event types (59 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 62):
+Replay surface: 4 foraging event types (59 -> 62):
 `ForageRequested`, `ForageCycleCompleted`, `DomainStrategyUpdated`,
 `ForagerDomainOverride`. Individual search/fetch/rejection stays log-only.
 
@@ -147,7 +187,7 @@ auto_notify maintenance policy. Created via
 
 ### Knowledge distillation
 
-Dense co-occurrence clusters (ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥5 entries, avg weight >3.0) are flagged as
+Dense co-occurrence clusters (>=5 entries, avg weight >3.0) are flagged as
 distillation candidates during maintenance. When policy allows, archivist
 colonies synthesize clusters into higher-order entries (KnowledgeDistilled
 event). Distilled entries get `decay_class="stable"` and elevated alpha
@@ -156,7 +196,7 @@ event). Distilled entries get `decay_class="stable"` and elevated alpha
 ### Multi-colony orchestration (ADR-045)
 
 Queen decomposes complex tasks into DelegationPlan DAGs via `spawn_parallel`.
-ColonyTask items are organized into `parallel_groups` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tasks within a group
+ColonyTask items are organized into `parallel_groups` -- tasks within a group
 run concurrently via `asyncio.gather`, groups execute sequentially.
 DAG validated with Kahn's algorithm (no cycles). ParallelPlanCreated event
 records the plan, reasoning, knowledge gaps, and estimated cost.
@@ -194,7 +234,7 @@ replication. Each entry is backed by an ObservationCRDT (core/crdt.py) with
 G-Counters for observations, LWW Registers for content, and G-Sets for
 domains. Gamma-decay is applied at query time, not stored in the CRDT.
 Trust between peers uses Bayesian PeerTrust (10th percentile of Beta
-posterior ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â penalizes uncertainty). Conflict resolution uses three phases:
+posterior -- penalizes uncertainty). Conflict resolution uses three phases:
 Pareto dominance, adaptive threshold, then competing hypotheses.
 
 ### Deployment and execution
@@ -208,7 +248,7 @@ Execution has two paths: sandbox (`code_execute` tool, Docker containers
 with `--network=none`, `--memory=256m`, `--read-only`) and workspace
 executor (repo-backed commands, currently runs on backend host process
 without container isolation). The workspace executor is the largest
-remaining security gap. Docker socket is mounted for sandbox spawning ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+remaining security gap. Docker socket is mounted for sandbox spawning --
 this grants daemon access to the FormicOS container.
 
 SQLite persistence rules: named volumes only (no bind-mounts on macOS/Windows
@@ -229,7 +269,7 @@ via `to_mcp_tool_error()` with `isError`, `content`, and
 
 ### Workflow threads and steps
 
-Work is organized into threads with goals. Threads contain workflow steps ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+Work is organized into threads with goals. Threads contain workflow steps --
 sequential guidance the Queen uses to structure multi-colony work. Steps are
 not a DAG; they are Queen scaffolding. When a colony completes a step, the
 system prompts the Queen with the next pending step via the follow_up_colony
@@ -238,8 +278,8 @@ summary.
 ## Tech stack
 
 Use Python 3.12+, uv, Pydantic v2 (sole serialization), asyncio, httpx,
-aiosqlite, qdrant-client (ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥1.16), sentence-transformers (fallback embedding
-path alongside Qwen3-embedding sidecar), FastMCP ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥3.0, Starlette, uvicorn,
+aiosqlite, qdrant-client (>=1.16), sentence-transformers (fallback embedding
+path alongside Qwen3-embedding sidecar), FastMCP >=3.0, Starlette, uvicorn,
 structlog, sse-starlette, json-repair, opentelemetry-api.
 Frontend: Lit Web Components. See `pyproject.toml` for exact pins.
 
@@ -252,6 +292,7 @@ ruff check src/            # Lint
 pyright src/               # Type check
 python scripts/lint_imports.py  # Layer check
 docker compose up          # Run (or: python -m formicos)
+python -m formicos init-mcp  # Generate MCP config for Claude Code
 ```
 
 **Full CI (run before declaring any task done):**
@@ -264,7 +305,7 @@ ruff check src/ && pyright src/ && python scripts/lint_imports.py && pytest
 Use this delivery loop unless the operator explicitly asks for a different one.
 
 Expanded reference:
-- `docs/DEVELOPMENT_WORKFLOW.md` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â canonical workflow document with the shared
+- `docs/DEVELOPMENT_WORKFLOW.md` -- canonical workflow document with the shared
   delivery loop, prompt checklist, acceptance checklist, and handoff artifacts
 
 ### 0. Establish the active coordination source
@@ -391,16 +432,19 @@ IMPORTANT: These are non-negotiable. Violating any of these requires operator ap
 2. Read `docs/decisions/` before making architectural choices.
 3. If your change contradicts an ADR, STOP and flag the conflict.
 4. Never modify files outside your ownership list (see `AGENTS.md`).
-5. Event types are a CLOSED union ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â adding types requires an ADR with operator approval.
-6. ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¤20K LOC soft limit on `core/` + `engine/` + `adapters/` + `surface/` combined. Exceeding requires justification, not blocking.
+5. Event types are a CLOSED union -- adding types requires an ADR with operator approval.
+6. <=20K LOC soft limit on `core/` + `engine/` + `adapters/` + `surface/` combined. Exceeding requires justification, not blocking.
 7. Every state change is an event. No shadow databases. No second stores.
 8. Feature flags wrap incomplete work. Merge to main frequently.
 9. Knowledge confidence uses Beta(alpha, beta) posteriors evolved by Thompson Sampling. Do not replace with scalar confidence or heuristic scoring.
 10. Workflow steps are Queen scaffolding, not an execution pipeline. The Queen always decides whether to proceed.
+11. The Queen system prompt's tool inventory is programmatically assembled from `tool_specs()` (the full tool surface: handlers + special-cased + addon tools). Do not manually edit the tool list in `caste_recipes.yaml`.
+12. UI components MUST NOT hardcode governance defaults. Read from `runtimeConfig.governance.*` or workspace config props.
+13. Prefer computed introspection over hardcoded counts in documentation and UI. Never hardcode what can be derived.
 
 ## Prohibited alternatives
 
-| Instead ofÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ | UseÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ | Why |
+| Instead of... | Use... | Why |
 |-------------|------|-----|
 | msgspec, dataclasses for events | Pydantic v2 | Sole serialization library, project-wide |
 | `print()` | `structlog` | Structured logging only |
@@ -414,8 +458,8 @@ IMPORTANT: These are non-negotiable. Violating any of these requires operator ap
 
 | Path | Purpose | Modify? |
 |------|---------|---------|
-| `docs/contracts/` | Integration seams (events.py, ports.py, types.ts) | NO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â operator approval required |
-| `docs/decisions/` | ADRs (001-048, see INDEX.md) | Read before architectural choices |
+| `docs/contracts/` | Integration seams (events.py, ports.py, types.ts) | NO -- operator approval required |
+| `docs/decisions/` | ADRs (001-051, see INDEX.md) | Read before architectural choices |
 | `docs/specs/` | Current-state implementation references (8 specs, Wave 59) | Canonical subsystem docs |
 | `docs/waves/PROGRESS.md` | Wave progress | Update when completing work |
 | `docs/DEPLOYMENT.md` | Deployment guide: clone to running stack | Deployment truth |
@@ -436,33 +480,40 @@ IMPORTANT: These are non-negotiable. Violating any of these requires operator ap
 | `adapters/fetch_pipeline.py` | Graduated fetch + content extraction (Level 1-2) | Web foraging |
 | `adapters/content_quality.py` | Deterministic content-quality scoring (no LLM) | Web foraging |
 | `adapters/web_search.py` | Pluggable web search adapter | Web foraging |
-| `surface/self_maintenance.py` | MaintenanceDispatcher, autonomy policy, distillation dispatch | Self-maintenance |
-| `surface/queen_tools.py` | Queen tool dispatch, spawn_parallel, DelegationPlan validation | Queen tools |
+| `surface/self_maintenance.py` | MaintenanceDispatcher, autonomy policy, blast radius, autonomy scoring | Self-maintenance |
+| `surface/project_plan.py` | Project plan parser/helper, milestone tools, plan rendering | Project plan |
+| `surface/queen_budget.py` | 9-slot proportional Queen context budget (ADR-051) | Queen budget |
+| `surface/queen_tools.py` | Queen tool dispatch (42 tools), spawn_parallel, DelegationPlan | Queen tools |
 | `surface/transcript_view.py` | Canonical colony transcript schema | A2A/MCP export |
 | `surface/proactive_intelligence.py` | 17 deterministic briefing rules (7 knowledge + 4 performance + evaporation + branching + earned autonomy + template health + outcome digest + popular unexamined) | Proactive intel |
-| `surface/routes/api.py` | REST endpoints including outcomes + create-demo | API surface |
+| `surface/routes/api.py` | REST endpoints: outcomes, create-demo, project-plan, autonomy-status, maintenance-policy, add-model | API surface |
+| `surface/workflow_learning.py` | Deterministic workflow pattern recognition + procedure suggestions (Wave 72) | Workflow learning |
+| `docs/AUTONOMOUS_OPERATIONS.md` | Autonomy operator runbook: action queue, levels, learning, controls | Reference |
+| `docs/DEVELOPER_BRIDGE.md` | Developer onboarding guide for Claude Code integration | Reference |
+| `surface/mcp_server.py` | MCP server (27 tools, 9 resources, 6 prompts) | MCP surface |
 | `config/templates/demo-workspace.yaml` | Demo workspace template with seeded entries | Demo path |
 
 ## Common patterns
 
 ### Adding a Queen tool
 
-1. Define the tool in `_queen_tools()` in `queen_runtime.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â name, description, parameters.
-2. Add the handler in `_handle_queen_tool_call()` in the same file ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â match by tool name, implement logic, return result string.
+1. Add the tool spec in `tool_specs()` in `queen_tools.py` -- name, description, parameters JSON schema (before the `*self._addon_tool_specs` line).
+2. Add the handler in `QueenToolDispatcher.__init__()` `self._handlers` dict in `queen_tools.py` -- maps tool name to an async handler `(inputs, workspace_id, thread_id) -> tuple[str, dict | None]`.
+3. The system prompt tool inventory is self-assembled from `tool_specs()` at runtime -- do NOT manually edit the tool list in `caste_recipes.yaml`.
 
 ### Adding an agent tool
 
 Five touch points:
 
-1. `engine/tool_dispatch.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Add to `TOOL_SPECS` dict (name, description, parameters JSON schema).
-2. `engine/tool_dispatch.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Add to `TOOL_CATEGORY_MAP` (maps tool name to `ToolCategory`).
-3. `engine/runner.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Add to `RoundRunner.__init__()` as a new `*_fn` callback parameter, stored as `self._*_fn`.
-4. `engine/tool_dispatch.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Add dispatch case in `_execute_tool()` that calls the callback.
-5. `surface/runtime.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Add `make_*_fn()` factory method that creates the async callback closure.
-6. `config/caste_recipes.yaml` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Add tool name to relevant castes' tool lists.
+1. `engine/tool_dispatch.py` -- Add to `TOOL_SPECS` dict (name, description, parameters JSON schema).
+2. `engine/tool_dispatch.py` -- Add to `TOOL_CATEGORY_MAP` (maps tool name to `ToolCategory`).
+3. `engine/runner.py` -- Add to `RoundRunner.__init__()` as a new `*_fn` callback parameter, stored as `self._*_fn`.
+4. `engine/tool_dispatch.py` -- Add dispatch case in `_execute_tool()` that calls the callback.
+5. `surface/runtime.py` -- Add `make_*_fn()` factory method that creates the async callback closure.
+6. `config/caste_recipes.yaml` -- Add tool name to relevant castes' tool lists.
 
 ### Adding a maintenance handler
 
-1. Create `make_*_handler(runtime)` factory in `maintenance.py` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â returns an async handler function.
+1. Create `make_*_handler(runtime)` factory in `maintenance.py` -- returns an async handler function.
 2. Register in `app.py` `service_router.register_handler()` block with a `service:consolidation:*` name.
 3. Add to `maintenance.py` `__all__`.

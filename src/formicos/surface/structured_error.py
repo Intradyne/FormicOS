@@ -426,6 +426,13 @@ KNOWN_ERRORS: dict[str, StructuredError] = {
         category=ErrorCategory.validation,
         recovery_hint="Content contains embedded secrets; remove before retrying",
     ),
+    "ADDON_NOT_FOUND": StructuredError(
+        error_code="ADDON_NOT_FOUND",
+        message="Addon not installed",
+        severity=ErrorSeverity.permanent,
+        category=ErrorCategory.not_found,
+        recovery_hint="Check installed addons with GET /api/v1/addons",
+    ),
     "INVALID_JSON": StructuredError(
         error_code="INVALID_JSON",
         message="Invalid JSON in request body",

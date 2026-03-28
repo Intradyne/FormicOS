@@ -134,7 +134,12 @@ export class FcWorkspaceConfig extends LitElement {
         </div>
       </div>
 
-      <div class="s-label">Threads</div>
+      ${this._renderColonyCards(cols)}
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div class="s-label" style="margin:0">Threads</div>
+        <fc-btn variant="primary" sm @click=${() => this.fire('spawn-colony-request', null)}>+ New Colony</fc-btn>
+      </div>
       ${(ws.children ?? []).map(th => html`
         <div class="glass clickable thread-card" @click=${() => this.fire('navigate', th.id)}>
           <div class="thread-row">
@@ -143,7 +148,59 @@ export class FcWorkspaceConfig extends LitElement {
             <span class="thread-count">${(th.children ?? []).length} colonies</span>
           </div>
         </div>
-      `)}`;
+      `)}
+
+      ${(() => {
+        const completed = cols.filter(c => c.status === 'completed' || c.status === 'done');
+        return completed.length > 0 ? html`
+          <div class="s-label" style="margin-top:14px">Recent Completions</div>
+          ${completed.slice(0, 4).map(c => html`
+            <div class="glass clickable" style="padding:6px 10px;margin-bottom:4px;font-size:10px;font-family:var(--f-mono);color:var(--v-fg-dim)"
+              @click=${() => this.fire('navigate', c.id)}>
+              ${c.name} \u2014 ${c.status}
+            </div>
+          `)}
+        ` : nothing;
+      })()}
+
+      ${cfg.description ? html`
+        <div class="s-label" style="margin-top:16px">Description</div>
+        <div class="glass" style="padding:10px;font-size:11px;font-family:var(--f-mono);color:var(--v-fg-dim);line-height:1.5">${cfg.description}</div>
+      ` : nothing}
+
+      <div style="display:flex;gap:12px;margin-top:16px">
+        <div class="glass clickable" style="padding:10px 14px;flex:1;text-align:center" @click=${() => this.fire('navigate-tab', 'knowledge')}>
+          <div class="gov-label">Knowledge</div>
+          <div style="font-size:12px;color:var(--v-fg)">\u2139 Browse</div>
+        </div>
+        <div class="glass clickable" style="padding:10px 14px;flex:1;text-align:center" @click=${() => this.fire('navigate-tab', 'playbook')}>
+          <div class="gov-label">Playbook</div>
+          <div style="font-size:12px;color:var(--v-fg)">\u25B6 Templates</div>
+        </div>
+        <div class="glass clickable" style="padding:10px 14px;flex:1;text-align:center" @click=${() => this.fire('navigate-tab', 'operations')}>
+          <div class="gov-label">Operations</div>
+          <div style="font-size:12px;color:var(--v-fg)">\u2699 Manage</div>
+        </div>
+      </div>`;
+  }
+
+  private _renderColonyCards(cols: ReturnType<typeof allColonies>) {
+    const running = cols.filter(c => c.status === 'running');
+    if (running.length === 0) return nothing;
+    return html`
+      <div class="s-label">Active Colonies</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:14px">
+        ${running.map(c => html`
+          <div class="glass clickable" style="padding:8px 10px" @click=${() => this.fire('navigate', c.id)}>
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--v-green, #22c55e)"></span>
+              <span style="font-size:10.5px;font-family:var(--f-mono);color:var(--v-fg);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</span>
+            </div>
+            <div style="font-size:9px;font-family:var(--f-mono);color:var(--v-fg-dim);margin-top:2px">${c.status} \u00B7 R${(c as any).rounds ?? 0}</div>
+          </div>
+        `)}
+      </div>
+    `;
   }
 
   private _modelOptions(current: string | null): string[] {

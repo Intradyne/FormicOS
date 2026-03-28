@@ -8,7 +8,7 @@ import type {
   TreeNode, MergeEdge, QueenThread, ApprovalRequest, CasteDefinition,
   LocalModel, CloudEndpoint, ProtocolStatus, RuntimeConfig,
   OperatorStateSnapshot, WSMessage, WSCommandAction, SkillBankStats,
-  QueenChatMessage,
+  QueenChatMessage, AddonSummary,
 } from '../types.js';
 
 /**
@@ -65,6 +65,7 @@ export interface StoreState {
   castes: CasteDefinition[];
   runtimeConfig: RuntimeConfig | null;
   skillBankStats: SkillBankStats;
+  addons: AddonSummary[];
   memoryStats: MemoryStats;
   templateStats: LearnedTemplateStats;
   connection: ConnectionState;
@@ -76,7 +77,7 @@ function emptyState(): StoreState {
   return {
     tree: [], merges: [], queenThreads: [], approvals: [],
     protocolStatus: null, localModels: [], cloudEndpoints: [],
-    castes: [], runtimeConfig: null,
+    castes: [], runtimeConfig: null, addons: [],
     skillBankStats: { total: 0, avgConfidence: 0 },
     memoryStats: { total: 0, extractedColonies: new Set(), globalPromotions: 0 },
     templateStats: { total: 0, learned: 0, operator: 0 },
@@ -135,6 +136,7 @@ class FormicStore {
       castes: snap.castes,
       runtimeConfig: snap.runtimeConfig,
       skillBankStats: snap.skillBankStats ?? { total: 0, avgConfidence: 0 },
+      addons: snap.addons ?? [],
       memoryStats: this._state.memoryStats,
       templateStats: this._state.templateStats,
       connection: this._state.connection,

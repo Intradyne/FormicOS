@@ -41,6 +41,16 @@ MCP_TOOL_NAMES = (
     "query_service",
     "activate_service",
     "chat_colony",
+    # Wave 35
+    "set_maintenance_policy",
+    "get_maintenance_policy",
+    "configure_scoring",
+    # Wave 73
+    "addon_status",
+    "toggle_addon",
+    "trigger_addon",
+    "log_finding",
+    "handoff_to_formicos",
 )
 
 _RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
@@ -544,6 +554,264 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
         return {"status": "updated", "weights": new_weights}
 
     # -----------------------------------------------------------------------
+    # Wave 73 Track 3: Addon control MCP tools
+    # -----------------------------------------------------------------------
+
+    @mcp.tool(annotations=_RO)
+    async def addon_status(workspace_id: str = "") -> list[dict[str, Any]]:
+        """List installed addons with health status, tool counts, and errors."""
+        regs: list[Any] = runtime.addon_registrations or []
+        result: list[dict[str, Any]] = []
+        for reg in regs:
+            manifest = reg.manifest
+            if getattr(manifest, "hidden", False):
+                continue
+            result.append({
+                "name": manifest.name,
+                "version": getattr(manifest, "version", ""),
+                "description": getattr(manifest, "description", ""),
+                "status": getattr(reg, "health_status", "unknown"),
+                "disabled": getattr(reg, "disabled", False),
+                "tool_count": len(getattr(reg, "registered_tools", [])),
+                "handler_count": len(getattr(reg, "registered_handlers", [])),
+                "total_tool_calls": sum(
+                    getattr(reg, "tool_call_counts", {}).values()
+                ),
+                "last_error": getattr(reg, "last_error", None),
+            })
+        return result
+
+    @mcp.tool(annotations=_MUT)
+    async def toggle_addon(
+        addon_name: str,
+        disabled: bool,
+        workspace_id: str = "",
+    ) -> dict[str, Any]:
+        """Enable or disable an addon. Disabled addons' tools return errors if called."""
+        regs: list[Any] = runtime.addon_registrations or []
+        reg = next(
+            (r for r in regs if r.manifest.name == addon_name), None,
+        )
+        if reg is None:
+            return to_mcp_tool_error(KNOWN_ERRORS["ADDON_NOT_FOUND"])
+        reg.disabled = disabled
+        return {"addon": addon_name, "disabled": reg.disabled}
+
+    @mcp.tool(annotations=_MUT)
+    async def trigger_addon(
+        addon_name: str,
+        handler: str,
+        inputs: str = "",
+        workspace_id: str = "",
+    ) -> dict[str, Any]:
+        """Trigger an addon handler (e.g., reindex). Same as the REST trigger endpoint."""
+        import inspect as _inspect  # noqa: PLC0415
+
+        from formicos.surface.addon_loader import (
+            _resolve_handler,  # noqa: PLC0415  # pyright: ignore[reportPrivateUsage]
+        )
+
+        regs: list[Any] = runtime.addon_registrations or []
+        reg = next(
+            (r for r in regs if r.manifest.name == addon_name), None,
+        )
+        if reg is None:
+            return to_mcp_tool_error(KNOWN_ERRORS["ADDON_NOT_FOUND"])
+        if getattr(reg, "disabled", False):
+            return to_mcp_tool_error(KNOWN_ERRORS["ADDON_NOT_FOUND"].model_copy(
+                update={"message": f"Addon '{addon_name}' is currently disabled"},
+            ))
+
+        try:
+            handler_fn = _resolve_handler(addon_name, handler)
+        except (ValueError, AttributeError) as exc:
+            return to_mcp_tool_error(KNOWN_ERRORS["INVALID_PARAMETER"].model_copy(
+                update={"message": str(exc)},
+            ))
+
+        import json as _json2  # noqa: PLC0415
+        parsed_inputs: dict[str, Any] = {}
+        if inputs:
+            try:
+                parsed_inputs = _json2.loads(inputs)
+            except (ValueError, TypeError):
+                parsed_inputs = {}
+
+        try:
+            sig = _inspect.signature(handler_fn)
+            accepts_ctx = "runtime_context" in sig.parameters
+            positional_params = [
+                p for p in sig.parameters.values()
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                and p.name not in ("self", "cls", "runtime_context")
+            ]
+            has_tool_args = len(positional_params) >= 3
+        except (ValueError, TypeError):
+            accepts_ctx = False
+            has_tool_args = False
+
+        try:
+            if has_tool_args and accepts_ctx:
+                result = await handler_fn(
+                    parsed_inputs, workspace_id, "",
+                    runtime_context=reg.runtime_context,
+                )
+            elif has_tool_args:
+                result = await handler_fn(parsed_inputs, workspace_id, "")
+            elif accepts_ctx:
+                result = await handler_fn(
+                    runtime_context=reg.runtime_context,
+                )
+            else:
+                result = await handler_fn()
+        except Exception as exc:  # noqa: BLE001
+            return to_mcp_tool_error(KNOWN_ERRORS["INVALID_STATE"].model_copy(
+                update={"message": f"Trigger failed: {exc}"},
+            ))
+
+        return {"addon": addon_name, "handler": handler, "result": str(result)}
+
+    # -----------------------------------------------------------------------
+    # Wave 73 Track 1e-f: Mutating MCP tools (log_finding, handoff_to_formicos)
+    # -----------------------------------------------------------------------
+
+    @mcp.tool(annotations=_MUT)
+    async def log_finding(
+        title: str,
+        content: str,
+        domains: str = "",
+        workspace_id: str = "",
+    ) -> dict[str, Any]:
+        """Record a developer discovery as a knowledge entry.
+
+        Creates a knowledge entry at 'candidate' status for operator review.
+        Domains: comma-separated list (e.g., "auth,security").
+        """
+        from datetime import UTC, datetime  # noqa: PLC0415
+        from uuid import uuid4  # noqa: PLC0415
+
+        from formicos.core.events import MemoryEntryCreated  # noqa: PLC0415
+
+        # Resolve workspace
+        if not workspace_id:
+            ws_ids = list(runtime.projections.workspaces.keys())
+            if not ws_ids:
+                return to_mcp_tool_error(KNOWN_ERRORS["WORKSPACE_NOT_FOUND"])
+            workspace_id = ws_ids[0]
+
+        domain_list = [d.strip() for d in domains.split(",") if d.strip()] if domains else []
+        entry_id = f"entry-{uuid4().hex[:12]}"
+        now = datetime.now(UTC)
+
+        entry_dict: dict[str, Any] = {
+            "entry_id": entry_id,
+            "title": title,
+            "content": content,
+            "entry_type": "experience",
+            "sub_type": "learning",
+            "category": "experience",
+            "domains": domain_list,
+            "status": "candidate",
+            "conf_alpha": 5.0,
+            "conf_beta": 5.0,
+            "decay_class": "stable",
+            "created_at": now.isoformat(),
+            "created_by": "developer_mcp",
+            "workspace_id": workspace_id,
+            "thread_id": "",
+            "tool_refs": [],
+            "confidence": 0.5,
+        }
+
+        await runtime.emit_and_broadcast(MemoryEntryCreated(
+            seq=0, timestamp=now, address=workspace_id,
+            entry=entry_dict, workspace_id=workspace_id,
+        ))
+
+        return {
+            "status": "recorded",
+            "entry_id": entry_id,
+            "title": title,
+            "domains": domain_list,
+            "review_status": "candidate",
+            "_next_actions": ["approve", "get_status"],
+        }
+
+    @mcp.tool(annotations=_MUT)
+    async def handoff_to_formicos(
+        task: str,
+        context: str,
+        what_was_tried: str = "",
+        files: str = "",
+        workspace_id: str = "",
+    ) -> dict[str, Any]:
+        """Hand off work from the developer to FormicOS.
+
+        Creates a thread and spawns a colony with the developer's full context
+        pre-loaded so the colony doesn't repeat failed approaches.
+        """
+        from formicos.surface.self_maintenance import estimate_blast_radius  # noqa: PLC0415
+
+        # Resolve workspace
+        if not workspace_id:
+            ws_ids = list(runtime.projections.workspaces.keys())
+            if not ws_ids:
+                return to_mcp_tool_error(KNOWN_ERRORS["WORKSPACE_NOT_FOUND"])
+            workspace_id = ws_ids[0]
+
+        # Build enriched task
+        sections = [f"## Task\n{task}"]
+        if context:
+            sections.append(f"## Developer Context\n{context}")
+        if what_was_tried:
+            sections.append(f"## What Was Already Tried\n{what_was_tried}")
+        if files:
+            sections.append(f"## Relevant Files\n{files}")
+        enriched_task = "\n\n".join(sections)
+
+        # Suggest team and estimate blast radius
+        suggestions = await runtime.suggest_team(task)
+        br = estimate_blast_radius(task)
+
+        # Pick castes from suggestion
+        from formicos.core.types import CasteSlot  # noqa: PLC0415
+        castes: list[CasteSlot] = []
+        if suggestions:
+            for s in suggestions[:3]:
+                castes.append(CasteSlot(
+                    caste=s.get("caste", "coder"),
+                    count=s.get("count", 1),
+                ))
+        if not castes:
+            castes = [CasteSlot(caste="coder", count=1)]
+
+        # Create thread
+        thread_name = f"handoff-{task[:40].replace(' ', '-').lower()}"
+        thread_id = await runtime.create_thread(workspace_id, thread_name)
+
+        # Spawn colony
+        colony_id = await runtime.spawn_colony(
+            workspace_id, thread_id, enriched_task, castes,
+        )
+
+        # Start colony in background
+        if runtime.colony_manager is not None:
+            asyncio.create_task(
+                runtime.colony_manager.start_colony(colony_id),
+            )
+
+        return {
+            "status": "handed_off",
+            "colony_id": colony_id,
+            "thread_id": thread_id,
+            "workspace_id": workspace_id,
+            "task": task,
+            "blast_radius": {"level": br.level, "score": br.score},
+            "_next_actions": ["get_status", "chat_colony"],
+            "_context": {"colony_id": colony_id, "workspace_id": workspace_id},
+        }
+
+    # -----------------------------------------------------------------------
     # Wave 33 B5: MCP resources (5)
     # -----------------------------------------------------------------------
 
@@ -715,6 +983,283 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
         )
 
     # -----------------------------------------------------------------------
+    # Wave 73 Track 1a-d: MCP prompts (4 read-only)
+    # -----------------------------------------------------------------------
+
+    @mcp.prompt("morning-status")
+    async def morning_status_prompt(workspace_id: str) -> str:
+        """Get a complete status briefing for a workspace.
+
+        Composes: operational summary, project plan, autonomy score,
+        recent colony outcomes, pending actions. Returns natural-language
+        markdown suitable for starting a work session.
+        """
+        from formicos.surface.action_queue import (  # noqa: PLC0415
+            list_actions as _list_actions,
+        )
+        from formicos.surface.operations_coordinator import (  # noqa: PLC0415
+            build_operations_summary as _build_ops,
+        )
+        from formicos.surface.project_plan import (  # noqa: PLC0415
+            load_project_plan as _load_plan,
+        )
+        from formicos.surface.project_plan import (
+            render_for_queen as _render_plan,
+        )
+        from formicos.surface.self_maintenance import (  # noqa: PLC0415
+            compute_autonomy_score as _autonomy,
+        )
+
+        data_dir = runtime.settings.system.data_dir
+
+        # 1. Operational summary
+        ops = _build_ops(data_dir, workspace_id, runtime.projections)
+
+        # 2. Project plan
+        plan = _load_plan(data_dir)
+        plan_text = _render_plan(plan) or "No project plan set."
+
+        # 3. Autonomy score
+        auto = _autonomy(workspace_id, runtime.projections)
+
+        # 4. Pending actions
+        pending = _list_actions(
+            data_dir, workspace_id, status="pending_review", limit=10,
+        )
+        pending_actions = pending.get("actions", [])
+
+        # 5. Recent colony outcomes
+        ws = runtime.projections.workspaces.get(workspace_id)
+        recent_colonies: list[dict[str, Any]] = []
+        if ws is not None:
+            for thread in ws.threads.values():
+                for colony in thread.colonies.values():
+                    if colony.status in ("completed", "failed"):
+                        recent_colonies.append({
+                            "id": colony.id,
+                            "status": colony.status,
+                            "cost": colony.cost,
+                            "round": colony.round_number,
+                        })
+            recent_colonies = recent_colonies[-5:]
+
+        # Compose
+        ws_name = ws.name if ws is not None else workspace_id
+        parts = [f"# Status Briefing — {ws_name}\n"]
+
+        parts.append("## Operational Health")
+        parts.append(
+            f"{ops.get('pending_review_count', 0)} actions pending review | "
+            f"{len(ops.get('continuation_candidates', []))} continuations available"
+        )
+        parts.append(
+            f"Autonomy: {auto.grade} ({auto.score}/100)"
+            f"{f' — {auto.recommendation}' if auto.recommendation else ''}"
+        )
+
+        parts.append(f"\n## Project Plan\n{plan_text}")
+
+        if pending_actions:
+            parts.append("\n## Pending Actions")
+            for a in pending_actions:
+                parts.append(f"- [{a.get('kind', '?')}] {a.get('title', 'Untitled')}")
+        else:
+            parts.append("\n## Pending Actions\nNone.")
+
+        if recent_colonies:
+            parts.append("\n## Recent Colony Outcomes")
+            for c in recent_colonies:
+                parts.append(f"- {c['id']}: {c['status']} (${c['cost']:.2f})")
+        else:
+            parts.append("\n## Recent Colony Outcomes\nNone.")
+
+        candidates: list[Any] = ops.get("continuation_candidates", [])
+        if candidates:
+            parts.append("\n## Continuation Candidates")
+            for cand in candidates:
+                parts.append(f"- {cand}")
+
+        return "\n".join(parts)
+
+    @mcp.prompt("delegate-task")
+    async def delegate_task_prompt(
+        task: str,
+        context: str = "",
+        workspace_id: str = "",
+    ) -> str:
+        """Plan a colony delegation for a task.
+
+        Resolves workspace, suggests a team, estimates blast radius.
+        Returns a delegation plan — the developer confirms before spawning.
+        """
+        from formicos.surface.self_maintenance import (  # noqa: PLC0415
+            estimate_blast_radius as _blast,
+        )
+
+        if not workspace_id:
+            ws_ids = list(runtime.projections.workspaces.keys())
+            workspace_id = ws_ids[0] if ws_ids else "default"
+
+        suggestions = await runtime.suggest_team(task)
+        br = _blast(task)
+
+        parts = ["# Delegation Plan\n"]
+        parts.append(f"**Task:** {task}")
+        parts.append(f"**Workspace:** {workspace_id}")
+        if context:
+            parts.append(f"**Context:** {context}")
+
+        if suggestions:
+            parts.append("\n## Suggested Team")
+            for s in suggestions:
+                reason = s.get("reason", "")
+                line = f"- {s.get('caste', '?')} ×{s.get('count', 1)}"
+                if reason:
+                    line += f": {reason}"
+                parts.append(line)
+
+        parts.append(f"\n## Blast Radius: {br.level} ({br.score:.1f})")
+        for f in br.factors:
+            parts.append(f"- {f}")
+
+        castes_json = ", ".join(
+            f'"{s.get("caste", "coder")}"' for s in (suggestions or [{"caste": "coder"}])
+        )
+        parts.append("\n## Next Steps")
+        parts.append("To spawn this colony, call the `spawn_colony` tool with:")
+        parts.append(f"- workspace_id: {workspace_id}")
+        parts.append("- thread_id: (create a new thread or use an existing one)")
+        parts.append(f"- task: {task}")
+        parts.append(f"- castes: [{castes_json}]")
+
+        return "\n".join(parts)
+
+    @mcp.prompt("review-overnight-work")
+    async def review_overnight_work_prompt(workspace_id: str) -> str:
+        """Review what happened while you were away.
+
+        Shows: recently executed actions, pending review items, new knowledge
+        entries, colony outcomes from last 24h.
+        """
+        from formicos.surface.action_queue import (  # noqa: PLC0415
+            list_actions as _list_actions,
+        )
+
+        data_dir = runtime.settings.system.data_dir
+
+        executed = _list_actions(
+            data_dir, workspace_id, status="executed", limit=20,
+        )
+        pending = _list_actions(
+            data_dir, workspace_id, status="pending_review", limit=20,
+        )
+
+        # Recent knowledge entries
+        recent_entries: list[dict[str, Any]] = []
+        for eid, entry in runtime.projections.memory_entries.items():
+            if entry.get("workspace_id") != workspace_id:
+                continue
+            if entry.get("status") == "rejected":
+                continue
+            recent_entries.append({"id": eid, **entry})
+        recent_entries.sort(
+            key=lambda e: e.get("created_at", ""), reverse=True,
+        )
+        recent_entries = recent_entries[:10]
+
+        parts = [f"# Overnight Review — {workspace_id}\n"]
+
+        # Executed actions
+        exec_actions = executed.get("actions", [])
+        if exec_actions:
+            parts.append("## Recently Executed Actions")
+            for a in exec_actions:
+                parts.append(f"- [{a.get('kind', '?')}] {a.get('title', 'Untitled')}")
+        else:
+            parts.append("## Recently Executed Actions\nNone.")
+
+        # Pending review
+        pend_actions = pending.get("actions", [])
+        if pend_actions:
+            parts.append("\n## Pending Review")
+            for a in pend_actions:
+                parts.append(f"- [{a.get('kind', '?')}] {a.get('title', 'Untitled')}")
+        else:
+            parts.append("\n## Pending Review\nNone.")
+
+        # New knowledge
+        if recent_entries:
+            parts.append("\n## New Knowledge Entries")
+            for e in recent_entries:
+                alpha = float(e.get("conf_alpha", 5.0))
+                beta = float(e.get("conf_beta", 5.0))
+                conf = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
+                parts.append(
+                    f"- **{e.get('title', 'Untitled')}** "
+                    f"({e.get('status', '?')}, conf: {conf:.0%})"
+                )
+        else:
+            parts.append("\n## New Knowledge Entries\nNone.")
+
+        return "\n".join(parts)
+
+    @mcp.prompt("knowledge-for-context")
+    async def knowledge_for_context_prompt(
+        query: str,
+        workspace_id: str = "",
+    ) -> str:
+        """Search institutional memory and return relevant entries as prose.
+
+        Returns top-5 knowledge entries formatted for context injection.
+        """
+        query_lower = query.lower()
+        scored: list[tuple[int, str, dict[str, Any]]] = []
+        for eid, entry in runtime.projections.memory_entries.items():
+            if entry.get("status") == "rejected":
+                continue
+            if workspace_id and entry.get("workspace_id") != workspace_id:
+                continue
+            # Simple keyword scoring on title + content + domains
+            score = 0
+            title = str(entry.get("title", "")).lower()
+            content_text = str(entry.get("content", "")).lower()
+            entry_domains = entry.get("domains", [])
+            for word in query_lower.split():
+                if word in title:
+                    score += 3
+                if word in content_text:
+                    score += 1
+                if any(word in str(d).lower() for d in entry_domains):
+                    score += 2
+            if score > 0:
+                scored.append((score, eid, entry))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top = scored[:5]
+
+        if not top:
+            return f"No knowledge entries found matching: {query}"
+
+        parts = [f"# Knowledge Context: {query}\n"]
+        for _score, _eid, entry in top:
+            alpha = float(entry.get("conf_alpha", 5.0))
+            beta = float(entry.get("conf_beta", 5.0))
+            conf = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
+            content_text = str(entry.get("content", ""))[:500]
+            entry_domains = entry.get("domains", [])
+            parts.append(f"## {entry.get('title', 'Untitled')} (confidence: {conf:.0%})")
+            parts.append(content_text)
+            parts.append(
+                f"Source: {entry.get('created_by', '?')} ({entry.get('created_at', '?')[:10]}), "
+                f"status: {entry.get('status', '?')}"
+            )
+            if entry_domains:
+                parts.append(f"Domains: {', '.join(str(d) for d in entry_domains)}")
+            parts.append("")
+
+        return "\n".join(parts)
+
+    # -----------------------------------------------------------------------
     # Wave 34 B2: Proactive intelligence briefing resource
     # -----------------------------------------------------------------------
 
@@ -726,6 +1271,44 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
         )
         briefing = _gen(workspace_id, runtime.projections)
         return briefing.model_dump()
+
+    # -----------------------------------------------------------------------
+    # Wave 73 Track 2: MCP resources (3 new)
+    # -----------------------------------------------------------------------
+
+    @mcp.resource("formicos://plan")
+    async def plan_resource() -> str:
+        """Project plan formatted as markdown. Global to the FormicOS instance."""
+        from formicos.surface.project_plan import (  # noqa: PLC0415
+            load_project_plan as _load_plan,
+        )
+        from formicos.surface.project_plan import (
+            render_for_queen as _render_plan,
+        )
+        data_dir = runtime.settings.system.data_dir
+        plan = _load_plan(data_dir)
+        rendered = _render_plan(plan)
+        return rendered or "No project plan configured."
+
+    @mcp.resource("formicos://procedures/{workspace_id}")
+    async def procedures_resource(workspace_id: str) -> str:
+        """Operating procedures for a workspace, formatted as markdown."""
+        from formicos.surface.operational_state import (  # noqa: PLC0415
+            render_procedures_for_queen as _render_procs,
+        )
+        data_dir = runtime.settings.system.data_dir
+        text = _render_procs(data_dir, workspace_id)
+        return text or "No operating procedures configured."
+
+    @mcp.resource("formicos://journal/{workspace_id}")
+    async def journal_resource(workspace_id: str) -> str:
+        """Recent journal entries for a workspace, formatted as markdown."""
+        from formicos.surface.operational_state import (  # noqa: PLC0415
+            render_journal_for_queen as _render_journal,
+        )
+        data_dir = runtime.settings.system.data_dir
+        text = _render_journal(data_dir, workspace_id, max_lines=30)
+        return text or "No journal entries yet."
 
     # Activate transforms so @mcp.resource() and @mcp.prompt()
     # definitions are automatically exposed as tools.

@@ -691,20 +691,32 @@ def _rule_cost_outlier(
 def _rule_knowledge_roi(
     outcomes: dict[str, Any],
 ) -> list[KnowledgeInsight]:
-    """Flag when colonies cost significant amounts but extract no knowledge."""
+    """Flag when colonies cost significant amounts but extract no knowledge.
+
+    Also flags when successful colonies access zero knowledge entries and
+    produce low-quality outcomes — a signal that retrieval is underused.
+    """
     insights: list[KnowledgeInsight] = []
     no_extraction_cost = 0.0
     no_extraction_count = 0
     total_cost = 0.0
+    no_access_low_quality = 0
+    no_access_total = 0
 
     for o in outcomes.values():
         cost = float(getattr(o, "total_cost", 0))
         extracted = int(getattr(o, "entries_extracted", 0))
+        accessed = int(getattr(o, "entries_accessed", 0))
         succeeded = bool(getattr(o, "succeeded", False))
+        quality = float(getattr(o, "quality_score", 0))
         total_cost += cost
         if succeeded and cost > 0 and extracted == 0:
             no_extraction_cost += cost
             no_extraction_count += 1
+        if succeeded and accessed == 0:
+            no_access_total += 1
+            if quality < 0.7:
+                no_access_low_quality += 1
 
     if no_extraction_count >= 3 and total_cost > 0:
         pct = no_extraction_cost / total_cost
@@ -724,6 +736,23 @@ def _rule_knowledge_roi(
                     "and task prompts for knowledge-producing castes."
                 ),
             ))
+
+    if no_access_low_quality >= 3:
+        insights.append(KnowledgeInsight(
+            severity="info",
+            category="performance",
+            title="Knowledge underutilization correlated with low quality",
+            detail=(
+                f"{no_access_low_quality} of {no_access_total} successful colonies "
+                f"accessed zero knowledge entries and scored below 0.7 quality. "
+                f"Colonies that leverage existing knowledge tend to produce better results."
+            ),
+            affected_entries=[],
+            suggested_action=(
+                "Verify that knowledge retrieval is enabled for relevant castes. "
+                "Consider seeding domain knowledge before dispatching colonies."
+            ),
+        ))
     return insights
 
 

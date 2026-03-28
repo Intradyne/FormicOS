@@ -184,7 +184,7 @@ class QueenToolDispatcher:
             "set_thread_goal": self._handle_set_thread_goal,
             "complete_thread": self._handle_complete_thread,
             "query_service": self._handle_query_service,
-            "propose_plan": lambda i, w, t: self._propose_plan(i, w),
+            "propose_plan": lambda i, w, t: self._propose_plan(i, w, t),
             "query_outcomes": lambda i, w, t: self._query_outcomes(i, w),
             "analyze_colony": lambda i, w, t: self._analyze_colony(i),
             "query_briefing": lambda i, w, t: self._query_briefing(i, w),
@@ -194,6 +194,8 @@ class QueenToolDispatcher:
             "edit_file": lambda i, w, t: self._edit_file(i, w),
             "run_tests": lambda i, w, t: self._run_tests(i, w),
             "delete_file": lambda i, w, t: self._delete_file(i, w),
+            # Wave 68: plan step tracking
+            "mark_plan_step": self._mark_plan_step,
             # Wave 64 Track 3: retry failed colony
             "retry_colony": self._retry_colony,
             # Wave 65 Track 5: autonomous agency tools
@@ -203,6 +205,15 @@ class QueenToolDispatcher:
             "list_addons": lambda i, w, t: self._list_addons(),
             # Wave 65 Track 4: manual addon trigger
             "trigger_addon": lambda i, w, t: self._trigger_addon(i),
+            # Wave 68 Track 6: workspace taxonomy
+            "set_workspace_tags": self._set_workspace_tags,
+            # Wave 70.0 Track 5: project-level milestone tools
+            "propose_project_milestone": self._propose_project_milestone,
+            "complete_project_milestone": self._complete_project_milestone,
+            # Wave 70.0 Track 7: autonomy budget visibility
+            "check_autonomy_budget": self._check_autonomy_budget,
+            # Wave 74 Track 3: display board posting
+            "post_observation": self._post_observation,
         }
 
     def _find_colony(self, colony_id: str) -> Any:
@@ -897,6 +908,54 @@ class QueenToolDispatcher:
                     "required": ["summary"],
                 },
             },
+            # Wave 68: plan step tracking
+            {
+                "name": "mark_plan_step",
+                "description": (
+                    "Update a plan step's status. Call after spawning "
+                    "a colony for a plan step or when a step "
+                    "completes/blocks."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "step_index": {
+                            "type": "integer",
+                            "description": (
+                                "Zero-based step index in the plan"
+                            ),
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": [
+                                "pending", "started",
+                                "completed", "blocked",
+                            ],
+                            "description": "New status for this step",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": (
+                                "Step description (required when "
+                                "adding a new step)"
+                            ),
+                        },
+                        "colony_id": {
+                            "type": "string",
+                            "description": (
+                                "Colony executing this step (optional)"
+                            ),
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": (
+                                "Brief status note (optional)"
+                            ),
+                        },
+                    },
+                    "required": ["step_index", "status"],
+                },
+            },
             # Wave 61 Track 3: analytical tools
             {
                 "name": "query_outcomes",
@@ -1330,6 +1389,134 @@ class QueenToolDispatcher:
                         },
                     },
                     "required": ["addon_name", "handler"],
+                },
+            },
+            # Wave 68 Track 6: workspace taxonomy
+            {
+                "name": "set_workspace_tags",
+                "description": (
+                    "Set soft taxonomy tags on the current workspace. "
+                    "Tags are free-form hints (e.g., 'python', 'auth', "
+                    "'web-api') that help route queries to the right "
+                    "sources."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "List of tags (max 20, each max 50 chars)."
+                            ),
+                        },
+                    },
+                    "required": ["tags"],
+                },
+            },
+            # Wave 70.0 Track 5: project-level milestone tools
+            {
+                "name": "propose_project_milestone",
+                "description": (
+                    "Add a milestone to the project-wide plan. Creates the "
+                    "plan file if it doesn't exist. Milestones span threads "
+                    "and give the Queen cross-thread planning context."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "description": {
+                            "type": "string",
+                            "description": (
+                                "What this milestone achieves."
+                            ),
+                        },
+                        "goal": {
+                            "type": "string",
+                            "description": (
+                                "Overall project goal (used only when "
+                                "creating a new plan)."
+                            ),
+                        },
+                    },
+                    "required": ["description"],
+                },
+            },
+            {
+                "name": "complete_project_milestone",
+                "description": (
+                    "Mark a project milestone as completed. "
+                    "Use the milestone index from the project plan."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "milestone_index": {
+                            "type": "integer",
+                            "description": "Index of the milestone to complete.",
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Optional completion note.",
+                        },
+                    },
+                    "required": ["milestone_index"],
+                },
+            },
+            # Wave 70.0 Track 7: autonomy budget visibility
+            {
+                "name": "check_autonomy_budget",
+                "description": (
+                    "Check daily autonomy budget status: remaining budget, "
+                    "active maintenance colonies, autonomy level, and trust "
+                    "score. Optionally estimate blast radius for a proposed task."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": (
+                                "Optional task description to estimate blast radius."
+                            ),
+                        },
+                    },
+                },
+            },
+            # Wave 74 Track 3: display board posting
+            {
+                "name": "post_observation",
+                "description": (
+                    "Post a structured observation to the display board. Use for "
+                    "status updates, flagged concerns, notable findings. The operator "
+                    "sees these when they open the Queen tab."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["observation", "status", "concern", "metric"],
+                            "description": "Kind of observation.",
+                        },
+                        "priority": {
+                            "type": "string",
+                            "enum": ["normal", "attention", "urgent"],
+                            "description": (
+                                "Display priority. Use 'urgent' sparingly — only "
+                                "for items requiring immediate operator action."
+                            ),
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Short heading (under 80 chars).",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Body text with details. Keep under 200 chars.",
+                        },
+                    },
+                    "required": ["type", "title", "content"],
                 },
             },
             # Wave 64 Track 6a: addon-registered tools appended dynamically
@@ -3057,6 +3244,7 @@ class QueenToolDispatcher:
         self,
         inputs: dict[str, Any],
         workspace_id: str,
+        thread_id: str = "",
     ) -> tuple[str, dict[str, Any] | None]:
         """Handle propose_plan tool — present a plan for operator review."""
         summary = inputs.get("summary", "")
@@ -3173,7 +3361,390 @@ class QueenToolDispatcher:
             "render": "proposal_card",
             "proposal": proposal,
         }
+
+        # Wave 70.0 Track 8: attach blast-radius and autonomy truth
+        try:
+            from formicos.surface.self_maintenance import (  # noqa: PLC0415
+                compute_autonomy_score,
+                estimate_blast_radius,
+            )
+
+            _br = estimate_blast_radius(
+                task=summary,
+                workspace_id=workspace_id,
+                projections=self._runtime.projections,
+            )
+            action["blast_radius"] = {
+                "score": _br.score,
+                "level": _br.level,
+                "factors": _br.factors,
+                "recommendation": _br.recommendation,
+            }
+            _as = compute_autonomy_score(workspace_id, self._runtime.projections)
+            action["autonomy_score"] = {
+                "score": _as.score,
+                "grade": _as.grade,
+                "components": _as.components,
+                "recommendation": _as.recommendation,
+            }
+        except Exception:  # noqa: BLE001
+            pass  # best-effort metadata, not critical
+
+        # Wave 68: persist plan to file for attention injection
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if isinstance(_data_dir, str) and _data_dir and thread_id:
+                _plan_dir = Path(_data_dir) / ".formicos" / "plans"
+                _plan_dir.mkdir(parents=True, exist_ok=True)
+                _plan_path = _plan_dir / f"{thread_id}.md"
+                _plan_lines = [f"# Plan: {summary[:200]}", ""]
+                if recommendation:
+                    _plan_lines.append(f"**Approach:** {recommendation}")
+                    _plan_lines.append("")
+                if enriched_options:
+                    _plan_lines.append("## Options")
+                    for _i, _opt in enumerate(enriched_options, 1):
+                        _label = _opt.get("label", f"Option {_i}")
+                        _desc = _opt.get("description", "")
+                        _plan_lines.append(f"{_i}. **{_label}:** {_desc}")
+                    _plan_lines.append("")
+                _plan_lines.append("## Steps")
+                _plan_lines.append(
+                    "*(No steps defined yet."
+                    " Use mark_plan_step to add.)*"
+                )
+                _plan_path.write_text(
+                    "\n".join(_plan_lines), encoding="utf-8",
+                )
+        except (OSError, TypeError):
+            pass  # plan file is best-effort, not critical path
+
         return (result_text, action)
+
+    # ------------------------------------------------------------------ #
+    # Wave 68: plan step tracking                                          #
+    # ------------------------------------------------------------------ #
+
+    _STEP_RE = _re.compile(
+        r"^- \[(\d+)\] \[(\w+)\] (.*)$",
+    )
+
+    def _mark_plan_step(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, None]:
+        """Update or append a step in the thread's plan file."""
+        step_index: int = inputs.get("step_index", 0)
+        status: str = inputs.get("status", "pending")
+        description: str = inputs.get("description", "")
+        colony_id: str = inputs.get("colony_id", "")
+        note: str = inputs.get("note", "")
+
+        try:
+            _data_dir = self._runtime.settings.system.data_dir
+            if not isinstance(_data_dir, str) or not _data_dir:
+                return ("No data directory configured.", None)
+            _plan_path = (
+                Path(_data_dir)
+                / ".formicos"
+                / "plans"
+                / f"{thread_id}.md"
+            )
+            if not _plan_path.is_file():
+                return (
+                    f"No plan file for thread {thread_id}. "
+                    "Use propose_plan first.",
+                    None,
+                )
+
+            text = _plan_path.read_text(encoding="utf-8")
+            lines = text.split("\n")
+
+            # Find the ## Steps section
+            steps_idx = -1
+            for li, line in enumerate(lines):
+                if line.strip() == "## Steps":
+                    steps_idx = li
+                    break
+            if steps_idx == -1:
+                lines.append("## Steps")
+                steps_idx = len(lines) - 1
+
+            # Parse existing steps
+            steps: list[dict[str, Any]] = []
+            step_line_indices: list[int] = []
+            for li in range(steps_idx + 1, len(lines)):
+                m = self._STEP_RE.match(lines[li])
+                if m:
+                    steps.append({
+                        "index": int(m.group(1)),
+                        "status": m.group(2),
+                        "text": m.group(3),
+                    })
+                    step_line_indices.append(li)
+
+            # Build step line
+            col_suffix = (
+                f" (colony {colony_id[:8]})" if colony_id else ""
+            )
+            note_suffix = f" — {note}" if note else ""
+            desc_text = description or (
+                steps[step_index]["text"].split(" — ")[0].split(
+                    " (colony",
+                )[0]
+                if step_index < len(steps)
+                else f"Step {step_index}"
+            )
+            new_line = (
+                f"- [{step_index}] [{status}]"
+                f" {desc_text}{col_suffix}{note_suffix}"
+            )
+
+            if step_index < len(steps):
+                # Update existing step
+                lines[step_line_indices[step_index]] = new_line
+            else:
+                # Append new step — remove placeholder if present
+                insert_at = (
+                    step_line_indices[-1] + 1
+                    if step_line_indices
+                    else steps_idx + 1
+                )
+                # Remove the "no steps" placeholder
+                for li in range(steps_idx + 1, len(lines)):
+                    if "No steps defined yet" in lines[li]:
+                        lines.pop(li)
+                        insert_at = (
+                            min(insert_at, li)
+                            if step_line_indices
+                            else li
+                        )
+                        break
+                lines.insert(insert_at, new_line)
+
+            _plan_path.write_text(
+                "\n".join(lines), encoding="utf-8",
+            )
+            return (
+                f"Step [{step_index}] marked as [{status}].",
+                None,
+            )
+        except (OSError, TypeError) as exc:
+            return (f"Failed to update plan: {exc}", None)
+
+    # ------------------------------------------------------------------ #
+    # Wave 70.0 Track 5: project-level milestone tools                     #
+    # ------------------------------------------------------------------ #
+
+    def _propose_project_milestone(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, None]:
+        """Add a milestone to the project-wide plan."""
+        description = inputs.get("description", "").strip()
+        if not description:
+            return ("Error: description is required.", None)
+
+        goal = inputs.get("goal", "").strip()
+
+        _data_dir = self._runtime.settings.system.data_dir
+        if not isinstance(_data_dir, str) or not _data_dir:
+            return ("No data directory configured.", None)
+
+        try:
+            from formicos.surface.project_plan import add_milestone  # noqa: PLC0415
+
+            plan = add_milestone(
+                _data_dir,
+                description,
+                thread_id=thread_id,
+                goal=goal,
+            )
+            count = len(plan.get("milestones", []))
+            return (
+                f"Milestone added to project plan ({count} total). "
+                f"Goal: {plan.get('goal', 'N/A')}",
+                None,
+            )
+        except (OSError, TypeError) as exc:
+            return (f"Failed to add milestone: {exc}", None)
+
+    def _complete_project_milestone(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, None]:
+        """Mark a project milestone as completed."""
+        milestone_index = inputs.get("milestone_index")
+        if milestone_index is None:
+            return ("Error: milestone_index is required.", None)
+        note = inputs.get("note", "").strip()
+
+        _data_dir = self._runtime.settings.system.data_dir
+        if not isinstance(_data_dir, str) or not _data_dir:
+            return ("No data directory configured.", None)
+
+        try:
+            from formicos.surface.project_plan import complete_milestone  # noqa: PLC0415
+
+            plan = complete_milestone(
+                _data_dir,
+                int(milestone_index),
+                note=note,
+            )
+            if plan.get("error"):
+                return (f"Error: {plan['error']}", None)
+            return (
+                f"Milestone [{milestone_index}] marked as completed.",
+                None,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            return (f"Failed to complete milestone: {exc}", None)
+
+    # ------------------------------------------------------------------ #
+    # Wave 70.0 Track 7: autonomy budget visibility                       #
+    # ------------------------------------------------------------------ #
+
+    def _check_autonomy_budget(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Show the Queen her remaining daily budget and autonomy status."""
+        import json as _json  # noqa: PLC0415
+
+        from formicos.core.types import MaintenancePolicy  # noqa: PLC0415
+        from formicos.surface.self_maintenance import (  # noqa: PLC0415
+            compute_autonomy_score,
+            estimate_blast_radius,
+        )
+
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return ("Workspace not found.", None)
+
+        raw_policy = ws.config.get("maintenance_policy")
+        policy = MaintenancePolicy()
+        if raw_policy is not None:
+            try:
+                data = _json.loads(raw_policy) if isinstance(raw_policy, str) else raw_policy
+                policy = MaintenancePolicy(**data)
+            except Exception:  # noqa: BLE001
+                pass
+
+        dispatcher = getattr(self._runtime, "maintenance_dispatcher", None)
+        daily_spend = 0.0
+        active_maintenance = 0
+        if dispatcher is not None:
+            dispatcher._reset_daily_budget_if_needed()  # pyright: ignore[reportPrivateUsage]
+            daily_spend = dispatcher._daily_spend.get(workspace_id, 0.0)  # pyright: ignore[reportPrivateUsage]
+            active_maintenance = dispatcher._count_active_maintenance_colonies(  # pyright: ignore[reportPrivateUsage]
+                workspace_id,
+            )
+
+        budget_limit = policy.daily_maintenance_budget
+        remaining = max(0.0, budget_limit - daily_spend)
+
+        budget = getattr(ws, "budget", None)
+        total_cost = budget.total_cost if budget else 0.0
+
+        lines = [
+            "## Autonomy Budget Status",
+            "",
+            f"**Autonomy level:** {policy.autonomy_level}",
+            f"**Daily budget:** ${budget_limit:.2f}",
+            f"**Spent today:** ${daily_spend:.2f}",
+            f"**Remaining:** ${remaining:.2f}",
+            f"**Active maintenance colonies:** {active_maintenance}"
+            f" / {policy.max_maintenance_colonies} max",
+            "",
+            f"**Workspace total cost:** ${total_cost:.2f}",
+        ]
+
+        if policy.auto_actions:
+            lines.append(
+                f"**Auto-dispatch categories:** {', '.join(policy.auto_actions)}"
+            )
+        else:
+            lines.append("**Auto-dispatch categories:** none")
+
+        if remaining <= 0:
+            lines.extend([
+                "",
+                "Warning: Daily budget exhausted. No autonomous dispatch until "
+                "midnight UTC reset.",
+            ])
+        elif remaining < budget_limit * 0.2:
+            lines.extend([
+                "",
+                f"Warning: Budget running low ({remaining / budget_limit:.0%} remaining).",
+            ])
+
+        # Optional blast radius estimate
+        task_text = inputs.get("task", "")
+        if task_text:
+            estimate = estimate_blast_radius(
+                task=task_text,
+                workspace_id=workspace_id,
+                projections=self._runtime.projections,
+            )
+            lines.extend([
+                "",
+                "## Blast Radius Estimate",
+                f"**Score:** {estimate.score} ({estimate.level})",
+                f"**Recommendation:** {estimate.recommendation}",
+            ])
+            for factor in estimate.factors:
+                lines.append(f"  - {factor}")
+
+        # Autonomy score
+        auto_score = compute_autonomy_score(
+            workspace_id, self._runtime.projections,
+        )
+        lines.extend([
+            "",
+            "## Autonomy Score",
+            f"**Score:** {auto_score.score}/100 (Grade: {auto_score.grade})",
+            f"**Recommendation:** {auto_score.recommendation}",
+        ])
+        for component, value in auto_score.components.items():
+            lines.append(f"  - {component}: {value}")
+
+        return ("\n".join(lines), None)
+
+    # ------------------------------------------------------------------ #
+    # Wave 74 Track 3: display board posting                               #
+    # ------------------------------------------------------------------ #
+
+    async def _post_observation(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Post a structured observation to the display board."""
+        from formicos.surface.operational_state import append_journal_entry  # noqa: PLC0415
+
+        obs_type = inputs.get("type", "observation")
+        priority = inputs.get("priority", "normal")
+        title = inputs.get("title", "")
+        content = inputs.get("content", "")
+
+        data_dir = self._runtime.settings.system.data_dir
+        append_journal_entry(
+            data_dir, workspace_id,
+            source="queen",
+            message=content,
+            heading=f"{obs_type}:{priority} — {title}",
+            metadata={"display_board": True, "type": obs_type, "priority": priority},
+        )
+        return (f"Posted {obs_type}: {title}", None)
 
     # ------------------------------------------------------------------ #
     # Wave 62 Track 2: Queen direct work tools                            #
@@ -3755,57 +4326,101 @@ class QueenToolDispatcher:
             {"tool": "draft_document", "path": rel_path, "mode": mode},
         )
 
-    def _list_addons(self) -> tuple[str, dict[str, Any] | None]:
-        """List installed addons with their tools and handlers."""
-        # Addon tool specs carry the addon metadata
-        addon_tools = self._addon_tool_specs
-        # Handler registry shows all registered handlers (built-in + addon)
-        all_handlers = list(self._handlers.keys())
+    async def _set_workspace_tags(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Set soft taxonomy tags on a workspace."""
+        import json as _json  # noqa: PLC0415
 
-        # Identify addon handlers (not in the built-in set)
-        addon_handlers = [
-            h for h in all_handlers
-            if h not in {
-                "spawn_colony", "spawn_parallel", "kill_colony",
-                "get_status", "list_templates", "inspect_template",
-                "inspect_colony", "read_workspace_files",
-                "suggest_config_change", "approve_config_change",
-                "redirect_colony", "escalate_colony",
-                "read_colony_output", "memory_search",
-                "write_workspace_file", "queen_note",
-                "set_thread_goal", "complete_thread",
-                "query_service", "propose_plan",
-                "query_outcomes", "analyze_colony",
-                "query_briefing", "search_codebase",
-                "run_command", "edit_file", "run_tests",
-                "delete_file", "retry_colony",
-                "batch_command", "summarize_thread",
-                "draft_document", "list_addons",
-                "trigger_addon",
-                "archive_thread", "define_workflow_steps",
-            }
-        ]
+        from formicos.core.events import WorkspaceConfigChanged  # noqa: PLC0415
 
-        parts: list[str] = ["# Installed Addons"]
-        if addon_tools:
-            parts.append(f"\n## Addon Tools ({len(addon_tools)})")
-            for spec in addon_tools:
-                name = spec.get("name", "unknown")
-                desc = spec.get("description", "")[:100]
-                parts.append(f"- **{name}**: {desc}")
-        else:
-            parts.append("\nNo addon tools registered.")
+        raw_tags = inputs.get("tags", [])
+        if not isinstance(raw_tags, list):
+            return ("Error: tags must be a list of strings.", None)
 
-        if addon_handlers:
-            parts.append(f"\n## Addon Handlers ({len(addon_handlers)})")
-            for h in addon_handlers:
-                parts.append(f"- {h}")
+        # Normalize: lowercase, strip, dedup, cap
+        tags: list[str] = []
+        seen: set[str] = set()
+        for t in raw_tags:
+            if not isinstance(t, str):
+                continue
+            normalized = t.strip().lower()[:50]
+            if normalized and normalized not in seen:
+                tags.append(normalized)
+                seen.add(normalized)
+            if len(tags) >= 20:
+                break
 
-        parts.append(f"\n## Built-in Tools ({len(all_handlers) - len(addon_handlers)})")
-        parts.append(
-            "Use tool_specs for the full list of built-in tools."
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        if ws is None:
+            return ("Error: workspace not found.", None)
+
+        old_raw = ws.config.get("taxonomy_tags")
+        old_str = str(old_raw) if old_raw is not None else None
+
+        await self._runtime.emit_and_broadcast(WorkspaceConfigChanged(
+            seq=0,
+            timestamp=_now(),
+            address=workspace_id,
+            workspace_id=workspace_id,
+            field="taxonomy_tags",
+            old_value=old_str,
+            new_value=_json.dumps(tags),
+        ))
+
+        return (
+            f"Workspace tags set: {', '.join(tags)}",
+            {"tool": "set_workspace_tags", "tags": tags},
         )
 
+    def _list_addons(self) -> tuple[str, dict[str, Any] | None]:
+        """List installed addons with capability metadata for Queen routing."""
+        manifests: list[Any] = getattr(self, "_addon_manifests", []) or []
+
+        parts: list[str] = ["# Installed Addons"]
+        if not manifests:
+            parts.append("\nNo addons installed.")
+            return ("\n".join(parts), None)
+
+        # Wave 70.0: capability-based bridge health (no addon-name branching)
+        _addon_ctx: dict[str, Any] = getattr(
+            self, "_addon_runtime_context", {},
+        ) or {}
+        _bridge_health_fn = _addon_ctx.get("get_bridge_health")
+
+        for m in manifests:
+            parts.append(f"\n**{m.name}**: {m.description}")
+            if m.content_kinds:
+                parts.append(f"  Content: {', '.join(m.content_kinds)}")
+            if m.path_globs:
+                parts.append(f"  Files: {', '.join(m.path_globs)}")
+            if m.search_tool:
+                parts.append(f"  Search via: {m.search_tool}")
+            # Surface refresh/index path from manual triggers
+            for trigger in m.triggers:
+                if trigger.type == "manual":
+                    parts.append(f"  Index via: {trigger.handler}")
+            tool_names = [t.name for t in m.tools]
+            if tool_names:
+                parts.append(f"  Tools: {', '.join(tool_names)}")
+
+        # Capability-based: surface bridge health if available
+        if callable(_bridge_health_fn):
+            try:
+                bh = _bridge_health_fn()
+                parts.append(
+                    f"\n## Bridge Status: "
+                    f"{bh.get('connectedServers', 0)} connected, "
+                    f"{bh.get('unhealthyServers', 0)} unhealthy, "
+                    f"{bh.get('totalRemoteTools', 0)} remote tools"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        parts.append(f"\nTotal: {len(manifests)} addons")
         return ("\n".join(parts), None)
 
     async def _trigger_addon(

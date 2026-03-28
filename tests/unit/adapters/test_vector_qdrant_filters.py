@@ -86,7 +86,7 @@ class TestPayloadIndexes:
         assert conf_calls[0].args[1] == "confidence"
 
     @pytest.mark.anyio()
-    async def test_all_six_indexes_created(self) -> None:
+    async def test_all_seven_indexes_created(self) -> None:
         port = QdrantVectorPort(embed_fn=_embed)
         port._client = AsyncMock()
         port._client.collection_exists = AsyncMock(return_value=False)
@@ -102,6 +102,7 @@ class TestPayloadIndexes:
         assert indexed_fields == {
             "namespace", "confidence", "algorithm_version",
             "extracted_at", "source_colony", "source_colony_id",
+            "hierarchy_path",
         }
 
 

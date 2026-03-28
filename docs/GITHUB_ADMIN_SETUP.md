@@ -20,20 +20,31 @@ committed as code. A repository administrator must complete these manually.
 FormicOS requires a Contributor License Agreement for external
 contributions.
 
-### Option A: CLA Assistant (GitHub App)
+### Option A: CLA Assistant or equivalent CLA gate
 
 1. Install [CLA Assistant](https://github.com/apps/cla-assistant) on the
    repository
-2. Configure with a CLA document (draft a simple MIT-compatible CLA)
-3. The app will automatically check PRs for CLA signatures
+2. Configure it to present the repository [CLA](../CLA.md) for individual
+   contributors
+3. Archive accepted signatures or export records so the project has a durable
+   audit trail
+4. Require the CLA status check before merge
+5. For corporate contributors: accept signed [Corporate CLA](../CORPORATE_CLA.md)
+   via email or PR. Maintain a list of organizations with active Corporate CLAs
+   and their authorized contributors. CLA Assistant can be configured to
+   auto-approve contributors whose email domain matches a Corporate CLA
 
-### Option B: DCO (Developer Certificate of Origin)
+If CLA Assistant does not fit the repository workflow, use another required
+status check that blocks merges until the contributor has accepted the CLA.
 
-Alternatively, require DCO sign-off on commits:
+### Optional Supplement: DCO (Developer Certificate of Origin)
+
+DCO can be layered on top of the CLA for provenance, but it does NOT replace
+the CLA because it does not grant commercial relicensing rights.
 
 1. Install [DCO GitHub App](https://github.com/apps/dco)
 2. Contributors must add `Signed-off-by: Name <email>` to commits
-3. The app blocks PRs without proper sign-off
+3. Treat the DCO status as supplementary to the CLA gate, not a substitute
 
 **Current status**: Neither is configured. Until one is set up,
 maintainers must manually verify contribution rights during PR review.

@@ -145,6 +145,7 @@ export class FcColonyCreator extends LitElement {
   @property({ type: String }) initialTemplateId = '';
   /** Available service colonies for attachment. */
   @property({ type: Array }) availableServices: Colony[] = [];
+  @property({ type: Object }) governance: { defaultBudgetPerColony: number; maxRoundsPerColony: number } | null = null;
 
   @state() private step: 1 | 2 | 3 | 4 = 1;
   @state() private objective = '';
@@ -156,8 +157,8 @@ export class FcColonyCreator extends LitElement {
     { caste: 'reviewer', tier: 'standard', count: 1 },
   ];
   @state() private attachedServices: string[] = [];
-  @state() private budget = 2.0;
-  @state() private maxRounds = 10;
+  @state() private budget = 0;
+  @state() private maxRounds = 0;
   @state() private strategy: 'stigmergic' | 'sequential' = 'stigmergic';
   @state() private loadingSuggestions = false;
   @state() private launching = false;
@@ -165,10 +166,28 @@ export class FcColonyCreator extends LitElement {
   @state() private previewLoading = false;
   private _initialized = false;
 
+  connectedCallback() {
+    super.connectedCallback();
+    this._applyGovernanceDefaults();
+  }
+
+  private _applyGovernanceDefaults() {
+    if (this.governance) {
+      if (!this.budget) this.budget = this.governance.defaultBudgetPerColony ?? 1.0;
+      if (!this.maxRounds) this.maxRounds = this.governance.maxRoundsPerColony ?? 10;
+    } else {
+      if (!this.budget) this.budget = 1.0;
+      if (!this.maxRounds) this.maxRounds = 10;
+    }
+  }
+
   updated(changed: Map<string, unknown>) {
     if (!this._initialized) {
       if (this.initialObjective) this.objective = this.initialObjective;
       this._initialized = true;
+    }
+    if (changed.has('governance') && this.governance) {
+      this._applyGovernanceDefaults();
     }
     if (changed.has('templates' as never) && this.initialTemplateId && this.templates.length > 0 && !this.selectedTemplate) {
       const tmpl = this.templates.find(t => t.id === this.initialTemplateId);
@@ -339,13 +358,13 @@ export class FcColonyCreator extends LitElement {
           <div class="s-label">Budget ($)</div>
           <input class="config-input" type="number" step="0.5" min="0.25" max="20"
             .value=${String(this.budget)}
-            @input=${(e: Event) => { this.budget = parseFloat((e.target as HTMLInputElement).value) || 2.0; }}>
+            @input=${(e: Event) => { this.budget = parseFloat((e.target as HTMLInputElement).value) || this.governance?.defaultBudgetPerColony || 1.0; }}>
         </div>
         <div>
           <div class="s-label">Max Rounds</div>
           <input class="config-input" type="number" min="1" max="50"
             .value=${String(this.maxRounds)}
-            @input=${(e: Event) => { this.maxRounds = parseInt((e.target as HTMLInputElement).value) || 10; }}>
+            @input=${(e: Event) => { this.maxRounds = parseInt((e.target as HTMLInputElement).value) || this.governance?.maxRoundsPerColony || 10; }}>
         </div>
         <div>
           <div class="s-label">Strategy</div>
@@ -368,10 +387,6 @@ export class FcColonyCreator extends LitElement {
   // -- Step 4: Launch summary (real preview truth) -------------------------
 
   private _renderLaunch() {
-    const estCost = this.team.reduce((sum, t) => {
-      const rate = t.tier === 'light' ? 0 : t.tier === 'flash' ? 0.01 : t.tier === 'heavy' ? 0.08 : 0.02;
-      return sum + rate * t.count * this.maxRounds;
-    }, 0);
     const isFastPath = this.team.length === 1 && this.team[0].count === 1 && this.strategy === 'sequential';
     const totalAgents = this.team.reduce((s, t) => s + t.count, 0);
 
@@ -419,7 +434,9 @@ export class FcColonyCreator extends LitElement {
           <span>$${this.budget.toFixed(2)} budget</span>
           <span>${this.maxRounds} rounds max</span>
           <span>${this.strategy}</span>
-          <span style="color:var(--v-accent)">est. ~$${estCost.toFixed(2)}</span>
+          ${this.previewData?.estimatedCost
+            ? html`<span style="color:var(--v-accent)">est. ~$${this.previewData.estimatedCost.toFixed(2)}</span>`
+            : html`<span style="color:var(--v-fg-dim)">cost varies by model</span>`}
           ${this.selectedTemplate ? html`<span>tmpl: ${this.selectedTemplate.name}</span>` : nothing}
         </div>
 
@@ -639,8 +656,8 @@ export class FcColonyCreator extends LitElement {
       { caste: 'reviewer', tier: 'standard', count: 1 },
     ];
     this.attachedServices = [];
-    this.budget = 2.0;
-    this.maxRounds = 10;
+    this.budget = this.governance?.defaultBudgetPerColony ?? 1.0;
+    this.maxRounds = this.governance?.maxRoundsPerColony ?? 10;
     this.strategy = 'stigmergic';
     this.launching = false;
     this.previewData = null;

@@ -49,6 +49,16 @@ class AddonTriggerSpec(BaseModel):
     handler: str = Field(..., description="module.py::function_name")
 
 
+class AddonConfigParam(BaseModel):
+    """A configurable parameter declared by an addon."""
+
+    key: str
+    type: str = Field(default="string", description="boolean | string | integer | cron | select")
+    default: Any = None
+    label: str = ""
+    options: list[str] = Field(default_factory=list)
+
+
 class AddonManifest(BaseModel):
     """Parsed addon.yaml manifest."""
 
@@ -58,10 +68,16 @@ class AddonManifest(BaseModel):
     author: str = ""
     tools: list[AddonToolSpec] = Field(default_factory=list)
     handlers: list[AddonHandlerSpec] = Field(default_factory=list)
+    config: list[AddonConfigParam] = Field(default_factory=list)
     panels: list[dict[str, Any]] = Field(default_factory=list)
     templates: list[dict[str, Any]] = Field(default_factory=list)
     routes: list[dict[str, Any]] = Field(default_factory=list)
     triggers: list[AddonTriggerSpec] = Field(default_factory=list)
+    hidden: bool = False  # Hide from operator UI (dev scaffolds)
+    # Wave 68 Track 5: capability metadata for Queen routing
+    content_kinds: list[str] = Field(default_factory=list)
+    path_globs: list[str] = Field(default_factory=list)
+    search_tool: str = Field(default="")
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +110,19 @@ def _resolve_handler(addon_name: str, handler_ref: str) -> Callable[..., Any]:
             f"Addon '{addon_name}' handler function '{func_name}' "
             f"not found in module '{fq_module}'"
         )
+    if not inspect.iscoroutinefunction(func):
+        log.warning(
+            "addon_loader.sync_handler",
+            addon=addon_name,
+            handler=handler_ref,
+            hint="Handler is not async — it will be wrapped automatically, "
+                 "but addon handlers should be declared async.",
+        )
+
+        async def _sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        return _sync_wrapper  # type: ignore[return-value]
     return func  # type: ignore[return-value]
 
 
@@ -146,7 +175,26 @@ class AddonRegistration:
         self.manifest = manifest
         self.registered_tools: list[str] = []
         self.registered_handlers: list[str] = []
+        self.registered_routes: list[dict[str, Any]] = []
+        self.registered_panels: list[dict[str, Any]] = []
         self.runtime_context: dict[str, Any] = {}
+        # Wave 66 T1: health monitoring counters
+        self.tool_call_counts: dict[str, int] = {}
+        self.last_tool_call: str | None = None
+        self.handler_error_count: int = 0
+        self.last_handler_fire: str | None = None
+        self.last_error: str | None = None
+        self.trigger_fire_times: dict[str, str | None] = {}
+        self.disabled: bool = False
+
+    @property
+    def health_status(self) -> str:
+        """Derive health from error counts: 0=healthy, 1-2=degraded, 3+=error."""
+        if self.handler_error_count >= 3:
+            return "error"
+        if self.handler_error_count >= 1:
+            return "degraded"
+        return "healthy"
 
 
 def register_addon(
@@ -198,7 +246,16 @@ def register_addon(
                     _bound_fn: Callable[..., Any] = _fn,
                     _pass_ctx: bool = _accepts_ctx,
                     _bound_ctx: dict[str, Any] = _ctx,
+                    _tool_name: str = tool_spec.name,
+                    _reg: AddonRegistration = result,
                 ) -> Any:
+                    if _reg.disabled:
+                        return f"Addon '{_reg.manifest.name}' is currently disabled."
+                    from datetime import UTC, datetime
+                    _reg.tool_call_counts[_tool_name] = (
+                        _reg.tool_call_counts.get(_tool_name, 0) + 1
+                    )
+                    _reg.last_tool_call = datetime.now(UTC).isoformat()
                     if _pass_ctx:
                         return await _bound_fn(
                             inputs, workspace_id, thread_id,
@@ -239,15 +296,50 @@ def register_addon(
                         *,
                         _bound_efn: Callable[..., Any] = _efn,
                         _bound_ctx: dict[str, Any] = _ctx,
+                        _reg: AddonRegistration = result,
+                        _evt_name: str = handler_spec.event,
                         **kwargs: Any,
                     ) -> Any:
-                        return await _bound_efn(event, runtime_context=_bound_ctx, **kwargs)
+                        if _reg.disabled:
+                            log.debug(
+                                "addon_loader.handler_skipped_disabled",
+                                addon=_reg.manifest.name,
+                                event=_evt_name,
+                            )
+                            return None
+                        from datetime import UTC, datetime
+                        _reg.last_handler_fire = datetime.now(UTC).isoformat()
+                        try:
+                            return await _bound_efn(
+                                event, runtime_context=_bound_ctx, **kwargs,
+                            )
+                        except Exception:
+                            _reg.handler_error_count += 1
+                            _reg.last_error = (
+                                f"{_evt_name}: "
+                                f"{datetime.now(UTC).isoformat()}"
+                            )
+                            raise
 
                     svc_name = f"addon:{manifest.name}:{handler_spec.event}"
                     service_router.register_handler(svc_name, _event_wrapper)
                 else:
+                    _plain_efn = handler_fn
+                    _plain_reg = result
+
+                    async def _plain_event_wrapper(
+                        event: Any,
+                        *,
+                        _bound_efn: Callable[..., Any] = _plain_efn,
+                        _reg: AddonRegistration = _plain_reg,
+                        **kwargs: Any,
+                    ) -> Any:
+                        if _reg.disabled:
+                            return None
+                        return await _bound_efn(event, **kwargs)
+
                     svc_name = f"addon:{manifest.name}:{handler_spec.event}"
-                    service_router.register_handler(svc_name, handler_fn)
+                    service_router.register_handler(svc_name, _plain_event_wrapper)
 
                 result.registered_handlers.append(svc_name)
                 log.info(
@@ -264,18 +356,56 @@ def register_addon(
                 exc_info=True,
             )
 
-    # Warn about declared-but-unimplemented manifest fields
-    for field_name in ("panels", "templates", "routes"):
-        field_val = getattr(manifest, field_name, [])
-        if field_val:
-            log.warning(
-                "addon_loader.unimplemented_field",
+    # Register routes
+    for route_spec in manifest.routes:
+        handler_ref = route_spec.get("handler", "")
+        route_path = route_spec.get("path", "")
+        if not handler_ref or not route_path:
+            continue
+        try:
+            handler_fn = _resolve_handler(manifest.name, handler_ref)
+            result.registered_routes.append({
+                "path": route_path,
+                "handler": handler_fn,
+                "addon_name": manifest.name,
+            })
+            log.info(
+                "addon_loader.route_registered",
                 addon=manifest.name,
-                field=field_name,
-                count=len(field_val),
-                hint=f"Addon '{manifest.name}' declares {field_name} but "
-                     f"{field_name} registration is not yet implemented.",
+                path=route_path,
             )
+        except Exception:  # noqa: BLE001
+            log.warning(
+                "addon_loader.route_registration_failed",
+                addon=manifest.name,
+                path=route_path,
+                exc_info=True,
+            )
+
+    # Register panels
+    for panel_spec in manifest.panels:
+        result.registered_panels.append({
+            "target": panel_spec.get("target", ""),
+            "display_type": panel_spec.get("display_type", "status_card"),
+            "path": panel_spec.get("path", ""),
+            "addon_name": manifest.name,
+        })
+        log.info(
+            "addon_loader.panel_registered",
+            addon=manifest.name,
+            target=panel_spec.get("target", ""),
+        )
+
+    # Warn about templates (still unimplemented)
+    if manifest.templates:
+        log.warning(
+            "addon_loader.unimplemented_field",
+            addon=manifest.name,
+            field="templates",
+            count=len(manifest.templates),
+            hint=f"Addon '{manifest.name}' declares templates but "
+                 "templates registration is not yet implemented.",
+        )
 
     return result
 

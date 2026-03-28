@@ -33,6 +33,7 @@ from formicos.engine.runner import (
     RunnerCallbacks,
     ToolExecutionResult,
 )
+from formicos.engine.scoring_math import rescale_preserving_mean
 from formicos.engine.service_router import ServiceRouter
 from formicos.engine.strategies.sequential import SequentialStrategy
 from formicos.engine.strategies.stigmergic import StigmergicStrategy
@@ -1499,7 +1500,7 @@ class ColonyManager:
                 colony_proj, "knowledge_accesses", [],
             )
             for trace in accesses:
-                for item in trace.get("items", []):
+                for rank, item in enumerate(trace.get("items", [])):
                     item_id = item.get("id", "")
                     if not item_id or item_id in seen_ids:
                         continue
@@ -1511,6 +1512,11 @@ class ColonyManager:
                         continue
                     old_alpha = float(entry.get("conf_alpha", PRIOR_ALPHA))
                     old_beta = float(entry.get("conf_beta", PRIOR_BETA))
+
+                    # Wave 67: geometric credit 0.7^rank (Position-Based Model)
+                    # [1.0, 0.7, 0.49, 0.34, 0.24, ...] — models declining
+                    # attention better than harmonic 1/(rank+1).
+                    credit = 0.7 ** rank
 
                     # Wave 32 A1: time-based gamma-decay (ADR-041 D1)
                     event_ts = _now()
@@ -1539,7 +1545,9 @@ class ColonyManager:
 
                     if succeeded:
                         # Wave 37 1B: quality-aware delta replaces flat +1
-                        delta_alpha = min(max(0.5 + quality_score, 0.5), 1.5)
+                        # Wave 67: scaled by rank credit
+                        base_delta = min(max(0.5 + quality_score, 0.5), 1.5)
+                        delta_alpha = base_delta * credit
                         new_alpha = max(decayed_alpha + delta_alpha, 1.0)
                         new_beta = max(decayed_beta, 1.0)
 
@@ -1558,10 +1566,17 @@ class ColonyManager:
                         # Wave 37 1B: quality-aware failure penalty
                         # Low quality (near 0) â†' higher penalty (1.5)
                         # quality_score is 0 on failure path, so penalty is 1.0
+                        # Wave 67: scaled by rank credit
                         failure_penalty = 1.0 - quality_score
-                        delta_beta = min(max(0.5 + failure_penalty, 0.5), 1.5)
+                        base_delta = min(max(0.5 + failure_penalty, 0.5), 1.5)
+                        delta_beta = base_delta * credit
                         new_alpha = max(decayed_alpha, 1.0)
                         new_beta = max(decayed_beta + delta_beta, 1.0)
+
+                    # Wave 67: cap effective sample size at 150 (ADR-049)
+                    new_alpha, new_beta = rescale_preserving_mean(
+                        new_alpha, new_beta,
+                    )
                     new_confidence = new_alpha / (new_alpha + new_beta)
 
                     address = (

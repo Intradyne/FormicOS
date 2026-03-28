@@ -56,3 +56,6 @@
 | [046](046-autonomy-levels.md) | Autonomy Levels for Self-Maintenance Colonies | Proposed |
 | [047](047-outcome-metrics-retention.md) | Colony Outcome Metrics Retention and Surfacing | Proposed |
 | [048](048-memory-entry-refined.md) | MemoryEntryRefined Event — In-Place Knowledge Curation | Proposed |
+| [049](049-knowledge-hierarchy.md) | Knowledge Hierarchy — Materialized Paths on Projections | Proposed |
+| [050](050-two-pass-retrieval.md) | Two-Pass Retrieval — Personalized PageRank for Graph Proximity | Proposed |
+| [051](051-dynamic-context-caps.md) | Dynamic Queen Context Caps — Proportional Budget Allocation | Proposed |

@@ -10,7 +10,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
 import { voidTokens } from '../styles/shared.js';
 import { timeAgo } from '../helpers.js';
-import type { QueenThread, QueenChatMessage, EventKind, PreviewCardMeta, ResultCardMeta, ProposalData, EditProposalMeta, ParallelResultMeta } from '../types.js';
+import type { QueenThread, QueenChatMessage, EventKind, PreviewCardMeta, ResultCardMeta, ProposalData, EditProposalMeta, ParallelResultMeta, ConsultedEntry, ThreadPlan } from '../types.js';
 import './atoms.js';
 import './directive-panel.js';
 import './fc-preview-card.js';
@@ -18,6 +18,8 @@ import './fc-result-card.js';
 import './proposal-card.js';
 import './edit-proposal.js';
 import './parallel-result.js';
+import './colony-progress-card.js';
+import './consulted-sources.js';
 
 const kindColor: Record<string, string> = {
   spawn: '#2DD4A8', merge: '#3DD6F5', metric: '#A78BFA', route: '#F5B731', pheromone: '#E8581A',
@@ -134,6 +136,61 @@ export class FcQueenChat extends LitElement {
       border: 1px solid var(--v-border); background: var(--v-recessed); color: var(--v-fg);
       outline: none; margin-left: auto;
     }
+
+    /* Wave 69: plan progress bar */
+    .plan-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-bottom: 1px solid var(--v-border);
+      background: rgba(255,255,255,0.01); cursor: pointer;
+      transition: background 0.15s;
+    }
+    @media (prefers-reduced-motion: reduce) { .plan-bar { transition: none; } }
+    .plan-bar:hover { background: rgba(255,255,255,0.025); }
+    .plan-title {
+      font-size: 10.5px; font-family: var(--f-body); color: var(--v-fg-muted);
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .plan-steps { display: flex; gap: 3px; align-items: center; }
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      border: 1.5px solid var(--v-fg-dim); background: transparent;
+      transition: all 0.15s;
+    }
+    @media (prefers-reduced-motion: reduce) { .step-dot { transition: none; } }
+    .step-dot.completed { background: var(--v-success); border-color: var(--v-success); }
+    .step-dot.started { background: transparent; border-color: var(--v-accent); box-shadow: 0 0 4px rgba(232,88,26,0.3); }
+    .step-dot.blocked { background: var(--v-danger); border-color: var(--v-danger); }
+    .plan-count {
+      font-size: 9px; font-family: var(--f-mono); color: var(--v-fg-dim);
+      font-feature-settings: 'tnum'; white-space: nowrap;
+    }
+    .plan-expanded {
+      padding: 4px 12px 8px; border-bottom: 1px solid var(--v-border);
+      font-size: 10.5px;
+    }
+    .plan-step-row {
+      display: flex; align-items: center; gap: 6px; padding: 3px 0;
+      font-family: var(--f-body); color: var(--v-fg-muted);
+    }
+    .plan-step-idx {
+      font-family: var(--f-mono); font-size: 9px; color: var(--v-fg-dim);
+      width: 16px; text-align: right; font-feature-settings: 'tnum';
+    }
+    .plan-step-desc { flex: 1; }
+
+    /* Wave 69: inline progress card spacing */
+    .progress-wrap { padding: 2px 12px 4px; }
+
+    /* Wave 69: diff badge on result cards */
+    .diff-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 9px; font-family: var(--f-mono); padding: 2px 7px;
+      border-radius: 4px; border: 1px solid var(--v-border);
+      background: rgba(255,255,255,0.02); color: var(--v-fg-dim);
+      cursor: pointer; transition: all 0.15s; margin-top: 4px;
+    }
+    @media (prefers-reduced-motion: reduce) { .diff-badge { transition: none; } }
+    .diff-badge:hover { border-color: var(--v-border-hover); color: var(--v-fg); }
   `];
 
   @property({ type: Array }) threads: QueenThread[] = [];
@@ -146,11 +203,17 @@ export class FcQueenChat extends LitElement {
   /** Track which preview cards have been confirmed/cancelled (by message index). */
   @state() private _confirmedPreviews = new Set<number>();
   @state() private _cancelledPreviews = new Set<number>();
+  /** Wave 69 Track 4: plan state for progress bar */
+  @state() private _plan: ThreadPlan | null = null;
+  @state() private _planExpanded = false;
   @query('.messages') private messagesEl!: HTMLElement;
 
   private get activeThread(): QueenThread | undefined {
     return this.threads.find(t => t.id === this.activeThreadId) ?? this.threads[0];
   }
+
+  private _lastFetchedThreadId = '';
+  private _lastMsgCount = 0;
 
   updated() {
     if (this.messagesEl) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
@@ -159,6 +222,28 @@ export class FcQueenChat extends LitElement {
       if (msgs && msgs.length > 0 && msgs[msgs.length - 1].role === 'queen') {
         this._queenPending = false;
       }
+    }
+    // Wave 69: fetch plan on thread switch or new messages
+    const tid = this.activeThread?.id ?? '';
+    const wsId = this.activeThread?.workspaceId ?? 'default';
+    const msgCount = this.activeThread?.messages.length ?? 0;
+    if (tid && (tid !== this._lastFetchedThreadId || msgCount !== this._lastMsgCount)) {
+      this._lastFetchedThreadId = tid;
+      this._lastMsgCount = msgCount;
+      this._fetchPlan(wsId, tid);
+    }
+  }
+
+  private async _fetchPlan(wsId: string, threadId: string) {
+    try {
+      const res = await fetch(`/api/v1/workspaces/${wsId}/threads/${threadId}/plan`);
+      if (res.ok) {
+        this._plan = await res.json();
+      } else {
+        this._plan = null;
+      }
+    } catch {
+      this._plan = null;
     }
   }
 
@@ -172,6 +257,7 @@ export class FcQueenChat extends LitElement {
         `)}
         <div class="add-tab" @click=${this.newThread}>+</div>
       </div>
+      ${this._plan?.exists && this._plan.steps?.length ? this._renderPlanBar() : nothing}
       <div class="messages">
         ${!active?.messages.length ? html`
           <div class="empty-hint" style="padding:24px 16px">Ask me anything \u2014 describe a task and I\u2019ll propose a plan</div>
@@ -241,7 +327,8 @@ export class FcQueenChat extends LitElement {
             @preview-cancel=${() => this._handlePreviewCancel(idx)}
             @preview-open-editor=${this._handleOpenEditor}
           ></fc-preview-card>
-        </div>`;
+        </div>
+        ${this._renderProgressCards(m)}`;
     }
 
     if (renderType === 'result_card' && m.meta) {
@@ -320,6 +407,7 @@ export class FcQueenChat extends LitElement {
           <div class="card-wrap">
             <fc-proposal-card
               .proposal=${proposalData}
+              .blastRadius=${(m.meta as Record<string, unknown>).blast_radius ?? null}
               @proposal-action=${this._onProposalAction}
             ></fc-proposal-card>
           </div>`;
@@ -341,6 +429,11 @@ export class FcQueenChat extends LitElement {
         ${m.role === 'queen' ? html`<span class="pin-btn" title="Save as preference" @click=${() => this._saveAsPreference(m.text)}>&#x1F4CC;</span>` : nothing}
       </div>
       <div class="msg-body" style="color:${m.role === 'queen' ? 'var(--v-fg)' : 'rgba(237,237,240,0.8)'};padding-left:${m.role === 'queen' ? 14 : 0}px">${m.text}</div>
+      ${m.role === 'queen' && (m.meta as Record<string, unknown> | undefined)?.consulted_entries
+        ? html`<div style="padding-left:14px"><fc-consulted-sources
+            .entries=${(m.meta as Record<string, unknown>).consulted_entries as ConsultedEntry[]}
+          ></fc-consulted-sources></div>`
+        : nothing}
     </div>`;
   }
 
@@ -420,10 +513,72 @@ export class FcQueenChat extends LitElement {
     }
   }
 
+  /** Wave 69: render inline progress cards for spawned colonies. */
+  private _renderProgressCards(m: QueenChatMessage) {
+    const meta = m.meta as Record<string, unknown> | undefined;
+    if (!meta) return nothing;
+
+    // Single colony spawn
+    const colonyId = meta.colony_id ?? meta.colonyId;
+    if (typeof colonyId === 'string' && colonyId) {
+      const task = (meta.task ?? '') as string;
+      return html`<div class="progress-wrap">
+        <fc-colony-progress .colonyId=${colonyId} .task=${task}></fc-colony-progress>
+      </div>`;
+    }
+
+    // Parallel spawn — multiple colonies
+    const colonyIds = meta.colony_ids ?? meta.colonyIds;
+    if (Array.isArray(colonyIds) && colonyIds.length > 0) {
+      return html`${colonyIds.map((cid: string) =>
+        html`<div class="progress-wrap">
+          <fc-colony-progress .colonyId=${cid} .task=${''}></fc-colony-progress>
+        </div>`
+      )}`;
+    }
+
+    return nothing;
+  }
+
+  /** Wave 69 Track 4: render plan progress bar. */
+  private _renderPlanBar() {
+    const plan = this._plan;
+    if (!plan?.exists || !plan.steps?.length) return nothing;
+
+    const completed = plan.steps.filter(s => s.status === 'completed').length;
+    const total = plan.steps.length;
+
+    return html`
+      <div class="plan-bar" @click=${() => { this._planExpanded = !this._planExpanded; }}>
+        <span style="font-size:9px;color:var(--v-accent)">\u25B6</span>
+        <span class="plan-title">${plan.title ?? 'Plan'}</span>
+        <div class="plan-steps">
+          ${plan.steps.map(s => html`
+            <span class="step-dot ${s.status}"></span>
+          `)}
+        </div>
+        <span class="plan-count">${completed}/${total}</span>
+      </div>
+      ${this._planExpanded ? html`
+        <div class="plan-expanded">
+          ${plan.approach ? html`<div style="font-size:10px;color:var(--v-fg-dim);margin-bottom:4px;font-family:var(--f-body)">${plan.approach}</div>` : nothing}
+          ${plan.steps.map(s => html`
+            <div class="plan-step-row">
+              <span class="plan-step-idx">${s.index}</span>
+              <span class="step-dot ${s.status}" style="width:6px;height:6px"></span>
+              <span class="plan-step-desc">${s.description}</span>
+            </div>
+          `)}
+        </div>` : nothing}
+    `;
+  }
+
   private switchThread(id: string) {
     // Reset card states when switching threads
     this._confirmedPreviews = new Set();
     this._cancelledPreviews = new Set();
+    this._plan = null;
+    this._planExpanded = false;
     this.dispatchEvent(new CustomEvent('switch-thread', { detail: id, bubbles: true, composed: true }));
   }
 

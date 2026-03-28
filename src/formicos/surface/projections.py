@@ -7,6 +7,8 @@ and MCP tools. Single source of derived truth — no shadow stores.
 
 from __future__ import annotations
 
+import contextlib
+import re as _re
 import time as _time
 from dataclasses import dataclass, field
 from typing import Any
@@ -545,7 +547,7 @@ class WorkspaceProjection:
     threads: dict[str, ThreadProjection] = field(default_factory=dict)
     # Wave 43: workspace-level budget truth
     budget: BudgetSnapshot = field(default_factory=BudgetSnapshot)
-    budget_limit: float = 50.0  # workspace-level default; configurable
+    budget_limit: float = 5.0  # workspace-level default; configurable
 
 
 @dataclass
@@ -919,9 +921,13 @@ class ProjectionStore:
 
 def _on_workspace_created(store: ProjectionStore, event: FormicOSEvent) -> None:
     e: WorkspaceCreated = event  # type: ignore[assignment]
-    store.workspaces[e.name] = WorkspaceProjection(
-        id=e.name, name=e.name, config=dict(e.config),
-    )
+    cfg = dict(e.config)
+    ws_proj = WorkspaceProjection(id=e.name, name=e.name, config=cfg)
+    # Sync budget_limit from config if present
+    if "budget" in cfg:
+        with contextlib.suppress(ValueError, TypeError):
+            ws_proj.budget_limit = float(cfg["budget"])
+    store.workspaces[e.name] = ws_proj
 
 
 def _on_thread_created(store: ProjectionStore, event: FormicOSEvent) -> None:
@@ -1326,6 +1332,10 @@ def _on_workspace_config_changed(store: ProjectionStore, event: FormicOSEvent) -
             ws.config.pop(e.field, None)
         else:
             ws.config[e.field] = e.new_value
+        # Keep budget_limit in sync with config["budget"]
+        if e.field == "budget":
+            with contextlib.suppress(ValueError, TypeError):
+                ws.budget_limit = float(e.new_value) if e.new_value else 5.0
 
 
 def _on_approval_requested(store: ProjectionStore, event: FormicOSEvent) -> None:
@@ -1581,6 +1591,26 @@ def _on_knowledge_access_recorded(store: ProjectionStore, event: FormicOSEvent) 
                 usage["last_accessed"] = ts
 
 
+def _append_provenance_item(
+    entry: dict[str, Any],
+    *,
+    event_type: str,
+    timestamp: str,
+    actor_id: str,
+    detail: str,
+    confidence_delta: float | None = None,
+) -> None:
+    """Append a provenance chain item to a knowledge entry (Wave 67.5)."""
+    chain: list[dict[str, Any]] = entry.setdefault("provenance_chain", [])
+    chain.append({
+        "event_type": event_type,
+        "timestamp": timestamp,
+        "actor_id": actor_id,
+        "detail": detail,
+        "confidence_delta": confidence_delta,
+    })
+
+
 def _on_memory_entry_created(store: ProjectionStore, event: FormicOSEvent) -> None:
     e: MemoryEntryCreated = event  # type: ignore[assignment]
     entry = e.entry
@@ -1592,11 +1622,26 @@ def _on_memory_entry_created(store: ProjectionStore, event: FormicOSEvent) -> No
         # Wave 50: derive initial scope from thread_id presence
         if "scope" not in data:
             data["scope"] = "thread" if data.get("thread_id") else "workspace"
+        # Wave 67: hierarchy path from primary domain
+        domains = data.get("domains", [])
+        _primary = domains[0] if domains else "uncategorized"
+        _norm = _re.sub(r"[\s\-]+", "_", _primary.strip()).lower()
+        data["hierarchy_path"] = f"/{_norm}/"
+        data["parent_id"] = ""
         store.memory_entries[entry_id] = data
+        # Wave 67.5: seed provenance chain
+        source_colony = entry.get("source_colony_id", "")
+        ts = e.timestamp.isoformat() if hasattr(e.timestamp, "isoformat") else str(e.timestamp)
+        _append_provenance_item(
+            data,
+            event_type="MemoryEntryCreated",
+            timestamp=ts,
+            actor_id=source_colony,
+            detail=f"Created by colony {source_colony}" if source_colony else "Created",
+        )
         # Wave 45.5: new entry may form a competing pair
         store._competing_pairs_dirty = True
         # Wave 35.5 C3: track entries extracted per colony for outcome projection
-        source_colony = entry.get("source_colony_id", "")
         if source_colony:
             colony = store.colonies.get(source_colony)
             if colony is not None:
@@ -1669,6 +1714,18 @@ def _on_memory_confidence_updated(
         entry["confidence"] = e.new_confidence
         # Wave 32 A1: track update timestamp for gamma-decay
         entry["last_confidence_update"] = e.timestamp.isoformat()
+        # Wave 67.5: provenance chain
+        ess = e.old_alpha + e.old_beta
+        old_mean = e.old_alpha / ess if ess > 0 else 0.5
+        conf_delta = round(e.new_confidence - old_mean, 4)
+        _append_provenance_item(
+            entry,
+            event_type="MemoryConfidenceUpdated",
+            timestamp=e.timestamp.isoformat(),
+            actor_id=e.colony_id or "",
+            detail=f"Confidence updated ({e.reason})",
+            confidence_delta=conf_delta,
+        )
         # Wave 45.5: confidence change affects competing-pair resolution
         store._competing_pairs_dirty = True
         # Wave 35 C3: track peak alpha for mastery-restoration bonus
@@ -1819,22 +1876,31 @@ def _on_crdt_register_assigned(store: ProjectionStore, event: FormicOSEvent) -> 
 
 def _on_memory_entry_merged(store: ProjectionStore, event: FormicOSEvent) -> None:
     e: MemoryEntryMerged = event  # type: ignore[assignment]
+    ts = e.timestamp.isoformat() if hasattr(e.timestamp, "isoformat") else str(e.timestamp)
     target = store.memory_entries.get(e.target_id)
     if target:
         target["content"] = e.merged_content
         target["domains"] = e.merged_domains
         target["merged_from"] = e.merged_from
         target["merge_count"] = target.get("merge_count", 0) + 1
+        _append_provenance_item(
+            target, event_type="MemoryEntryMerged", timestamp=ts,
+            actor_id="", detail=f"Merged entry {e.source_id} into this entry",
+        )
     source = store.memory_entries.get(e.source_id)
     if source:
         source["status"] = "rejected"
         source["rejection_reason"] = f"merged_into:{e.target_id}"
+        _append_provenance_item(
+            source, event_type="MemoryEntryMerged", timestamp=ts,
+            actor_id="", detail=f"Merged into entry {e.target_id}",
+        )
     # Wave 45.5: merge changes entry state — may affect competing pairs
     store._competing_pairs_dirty = True
 
 
 def _on_memory_entry_refined(store: ProjectionStore, event: FormicOSEvent) -> None:
-    from formicos.core.events import MemoryEntryRefined
+    from formicos.core.events import MemoryEntryRefined  # noqa: PLC0415
     e: MemoryEntryRefined = event  # type: ignore[assignment]
     entry = store.memory_entries.get(e.entry_id)
     if entry is None:
@@ -1844,7 +1910,13 @@ def _on_memory_entry_refined(store: ProjectionStore, event: FormicOSEvent) -> No
         entry["title"] = e.new_title
     entry["refinement_count"] = entry.get("refinement_count", 0) + 1
     ts = e.timestamp
-    entry["last_refined_at"] = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+    ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+    entry["last_refined_at"] = ts_str
+    _append_provenance_item(
+        entry, event_type="MemoryEntryRefined", timestamp=ts_str,
+        actor_id=e.source_colony_id or "",
+        detail=f"Refined via {e.refinement_source}",
+    )
 
 
 def _on_parallel_plan_created(store: ProjectionStore, event: FormicOSEvent) -> None:
@@ -1904,6 +1976,15 @@ def _on_knowledge_entry_operator_action(
     elif action == "reinstate":
         overlays.invalidated_entries.discard(e.entry_id)
 
+    # Wave 67.5: provenance chain
+    entry = store.memory_entries.get(e.entry_id)
+    if entry is not None:
+        ts = e.timestamp.isoformat() if hasattr(e.timestamp, "isoformat") else str(e.timestamp)
+        _append_provenance_item(
+            entry, event_type="KnowledgeEntryOperatorAction", timestamp=ts,
+            actor_id=e.actor, detail=f"Operator action: {e.action}",
+        )
+
 
 def _on_knowledge_entry_annotated(
     store: ProjectionStore, event: FormicOSEvent,
@@ -1918,6 +1999,16 @@ def _on_knowledge_entry_annotated(
     if e.entry_id not in store.operator_overlays.annotations:
         store.operator_overlays.annotations[e.entry_id] = []
     store.operator_overlays.annotations[e.entry_id].append(annotation)
+
+    # Wave 67.5: provenance chain
+    entry = store.memory_entries.get(e.entry_id)
+    if entry is not None:
+        tag_note = f" [{e.tag}]" if e.tag else ""
+        _append_provenance_item(
+            entry, event_type="KnowledgeEntryAnnotated",
+            timestamp=str(e.timestamp.isoformat()),
+            actor_id=e.actor, detail=f"Annotation added{tag_note}",
+        )
 
 
 def _on_config_suggestion_overridden(

@@ -89,6 +89,18 @@ export class FcResultCard extends LitElement {
       transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.05em;
     }
     .retry-btn:hover { border-color: rgba(248,113,113,0.5); background: rgba(248,113,113,0.1); }
+    /* Wave 69: diff badge */
+    .files-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 9.5px; font-family: var(--f-mono); padding: 3px 8px;
+      border-radius: 5px; border: 1px solid var(--v-border);
+      background: rgba(255,255,255,0.02); color: var(--v-fg-dim);
+      cursor: pointer; transition: all 0.15s;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    @media (prefers-reduced-motion: reduce) { .files-badge { transition: none; } }
+    .files-badge:hover { border-color: var(--v-border-hover); color: var(--v-fg); background: rgba(255,255,255,0.04); }
+    .files-icon { font-size: 10px; }
   `];
 
   @property({ type: Object }) result: ResultCardMeta | null = null;
@@ -144,6 +156,12 @@ export class FcResultCard extends LitElement {
           <span class="link-btn" @click=${() => this._nav('colony')}>Colony Detail</span>
           ${r.threadId ? html`
             <span class="link-btn" @click=${() => this._nav('timeline')}>Timeline</span>
+          ` : nothing}
+          ${(r as Record<string, unknown>).filesChanged ? html`
+            <span class="files-badge" @click=${() => this._nav('colony')}>
+              <span class="files-icon">\u2261</span>
+              Files: ${(r as Record<string, unknown>).filesChanged} changed
+            </span>
           ` : nothing}
           ${isFailure ? html`
             <span class="retry-btn" @click=${() => this._retry()}>Retry</span>

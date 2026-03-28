@@ -157,6 +157,7 @@ class WebSocketManager:
         self._castes = castes
         self._runtime = runtime
         self._registry: CapabilityRegistry | None = None
+        self._addon_registrations: list[Any] | None = None
         # workspace_id -> set of connected websockets
         self._subscribers: dict[str, set[WebSocket]] = {}
         # colony_id -> set of queues for colony-scoped subscriptions (AG-UI, A2A attach)
@@ -345,6 +346,7 @@ class WebSocketManager:
             probed_local=probed,
             provider_health=p_health,
             registry=self._registry,
+            addon_registrations=self._addon_registrations,
         )
         await ws.send_text(json.dumps({"type": "state", "state": snapshot}))
 

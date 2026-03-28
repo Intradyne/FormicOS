@@ -8,7 +8,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { voidTokens } from '../styles/shared.js';
-import type { ProposalData, ProposalOption } from '../types.js';
+import type { BlastRadiusData, ProposalData, ProposalOption } from '../types.js';
 import './atoms.js';
 
 @customElement('fc-proposal-card')
@@ -145,9 +145,60 @@ export class FcProposalCard extends LitElement {
       justify-content: flex-end;
       margin-top: 4px;
     }
+
+    /* Wave 70.5: blast radius inline */
+    .blast-radius {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--v-border);
+    }
+    .blast-radius.br-low {
+      background: rgba(45,212,168,0.04);
+      border-color: rgba(45,212,168,0.14);
+    }
+    .blast-radius.br-medium {
+      background: rgba(245,183,49,0.04);
+      border-color: rgba(245,183,49,0.14);
+    }
+    .blast-radius.br-high {
+      background: rgba(232,72,72,0.04);
+      border-color: rgba(232,72,72,0.14);
+    }
+    .br-header {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .br-label {
+      font-size: 10px; font-family: var(--f-mono); font-weight: 600;
+      color: var(--v-fg-dim); letter-spacing: 0.04em;
+    }
+    .br-score {
+      font-size: 10px; font-family: var(--f-mono); font-weight: 700;
+    }
+    .br-score-low { color: var(--v-success); }
+    .br-score-medium { color: var(--v-warn); }
+    .br-score-high { color: var(--v-danger); }
+    .br-pill {
+      font-size: 9px; font-family: var(--f-mono); font-weight: 600;
+      padding: 1px 6px; border-radius: 4px;
+    }
+    .br-pill-proceed { background: rgba(45,212,168,0.1); color: var(--v-success); }
+    .br-pill-notify { background: rgba(245,183,49,0.1); color: var(--v-warn); }
+    .br-pill-escalate { background: rgba(232,72,72,0.1); color: var(--v-danger); }
+    .br-factors {
+      font-size: 10.5px; font-family: var(--f-mono); color: var(--v-fg-muted);
+      line-height: 1.5; padding-left: 10px;
+    }
+    .br-factors li { margin-bottom: 2px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
   `];
 
   @property({ type: Object }) proposal: ProposalData | null = null;
+  @property({ type: Object }) blastRadius: BlastRadiusData | null = null;
 
   render() {
     const p = this.proposal;
@@ -177,9 +228,31 @@ export class FcProposalCard extends LitElement {
           </div>
         ` : nothing}
 
+        ${this._renderBlastRadius()}
+
         <div class="bottom-actions">
           <fc-btn variant="ghost" sm @click=${this._adjust}>Let me adjust</fc-btn>
         </div>
+      </div>
+    `;
+  }
+
+  private _renderBlastRadius() {
+    const br = this.blastRadius;
+    if (!br) return nothing;
+
+    return html`
+      <div class="blast-radius br-${br.level}">
+        <div class="br-header">
+          <span class="br-label">Blast Radius</span>
+          <span class="br-score br-score-${br.level}">${br.score.toFixed(2)}</span>
+          <span class="br-pill br-pill-${br.recommendation}">${br.recommendation}</span>
+        </div>
+        ${br.factors.length > 0 ? html`
+          <ul class="br-factors">
+            ${br.factors.map(f => html`<li>${f}</li>`)}
+          </ul>
+        ` : nothing}
       </div>
     `;
   }

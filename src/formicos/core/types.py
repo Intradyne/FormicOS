@@ -225,6 +225,10 @@ class ModelRecord(BaseModel):
         default=0,
         description="Max concurrent requests. 0 = use LLM_SLOTS env var.",
     )
+    hidden: bool = Field(
+        default=False,
+        description="Operator-set flag to hide this model from default selection.",
+    )
 
 
 # ---------------------------------------------------------------------------
