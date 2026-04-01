@@ -125,7 +125,7 @@ jobs:
         run: docker build -t formicos:provenance .
 
       - name: Generate provenance attestation
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: formicos
           subject-digest: "sha256:placeholder"
