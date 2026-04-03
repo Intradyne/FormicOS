@@ -107,6 +107,12 @@ export class FcParallelResult extends LitElement {
         <div class="grid">
           ${r.colonies.map(c => this._badge(c))}
         </div>
+        ${r.totalPlannedTasks != null && r.totalSpawnedTasks != null && r.totalSpawnedTasks < r.totalPlannedTasks ? html`
+          <div style="font-size:10px;color:var(--v-accent);margin:6px 0;font-family:var(--f-mono)">
+            ${r.totalSpawnedTasks}/${r.totalPlannedTasks} tasks spawned
+            ${r.groupStates?.includes('blocked' as never) ? html` \u2014 groups blocked` : nothing}
+          </div>
+        ` : nothing}
         <div class="footer">
           <span>Cost \u00A0$${r.totalCost.toFixed(4)}</span>
           <span>${(r.durationMs / 1000).toFixed(1)}s</span>

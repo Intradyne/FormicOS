@@ -129,6 +129,7 @@ class AnthropicLLMAdapter:
         temperature: float = 0.0,
         max_tokens: int = 4096,
         tool_choice: object | None = None,  # Wave 58: accepted for LLMPort compat
+        extra_body: dict[str, object] | None = None,  # Wave 77.5: ignored for cloud
     ) -> LLMResponse:
         """Return a single structured completion from Anthropic."""
         # FIX BUG 4: Anthropic requires system as top-level param, not in messages

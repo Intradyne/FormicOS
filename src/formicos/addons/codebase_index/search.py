@@ -116,9 +116,13 @@ async def handle_reindex(
         return f"Workspace path not found: {workspace_path}"
 
     changed_files = inputs.get("changed_files")
+    data_dir = ctx.get("data_dir", "")
     result = await incremental_reindex(
         workspace_path, vector_port,
         changed_files=changed_files,
+        data_dir=data_dir,
+        workspace_id=workspace_id,
+        runtime_context=runtime_context,
     )
     return (
         f"Reindex complete: {result['file_count']} files, "

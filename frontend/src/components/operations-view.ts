@@ -10,6 +10,7 @@ import './operations-inbox.js';
 import './queen-journal-panel.js';
 import './operating-procedures-editor.js';
 import './operations-summary-card.js';
+import './billing-card.js';
 
 interface JournalSummary {
   exists: boolean;
@@ -105,6 +106,7 @@ export class FcOperationsView extends LitElement {
 
   @state() private _journal: JournalSummary | null = null;
   @state() private _procedures: ProceduresSummary | null = null;
+  @state() private _pendingCount = 0;
   @state() private _loading = true;
 
   connectedCallback(): void {
@@ -122,12 +124,17 @@ export class FcOperationsView extends LitElement {
     if (!this.workspaceId) { this._loading = false; return; }
     this._loading = true;
     try {
-      const [jRes, pRes] = await Promise.all([
+      const [jRes, pRes, aRes] = await Promise.all([
         fetch(`/api/v1/workspaces/${this.workspaceId}/queen-journal`),
         fetch(`/api/v1/workspaces/${this.workspaceId}/operating-procedures`),
+        fetch(`/api/v1/workspaces/${this.workspaceId}/actions?limit=1`),
       ]);
       this._journal = jRes.ok ? await jRes.json() as JournalSummary : null;
       this._procedures = pRes.ok ? await pRes.json() as ProceduresSummary : null;
+      if (aRes.ok) {
+        const data = await aRes.json() as { counts_by_status?: Record<string, number> };
+        this._pendingCount = data.counts_by_status?.['pending_review'] ?? 0;
+      }
     } catch {
       // Network failure — leave nulls, show empty states
     }
@@ -153,6 +160,9 @@ export class FcOperationsView extends LitElement {
 
       <fc-operations-summary-card .workspaceId=${this.workspaceId}
         style="margin-bottom:16px"></fc-operations-summary-card>
+
+      <fc-billing-card .workspaceId=${this.workspaceId}
+        style="margin-bottom:16px"></fc-billing-card>
 
       <div class="columns">
         <div>
@@ -186,7 +196,7 @@ export class FcOperationsView extends LitElement {
         </div>
         <div class="stat-card">
           <div class="stat-label">Pending Actions</div>
-          <div class="stat-value">${this._loading ? '-' : '0'}</div>
+          <div class="stat-value">${this._loading ? '-' : this._pendingCount}</div>
         </div>
       </div>
     `;

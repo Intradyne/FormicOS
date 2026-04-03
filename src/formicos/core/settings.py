@@ -56,6 +56,7 @@ class SystemConfig(BaseModel):
 class ModelDefaults(BaseModel):
     """Default model assignments per caste."""
     queen: str
+    cheap_queen: str = ""  # Wave 78: optional cheaper model for simple messages
     coder: str
     reviewer: str
     researcher: str

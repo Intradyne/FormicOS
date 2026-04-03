@@ -182,7 +182,9 @@ class QueenThreadManager:
         thread_id: str,
     ) -> tuple[str, dict[str, Any] | None]:
         """Define declarative workflow steps for a thread (Wave 30 B6)."""
-        raw_steps = inputs.get("steps", [])
+        from formicos.engine.schema_sanitize import coerce_array_items  # noqa: PLC0415
+
+        raw_steps = coerce_array_items(inputs.get("steps", []))
         if not raw_steps:
             return ("Error: steps array is required.", None)
 

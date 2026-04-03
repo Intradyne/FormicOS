@@ -299,6 +299,116 @@ class TestTranscriptHarvest:
         assert completed[0].entries_created == 1
 
 
+class TestDeferredPostColonyWork:
+    """Completion-time extraction/harvest should defer until colonies go idle."""
+
+    @pytest.mark.anyio()
+    async def test_memory_extraction_is_deferred_while_other_colonies_run(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        runtime = _make_runtime()
+        runtime.projections.memory_extractions_completed = set()
+        runtime.projections.get_colony.return_value = SimpleNamespace(
+            artifacts=[],
+            summary="final summary",
+        )
+        manager = ColonyManager(runtime)
+        manager.extract_institutional_memory = AsyncMock()
+
+        active_task = MagicMock(spec=asyncio.Task)
+        active_task.done.return_value = False
+        manager._active["other-colony"] = active_task
+
+        monkeypatch.setattr(
+            "formicos.surface.colony_manager._POST_COLONY_DRAIN_POLL_S",
+            0.01,
+        )
+
+        manager._hook_memory_extraction("col-1", "ws1", True)
+        await asyncio.sleep(0.02)
+
+        manager.extract_institutional_memory.assert_not_awaited()
+        assert len(manager._deferred_post_colony_work) == 1
+
+        if manager._post_colony_drain_task is not None:
+            manager._post_colony_drain_task.cancel()
+            with patch("formicos.surface.colony_manager.log"):
+                await asyncio.gather(
+                    manager._post_colony_drain_task,
+                    return_exceptions=True,
+                )
+
+    @pytest.mark.anyio()
+    async def test_deferred_memory_extraction_drains_when_colonies_go_idle(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        runtime = _make_runtime()
+        runtime.projections.memory_extractions_completed = set()
+        runtime.projections.get_colony.return_value = SimpleNamespace(
+            artifacts=[],
+            summary="final summary",
+        )
+        manager = ColonyManager(runtime)
+        manager.extract_institutional_memory = AsyncMock()
+
+        active_task = MagicMock(spec=asyncio.Task)
+        active_task.done.return_value = False
+        manager._active["other-colony"] = active_task
+
+        monkeypatch.setattr(
+            "formicos.surface.colony_manager._POST_COLONY_DRAIN_POLL_S",
+            0.01,
+        )
+
+        manager._hook_memory_extraction("col-2", "ws1", True)
+        await asyncio.sleep(0.02)
+        manager.extract_institutional_memory.assert_not_awaited()
+
+        active_task.done.return_value = True
+        manager._on_colony_task_done("other-colony")
+        await asyncio.sleep(0.05)
+
+        manager.extract_institutional_memory.assert_awaited_once()
+        assert manager._deferred_post_colony_work == []
+
+    @pytest.mark.anyio()
+    async def test_transcript_harvest_is_deferred_while_other_colonies_run(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        runtime = _make_runtime()
+        runtime.projections.memory_extractions_completed = set()
+        runtime.projections.get_colony.return_value = SimpleNamespace(
+            thread_id="th1",
+            round_records=[],
+            agents={},
+        )
+        manager = ColonyManager(runtime)
+        manager._run_transcript_harvest = AsyncMock()
+
+        active_task = MagicMock(spec=asyncio.Task)
+        active_task.done.return_value = False
+        manager._active["other-colony"] = active_task
+
+        monkeypatch.setattr(
+            "formicos.surface.colony_manager._POST_COLONY_DRAIN_POLL_S",
+            0.01,
+        )
+
+        manager._hook_transcript_harvest("col-3", "ws1", True)
+        await asyncio.sleep(0.02)
+
+        manager._run_transcript_harvest.assert_not_awaited()
+        assert len(manager._deferred_post_colony_work) == 1
+
+        if manager._post_colony_drain_task is not None:
+            manager._post_colony_drain_task.cancel()
+            with patch("formicos.surface.colony_manager.log"):
+                await asyncio.gather(
+                    manager._post_colony_drain_task,
+                    return_exceptions=True,
+                )
+
+
 class TestEscalationTierViability:
     """Tests for local-only escalation truth."""
 

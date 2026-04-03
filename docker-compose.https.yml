@@ -1,0 +1,29 @@
+# HTTPS override — adds Caddy reverse proxy for TLS termination.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+#
+# Prerequisites:
+#   mkcert -install
+#   mkdir -p certs
+#   mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 ::1
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: formicos-caddy
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+    depends_on:
+      formicos:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:8443/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

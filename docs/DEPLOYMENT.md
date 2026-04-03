@@ -1,11 +1,51 @@
 # Deployment Guide
 
-How to deploy FormicOS from clone to running stack. This guide covers the
-supported local-first Docker Compose path.
+How to deploy FormicOS from clone to running stack.
 
 ---
 
-## Prerequisites
+## Quick Start (Cloud — recommended)
+
+No GPU required. Three containers: FormicOS + Qdrant + Docker proxy.
+
+```bash
+git clone https://github.com/Intradyne/FormicOS.git
+cd FormicOS
+cp .env.example .env
+# Edit .env: set ANTHROPIC_API_KEY=sk-ant-...
+docker compose build && docker compose up -d
+```
+
+Verify:
+```bash
+docker compose ps          # 3 containers should show "healthy"
+curl http://localhost:8080/health
+```
+
+Navigate to **http://localhost:8080**. Wait for the startup panel to clear
+and the Queen welcome message to appear.
+
+### Prerequisites (cloud path)
+
+| Requirement | Minimum |
+|-------------|---------|
+| **Docker** | Docker Engine 24+ with Compose V2, or Docker Desktop 4.30+ |
+| **API key** | At least one of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` |
+
+Embeddings use sentence-transformers MiniLM (~80 MB auto-download, 384-dim).
+No GPU needed.
+
+---
+
+## Advanced: Local GPU Inference
+
+Five containers: adds llama.cpp LLM + Qwen3-Embedding sidecar (GPU).
+
+**Production local model:** Qwen3.5-35B-A3B (MoE, 3.5B active params/token).
+Benchmarked at 0.503 average quality across 5/5 real-repo tasks with zero
+hangs. This is the default and recommended local profile.
+
+### Prerequisites (local GPU)
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
@@ -13,91 +53,67 @@ supported local-first Docker Compose path.
 | **CPU** | 4 cores | 8+ cores |
 | **RAM** | 32 GB | 64 GB |
 | **Disk** | ~20 GB (models + Docker images) | 40 GB+ |
-| **Docker** | Docker Engine 24+ with Compose V2 | Docker Desktop 4.30+ or native Linux Docker |
 | **NVIDIA** | NVIDIA Container Toolkit installed | Driver 555+ for Blackwell GPUs |
 
-**Cloud-only (no GPU):** Set `ANTHROPIC_API_KEY` and/or `GEMINI_API_KEY` in
-`.env`. All inference routes to cloud providers. No local GPU needed.
-
----
-
-## Quick Start
+### One-command setup
 
 ```bash
-git clone https://github.com/Intradyne/FormicOS.git
-cd FormicOS
-cp .env.example .env
-```
-
-### 1. Download models (local inference)
-
-```bash
-mkdir -p .models && cd .models
-
-# LLM — Qwen3-30B-A3B (MoE, 3.3B active params/token)
-huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507-GGUF \
-  Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf --local-dir .
-
-# Embedding — Qwen3-Embedding-0.6B
-huggingface-cli download Qwen/Qwen3-Embedding-0.6B-GGUF \
-  Qwen3-Embedding-0.6B-Q8_0.gguf --local-dir .
-
-cd ..
-```
-
-Install `huggingface-cli` if needed: `pip install huggingface_hub[cli]`
-
-### 2. Build the local llama.cpp image (Blackwell GPUs)
-
-```bash
-bash scripts/build_llm_image.sh
-```
-
-This builds a Blackwell-native image (`sm_120`, CUDA 12.8) for full 80k
-context on RTX 5090. For non-Blackwell GPUs, set in `.env`:
-
-```bash
-LLM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda
-```
-
-The generic image uses PTX JIT compilation and falls back to ~16k effective
-context.
-
-### 3. Start the stack
-
-```bash
+bash scripts/setup-local-gpu.sh
 docker compose up -d
 ```
 
-### 4. Verify health
+This downloads models, builds the Blackwell llama.cpp image, and enables the
+`local-gpu` Docker Compose profile in your `.env`.
+
+### Manual setup
 
 ```bash
-docker compose ps          # All 5 containers should show "healthy"
-curl http://localhost:8080/health
-curl http://localhost:8008/health
-curl http://localhost:8200/health
-curl http://localhost:6333/collections
+cp .env.example .env
 ```
 
-### 5. Open the UI
+Uncomment the "Local GPU override" block in `.env`, then:
 
-Navigate to **http://localhost:8080**. Wait for the startup panel to clear
-and the Queen welcome message to appear.
+```bash
+# Download models
+mkdir -p .models && cd .models
+huggingface-cli download Qwen/Qwen3.5-35B-A3B-GGUF \
+  Qwen3.5-35B-A3B-Q4_K_M.gguf --local-dir .
+huggingface-cli download Qwen/Qwen3-Embedding-0.6B-GGUF \
+  Qwen3-Embedding-0.6B-Q8_0.gguf --local-dir .
+cd ..
+
+# Build Blackwell-native llama.cpp image
+bash scripts/build_llm_image.sh
+
+# Start (5 containers)
+docker compose up -d
+```
+
+For non-Blackwell GPUs, set `LLM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda`
+in `.env`. The generic image uses PTX JIT and falls back to ~16k effective
+context.
+
+### Embedding dimension lock-in
+
+Cloud-first uses 384-dim MiniLM embeddings. Local GPU uses 1024-dim Qwen3
+via the sidecar. **You cannot switch between cloud and local embedding on
+an existing Qdrant collection without re-indexing.** Choose once at setup
+time. To re-index: stop FormicOS, delete the `qdrant-data` volume, restart.
 
 ---
 
 ## Services
 
-| Container | Port | Purpose |
-|-----------|------|---------|
-| `formicos-colony` | 8080 | FormicOS application (backend + frontend) |
-| `formicos-llm` | 8008 → 8080 | llama.cpp LLM inference (GPU) |
-| `formicos-embed` | 8200 | Qwen3-Embedding sidecar (GPU) |
-| `formicos-qdrant` | 6333, 6334 | Qdrant vector store |
-| `formicos-docker-proxy` | -- (internal 2375) | Docker socket proxy for sandbox spawning |
+| Container | Port | Purpose | Profile |
+|-----------|------|---------|---------|
+| `formicos-colony` | 8080 | FormicOS application (backend + frontend) | *(always)* |
+| `formicos-qdrant` | 6333, 6334 | Qdrant vector store | *(always)* |
+| `formicos-docker-proxy` | -- (internal 2375) | Docker socket proxy for sandbox spawning | *(always)* |
+| `formicos-llm` | 8008 → 8080 | llama.cpp LLM inference (GPU) | `local-gpu` |
+| `formicos-embed` | 8200 | Qwen3-Embedding sidecar (GPU) | `local-gpu` |
 
-All services have health checks. FormicOS waits for the LLM, embedding
-sidecar, and Qdrant to be healthy before starting.
+Profile-gated services only start when `COMPOSE_PROFILES=local-gpu` is set
+in `.env`. Adapters handle missing endpoints gracefully at first LLM call.
 
 ---
 
@@ -105,23 +121,20 @@ sidecar, and Qdrant to be healthy before starting.
 
 ### Environment variables (.env)
 
-Copy `.env.example` to `.env`. All variables are optional — defaults work
-for the standard RTX 5090 local stack.
+Copy `.env.example` to `.env`. See `.env.example` for the full list with
+inline documentation. Key variables:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANTHROPIC_API_KEY` | *(none)* | Anthropic API key for cloud models (Claude) |
-| `GEMINI_API_KEY` | *(none)* | Google Gemini API key for cloud models |
-| `LLM_IMAGE` | `local/llama.cpp:server-cuda-blackwell` | Docker image for LLM inference |
-| `LLM_MODEL_FILE` | `Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf` | GGUF model filename |
-| `LLM_CONTEXT_SIZE` | `80000` | Context window size for local LLM |
-| `LLM_SLOTS` | `2` | Concurrent inference slots |
-| `LLM_SLOT_PROMPT_SIMILARITY` | `0.5` | Prompt prefix reuse aggressiveness (0.0-1.0) |
-| `LLM_CACHE_RAM` | `1024` | Prompt cache in system RAM (MB) |
-| `LLM_PORT` | `8008` | Host-side port for LLM container |
-| `LLM_MODEL_DIR` | `./.models` | Shared model directory (LLM + embedding) |
-| `EMBED_GPU_LAYERS` | `99` | GPU layers for embedding model (0 = CPU-only) |
-| `CUDA_DEVICE` | `0` | GPU index for LLM + embedding containers |
+| `COMPOSE_PROFILES` | *(none)* | Set to `local-gpu` to enable LLM + embedding containers |
+| `QUEEN_MODEL` | `anthropic/claude-sonnet-4-6` | Queen model (env var overrides formicos.yaml) |
+| `CODER_MODEL` | `anthropic/claude-sonnet-4-6` | Coder model |
+| `REVIEWER_MODEL` | `anthropic/claude-haiku-4-5` | Reviewer model |
+| `EMBED_MODEL` | `all-MiniLM-L6-v2` | Embedding model (sentence-transformers or sidecar) |
+| `EMBED_URL` | *(empty)* | Embedding sidecar URL (set for local GPU) |
+| `EMBED_DIMENSIONS` | `384` | Embedding vector dimensions (384 for MiniLM, 1024 for Qwen3) |
+| `LLM_HOST` | *(empty)* | Local LLM endpoint (set for local GPU) |
 | `FORMICOS_DATA_DIR` | `./data` (dev) / `/data` (Docker) | Persistent data directory |
 | `SANDBOX_ENABLED` | `true` | Enable/disable Docker sandbox for code execution |
 
@@ -133,7 +146,7 @@ for the standard RTX 5090 local stack.
 | `config/caste_recipes.yaml` | Caste prompts, tool lists, model assignments |
 | `config/templates/` | Colony templates (7 built-in) |
 
-### Multi-GPU pinning
+### Multi-GPU pinning (local GPU only)
 
 On multi-GPU systems, set `CUDA_DEVICE` in `.env`:
 
@@ -287,18 +300,77 @@ isolation.
 
 ---
 
+## HTTPS (Production / Exposed Deployments)
+
+For local development, HTTPS is not needed. Claude Desktop and Claude Code
+both connect over HTTP via localhost (Claude Desktop uses `mcp-remote` to
+bridge stdio to HTTP -- see `docs/DEVELOPER_BRIDGE.md`).
+
+HTTPS is only needed when exposing FormicOS to external clients over the
+network. The repo includes an optional Caddy reverse proxy sidecar that
+terminates TLS on port 8443 using locally-trusted certificates generated
+by [mkcert](https://github.com/FiloSottile/mkcert).
+
+### Setup
+
+```bash
+# Install mkcert
+# Windows: winget install FiloSottile.mkcert
+# macOS:   brew install mkcert
+# Linux:   see https://github.com/FiloSottile/mkcert#installation
+
+# Install the local CA into system trust stores (one-time)
+mkcert -install
+
+# Generate certs for localhost
+mkdir -p certs
+mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem \
+  localhost 127.0.0.1 ::1
+```
+
+The `certs/` directory is gitignored -- certificates are generated per-machine.
+
+### Enable HTTPS
+
+The caddy service is commented out in `docker-compose.yml` by default.
+Uncomment it, or use the override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+```
+
+Caddy listens on `:8443` and reverse-proxies all traffic to `formicos:8080`.
+The `Caddyfile` at the repo root configures TLS:
+
+```
+:8443 {
+    tls /certs/localhost.pem /certs/localhost-key.pem
+    reverse_proxy formicos:8080
+}
+```
+
+### Verify
+
+```bash
+curl https://localhost:8443/health
+```
+
+If this fails with a certificate error, run `mkcert -install` to add the
+local CA to your system trust store.
+
+---
+
 ## VRAM Budget
 
 ### RTX 5090 (32 GB) — recommended local stack
 
 | Component | VRAM | Notes |
 |-----------|------|-------|
-| Qwen3-30B-A3B Q4_K_M weights | ~17.3 GB | MoE, 3.3B active params/token |
-| KV cache (80k ctx × 2 slots × q8_0) | ~5.2 GB | `--fit on` auto-sizes to available VRAM |
+| Qwen3.5-35B-A3B Q4_K_M weights | ~19.5 GB | MoE, 3.5B active params/token |
+| KV cache (65k ctx × 5 slots) | ~5.5 GB | `--fit on` auto-sizes to available VRAM |
 | Compute buffers | ~2.4 GB | |
 | Qwen3-Embedding-0.6B Q8_0 | ~0.7 GB | Set `EMBED_GPU_LAYERS=0` for CPU fallback |
-| Prompt cache | ~1 GB | In system RAM, not VRAM |
-| **Total GPU** | **~25.6 GB** | ~6.4 GB headroom |
+| **Total GPU** | **~28.1 GB** | ~3.9 GB headroom |
 
 ### RTX 4090/3090 (24 GB)
 
@@ -391,6 +463,54 @@ See [RUNBOOK.md](RUNBOOK.md) for detailed troubleshooting guidance covering:
 - Colony execution issues
 - Provider fallback behavior
 - Frontend bundle staleness after rebuilds
+
+---
+
+## Experimental: Devstral Local Profile
+
+Devstral Small 2 can be used as an alternative local model. It has strong
+instruction following but is significantly slower than Qwen3.5 MoE on
+consumer hardware due to its dense architecture.
+
+**Status:** Experiment/reference profile. Not recommended as the default
+production path on current consumer GPUs.
+
+To use Devstral:
+
+1. Copy `.env.devstral` to `.env` (or merge its model settings)
+2. Download the Devstral GGUF into `.models/`
+3. Set `LLM_FLASH_ATTN=off`, `LLM_CACHE_TYPE_K=f16`, `LLM_CACHE_TYPE_V=f16`
+4. Use conservative slot/context settings (see `.env.devstral`)
+
+Devstral is useful for testing instruction-following quality or as a
+comparison baseline. For iterative colony work, Qwen3.5-35B remains
+materially faster and is the recommended production profile.
+
+---
+
+## Runtime Diagnostics (Wave 84)
+
+### Event-loop slow-callback detection
+
+Set `FORMICOS_ASYNCIO_DEBUG=1` in `.env` to enable asyncio slow-callback
+warnings. This logs any callback that blocks the event loop for >100ms,
+with enough context to identify the blocking function.
+
+Use this when diagnosing app health-check failures or WebSocket stream
+deaths during sustained colony work. Disable in normal operation.
+
+### Idle-gated extraction
+
+Colony completion hooks (memory extraction, transcript harvest) now drain
+through a deferred idle queue instead of competing immediately with live
+colony work. This prevents LLM capacity starvation during bursty
+multi-colony completions. No configuration needed — always active.
+
+### Connection pool limits
+
+The local OpenAI-compatible adapter uses explicit `httpx` connection-pool
+limits (`max_connections=10`, `max_keepalive_connections=5`) on top of
+earlier transport hardening (`Connection: close`, transport reset/retry).
 
 ---
 

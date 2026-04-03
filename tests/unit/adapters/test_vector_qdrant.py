@@ -22,7 +22,7 @@ from formicos.core.types import VectorDocument, VectorSearchHit
 # ---------------------------------------------------------------------------
 
 
-def _deterministic_embed(texts: list[str]) -> list[list[float]]:
+def _deterministic_embed(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
     """Return a deterministic 8-dim unit vector derived from each text's hash."""
     vectors: list[list[float]] = []
     for text in texts:

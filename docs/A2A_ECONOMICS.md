@@ -8,6 +8,20 @@ COMMERCIAL_TERMS.md) with the A2A task protocol (docs/archive/A2A-TASKS.md) so
 that autonomous agents can programmatically assess, price, and
 settle participation in FormicOS work.
 
+### Implementation Status (Wave 75)
+
+**Implemented:**
+- Contract intake on A2A task submission (optional, file-backed)
+- Deterministic receipt generation for terminal tasks
+- Manual sponsor verification via `.formicos/sponsors.json`
+- MCP `get_task_receipt` tool for Claude Code access
+
+**Deferred:**
+- Ed25519 signing and verification pipeline
+- Automated sponsor verification (GitHub CLA app)
+- Settlement automation (Stripe Connect)
+- Execution-weighted attribution
+
 
 ## 1. The Problem This Solves
 

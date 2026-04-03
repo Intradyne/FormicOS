@@ -1,5 +1,11 @@
 task_class: code_implementation
 castes: [coder]
+decomposition:
+  confidence: 1.0
+  colony_range: "3-5"
+  grouping: "group semantically related files; cover all requested deliverables; avoid 1-file splits"
+  recommended_caste: "coder"
+  recommended_strategy: "stigmergic"
 workflow: "Read target -> Write implementation -> Test -> Iterate on failures"
 steps:
   - "Read the target file with read_workspace_file (once)"

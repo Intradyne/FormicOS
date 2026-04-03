@@ -4,8 +4,9 @@ convergence, projection handler, and AG-UI event promotion."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -27,6 +28,7 @@ def _make_runtime() -> MagicMock:
     runtime.colony_manager.start_colony = AsyncMock()
     runtime.parse_tool_input = MagicMock(side_effect=lambda tc: tc.get("arguments", tc.get("input", {})))
     runtime.projections = MagicMock()
+    runtime.projections.get_thread = MagicMock(return_value=None)
     return runtime
 
 
@@ -97,7 +99,7 @@ class TestDelegationPlanModel:
 class TestPlanValidation:
     @pytest.mark.asyncio
     async def test_valid_two_group_plan(self) -> None:
-        """Valid plan with 2 groups: group 1 runs in parallel, group 2 after."""
+        """Valid plan with 2 groups: group 1 dispatched, group 2 deferred (Wave 81)."""
         runtime = _make_runtime()
         dispatcher = QueenToolDispatcher(runtime)
         inputs = _two_group_plan()
@@ -107,7 +109,12 @@ class TestPlanValidation:
         assert "2 groups" in result
         assert action is not None
         assert action["tool"] == "spawn_parallel"
-        assert len(action["colony_ids"]) == 3
+        # Wave 81: only Group 1 colonies are spawned immediately
+        assert len(action["colony_ids"]) == 2
+        # But total planned includes all tasks
+        assert len(action["all_planned_colony_ids"]) == 3
+        assert action["deferred_groups"] == 1
+        assert "deferred" in result.lower()
         # Event emitted
         runtime.emit_and_broadcast.assert_called_once()
         emitted = runtime.emit_and_broadcast.call_args[0][0]
@@ -189,6 +196,86 @@ class TestPlanValidation:
         assert "exactly once" in result.lower()
         assert action is None
 
+    @pytest.mark.asyncio
+    async def test_rejects_plan_missing_explicit_operator_deliverables(self) -> None:
+        runtime = _make_runtime()
+        runtime.projections.get_thread.return_value = SimpleNamespace(
+            queen_messages=[
+                SimpleNamespace(
+                    role="operator",
+                    content=(
+                        "Build Group 1 and Group 2 for the addon: "
+                        "addon.yaml, scanner.py, coverage.py, quality.py, "
+                        "handlers.py, trigger.py, tests"
+                    ),
+                ),
+            ],
+        )
+        dispatcher = QueenToolDispatcher(runtime)
+        inputs = _plan_inputs(
+            tasks=[
+                {
+                    "task_id": "a",
+                    "task": "Create addon.yaml and scanner.py",
+                    "caste": "coder",
+                },
+                {
+                    "task_id": "b",
+                    "task": "Create coverage.py",
+                    "caste": "coder",
+                },
+                {
+                    "task_id": "c",
+                    "task": "Create quality.py",
+                    "caste": "coder",
+                },
+            ],
+            parallel_groups=[["a", "b", "c"]],
+        )
+        result, action = await dispatcher._spawn_parallel(inputs, "ws-1", "thread-1")
+        assert "operator requested group 1..2" in result.lower()
+        assert action is None
+
+    @pytest.mark.asyncio
+    async def test_accepts_plan_when_explicit_deliverables_are_covered(self) -> None:
+        runtime = _make_runtime()
+        runtime.projections.get_thread.return_value = SimpleNamespace(
+            queen_messages=[
+                SimpleNamespace(
+                    role="operator",
+                    content=(
+                        "Build Group 1 and Group 2 for the addon: "
+                        "addon.yaml, scanner.py, coverage.py, quality.py, "
+                        "handlers.py, trigger.py, tests"
+                    ),
+                ),
+            ],
+        )
+        dispatcher = QueenToolDispatcher(runtime)
+        inputs = _plan_inputs(
+            tasks=[
+                {
+                    "task_id": "a",
+                    "task": "Create addon.yaml and scanner.py",
+                    "caste": "coder",
+                },
+                {
+                    "task_id": "b",
+                    "task": "Create coverage.py and quality.py",
+                    "caste": "coder",
+                },
+                {
+                    "task_id": "c",
+                    "task": "Create handlers.py, trigger.py, and tests",
+                    "caste": "coder",
+                },
+            ],
+            parallel_groups=[["a", "b"], ["c"]],
+        )
+        result, action = await dispatcher._spawn_parallel(inputs, "ws-1", "thread-1")
+        assert "parallel plan created" in result.lower()
+        assert action is not None
+
 
 # ---------------------------------------------------------------------------
 # DAG validation (Kahn's algorithm)
@@ -259,6 +346,50 @@ class TestConcurrentDispatch:
         assert len(spawn_calls) == 3
         assert action is not None
         assert len(action["colony_ids"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_structural_hints_backfill_target_files(self) -> None:
+        runtime = _make_runtime()
+        runtime.projections.get_thread.return_value = SimpleNamespace(
+            queen_messages=[
+                SimpleNamespace(
+                    role="operator",
+                    content="Fix src/runner.py and src/types.py import issues.",
+                ),
+            ],
+        )
+        dispatcher = QueenToolDispatcher(runtime)
+        inputs = _plan_inputs(
+            tasks=[
+                {"task_id": "a", "task": "Fix runner.py imports", "caste": "coder"},
+                {"task_id": "b", "task": "Update types.py definitions", "caste": "coder"},
+            ],
+            parallel_groups=[["a", "b"]],
+        )
+
+        with patch(
+            "formicos.surface.structural_planner.get_structural_hints",
+            return_value={
+                "matched_files": ["src/runner.py", "src/types.py"],
+                "suggested_groups": [
+                    {"files": ["src/runner.py"], "reason": "runner scope"},
+                    {"files": ["src/types.py"], "reason": "types scope"},
+                ],
+                "coupling_pairs": [],
+                "confidence": 0.8,
+                "rationale": "2 files matched; 2 groups suggested; conf=0.80",
+            },
+        ):
+            await dispatcher._spawn_parallel(inputs, "ws-1", "thread-1")
+
+        spawn_calls = runtime.spawn_colony.await_args_list
+        assert len(spawn_calls) == 2
+        target_sets = {
+            tuple(call.kwargs["target_files"])
+            for call in spawn_calls
+        }
+        assert ("src/runner.py",) in target_sets
+        assert ("src/types.py",) in target_sets
 
 
 # ---------------------------------------------------------------------------
@@ -390,3 +521,85 @@ class TestQueenPrompt:
             recipes = yaml.safe_load(f)
         tools = recipes["castes"]["queen"]["tools"]
         assert "spawn_parallel" in tools
+
+
+# ── Wave 81 Track B: Plan tracker tests ──
+
+
+from formicos.surface.parallel_plans import (
+    ParallelPlanTracker,
+    PlannedTask,
+    TaskState,
+)
+
+
+def _make_tracker_2group() -> tuple[ParallelPlanTracker, str]:
+    tracker = ParallelPlanTracker()
+    tasks = [
+        PlannedTask(task_id="t1", colony_id="c1", group_idx=0),
+        PlannedTask(task_id="t2", colony_id="c2", group_idx=0),
+        PlannedTask(task_id="t3", colony_id="c3", group_idx=0),
+        PlannedTask(task_id="t4", colony_id="c4", group_idx=1),
+        PlannedTask(task_id="t5", colony_id="c5", group_idx=1),
+    ]
+    plan_id = "plan-w81-test"
+    tracker.register_plan(plan_id, "ws1", "th1", tasks, group_count=2)
+    return tracker, plan_id
+
+
+class TestW81DeferredGroupDispatch:
+    def test_group1_deferred_while_group0_running(self) -> None:
+        tracker, plan_id = _make_tracker_2group()
+        tracker.mark_group_dispatched(plan_id, 0)
+        assert tracker.next_runnable_group(plan_id) is None
+
+    def test_group1_runnable_after_group0_completes(self) -> None:
+        tracker, plan_id = _make_tracker_2group()
+        tracker.mark_group_dispatched(plan_id, 0)
+        for cid in ["c1", "c2", "c3"]:
+            tracker.mark_task_state(cid, TaskState.completed)
+        assert tracker.next_runnable_group(plan_id) == 1
+
+
+class TestW81HonestAggregation:
+    def test_total_counts_all_planned_not_just_spawned(self) -> None:
+        tracker, plan_id = _make_tracker_2group()
+        tracker.mark_group_dispatched(plan_id, 0)
+        tracker.mark_task_state("c1", TaskState.completed)
+        tracker.mark_task_state("c2", TaskState.completed)
+        tracker.mark_task_state("c3", TaskState.completed)
+
+        summary = tracker.get_plan_summary(plan_id)
+        assert summary["total_tasks"] == 5
+        assert summary["completed"] == 3
+        assert summary["pending"] == 2
+        assert summary["is_terminal"] is False
+
+    def test_plan_not_complete_until_all_terminal(self) -> None:
+        tracker, plan_id = _make_tracker_2group()
+        for cid in ["c1", "c2", "c3"]:
+            tracker.mark_task_state(cid, TaskState.completed)
+        assert tracker.is_plan_terminal(plan_id) is False
+        for cid in ["c4", "c5"]:
+            tracker.mark_task_state(cid, TaskState.completed)
+        assert tracker.is_plan_terminal(plan_id) is True
+
+
+class TestW81RestartReconstruction:
+    def test_recover_pending_groups(self) -> None:
+        tracker = ParallelPlanTracker()
+        planned = [
+            {"task_id": "t1", "colony_id": "c1", "group_idx": 0},
+            {"task_id": "t2", "colony_id": "c2", "group_idx": 0},
+            {"task_id": "t3", "colony_id": "c3", "group_idx": 1},
+        ]
+        colony_statuses = {"c1": "completed", "c2": "completed"}
+        tracker.reconstruct_from_projections(
+            "plan-restart", "ws1", "th1",
+            planned, 2, colony_statuses,
+        )
+        plan = tracker.get_plan("plan-restart")
+        assert plan is not None
+        t3 = next(t for t in plan.tasks if t.task_id == "t3")
+        assert t3.state == TaskState.pending
+        assert tracker.next_runnable_group("plan-restart") == 1

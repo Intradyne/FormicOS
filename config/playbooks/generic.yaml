@@ -1,5 +1,11 @@
 task_class: generic
 castes: [coder]
+decomposition:
+  confidence: 0.5
+  colony_range: "1-3"
+  grouping: "split by output type if mixed; single colony if focused"
+  recommended_caste: "coder"
+  recommended_strategy: "stigmergic"
 workflow: "Read context -> Produce output -> Verify -> Iterate"
 steps:
   - "Read relevant files with read_workspace_file to understand the task"

@@ -51,6 +51,9 @@ MCP_TOOL_NAMES = (
     "trigger_addon",
     "log_finding",
     "handoff_to_formicos",
+    # Wave 75
+    "get_task_receipt",
+    "search_knowledge",     # Wave 75 Team B
 )
 
 _RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
@@ -704,6 +707,7 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
         now = datetime.now(UTC)
 
         entry_dict: dict[str, Any] = {
+            "id": entry_id,
             "entry_id": entry_id,
             "title": title,
             "content": content,
@@ -810,6 +814,79 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
             "_next_actions": ["get_status", "chat_colony"],
             "_context": {"colony_id": colony_id, "workspace_id": workspace_id},
         }
+
+    # -----------------------------------------------------------------------
+    # Wave 75: Task receipt tool
+    # -----------------------------------------------------------------------
+
+    @mcp.tool(annotations=_RO)
+    async def get_task_receipt(task_id: str) -> dict[str, Any]:
+        """Get a deterministic receipt for a completed A2A task.
+
+        Returns structured receipt with cost, token totals, quality score,
+        transcript hash, and revenue share eligibility.
+        """
+        from formicos.surface.task_receipts import build_receipt as _build_receipt  # noqa: PLC0415
+
+        receipt = _build_receipt(runtime, task_id)
+        if receipt is None:
+            return to_mcp_tool_error(KNOWN_ERRORS["TASK_NOT_FOUND"])
+        return receipt
+
+    # -----------------------------------------------------------------------
+    # Wave 75 B4: retrieval-backed knowledge search
+    # -----------------------------------------------------------------------
+
+    @mcp.tool(annotations=_RO)
+    async def search_knowledge(
+        query: str, workspace_id: str = "", top_k: int = 5,
+    ) -> str:
+        """Search institutional memory using the full retrieval pipeline.
+
+        Uses semantic search, Thompson sampling, freshness, co-occurrence,
+        and graph proximity signals. Returns ranked results as markdown.
+        """
+        top_k = max(1, min(top_k, 8))
+
+        # Default to first workspace if omitted
+        if not workspace_id:
+            ws_ids = list(runtime.projections.workspaces.keys())
+            workspace_id = ws_ids[0] if ws_ids else ""
+
+        catalog = getattr(runtime, "knowledge_catalog", None)
+        if catalog is None:
+            return "Knowledge catalog not available."
+
+        try:
+            results = await catalog.search(
+                query, workspace_id=workspace_id, top_k=top_k,
+            )
+        except Exception:  # noqa: BLE001
+            return f"Search failed for query: {query}"
+
+        if not results:
+            return f"No knowledge entries found matching: {query}"
+
+        parts = [f"# Knowledge Search: {query}\n"]
+        for r in results:
+            title = r.get("title", "Untitled")
+            content = str(r.get("content", ""))[:400]
+            status = r.get("status", "?")
+            domains = r.get("domains", [])
+            score = r.get("composite_score", r.get("score", 0))
+            alpha = float(r.get("conf_alpha", r.get("alpha", 5.0)))
+            beta = float(r.get("conf_beta", r.get("beta", 5.0)))
+            conf = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
+
+            parts.append(f"## {title} (confidence: {conf:.0%}, score: {score:.3f})")
+            parts.append(content)
+            meta = f"Status: {status}"
+            if domains:
+                meta += f" | Domains: {', '.join(str(d) for d in domains)}"
+            parts.append(meta)
+            parts.append("")
+
+        return "\n".join(parts)
 
     # -----------------------------------------------------------------------
     # Wave 33 B5: MCP resources (5)
@@ -942,12 +1019,56 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
         }
 
     # -----------------------------------------------------------------------
+    # Wave 75 B5: shared knowledge result formatter
+    # -----------------------------------------------------------------------
+
+    def _format_knowledge_results(
+        query: str, results: list[dict[str, Any]],
+    ) -> str:
+        parts = [f"# Knowledge Context: {query}\n"]
+        for r in results:
+            title = r.get("title", "Untitled")
+            alpha = float(r.get("conf_alpha", r.get("alpha", 5.0)))
+            beta = float(r.get("conf_beta", r.get("beta", 5.0)))
+            conf = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
+            content_text = str(r.get("content", ""))[:500]
+            entry_domains = r.get("domains", [])
+            parts.append(f"## {title} (confidence: {conf:.0%})")
+            parts.append(content_text)
+            meta = f"Status: {r.get('status', '?')}"
+            if entry_domains:
+                meta += f" | Domains: {', '.join(str(d) for d in entry_domains)}"
+            parts.append(meta)
+            parts.append("")
+        return "\n".join(parts)
+
+    # -----------------------------------------------------------------------
     # Wave 33 B6: MCP prompts (2)
     # -----------------------------------------------------------------------
 
     @mcp.prompt("knowledge-query")
     async def knowledge_query_prompt(domain: str, question: str) -> str:
-        """Build a prompt with relevant knowledge entries and the user's question."""
+        """Build a prompt with relevant knowledge entries and the user's question.
+
+        Uses the real retrieval pipeline (semantic + Thompson sampling + freshness).
+        """
+        catalog = getattr(runtime, "knowledge_catalog", None)
+        if catalog is not None:
+            # Default to first workspace
+            ws_ids = list(runtime.projections.workspaces.keys())
+            ws_id = ws_ids[0] if ws_ids else ""
+            try:
+                results = await catalog.search(
+                    f"{domain} {question}", workspace_id=ws_id, top_k=5,
+                )
+                context = "\n".join(
+                    f"- {r.get('title', 'Untitled')}: {str(r.get('content', ''))[:200]}"
+                    for r in results
+                )
+                return f"Based on this knowledge:\n{context}\n\nAnswer: {question}"
+            except Exception:  # noqa: BLE001
+                pass
+        # Fallback: domain filter over projections
         entries: list[dict[str, Any]] = []
         for entry in runtime.projections.memory_entries.values():
             if entry.get("status") == "rejected":
@@ -1210,54 +1331,27 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
     ) -> str:
         """Search institutional memory and return relevant entries as prose.
 
-        Returns top-5 knowledge entries formatted for context injection.
+        Uses the real retrieval pipeline (semantic + Thompson sampling +
+        freshness + co-occurrence + graph proximity). Returns top-5 entries
+        formatted for context injection.
         """
-        query_lower = query.lower()
-        scored: list[tuple[int, str, dict[str, Any]]] = []
-        for eid, entry in runtime.projections.memory_entries.items():
-            if entry.get("status") == "rejected":
-                continue
-            if workspace_id and entry.get("workspace_id") != workspace_id:
-                continue
-            # Simple keyword scoring on title + content + domains
-            score = 0
-            title = str(entry.get("title", "")).lower()
-            content_text = str(entry.get("content", "")).lower()
-            entry_domains = entry.get("domains", [])
-            for word in query_lower.split():
-                if word in title:
-                    score += 3
-                if word in content_text:
-                    score += 1
-                if any(word in str(d).lower() for d in entry_domains):
-                    score += 2
-            if score > 0:
-                scored.append((score, eid, entry))
+        # Default to first workspace if omitted
+        if not workspace_id:
+            ws_ids = list(runtime.projections.workspaces.keys())
+            workspace_id = ws_ids[0] if ws_ids else ""
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        top = scored[:5]
+        catalog = getattr(runtime, "knowledge_catalog", None)
+        if catalog is not None:
+            try:
+                results = await catalog.search(
+                    query, workspace_id=workspace_id, top_k=5,
+                )
+                if results:
+                    return _format_knowledge_results(query, results)
+            except Exception:  # noqa: BLE001
+                log.warning("knowledge_for_context.retrieval_failed", query=query)
 
-        if not top:
-            return f"No knowledge entries found matching: {query}"
-
-        parts = [f"# Knowledge Context: {query}\n"]
-        for _score, _eid, entry in top:
-            alpha = float(entry.get("conf_alpha", 5.0))
-            beta = float(entry.get("conf_beta", 5.0))
-            conf = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
-            content_text = str(entry.get("content", ""))[:500]
-            entry_domains = entry.get("domains", [])
-            parts.append(f"## {entry.get('title', 'Untitled')} (confidence: {conf:.0%})")
-            parts.append(content_text)
-            parts.append(
-                f"Source: {entry.get('created_by', '?')} ({entry.get('created_at', '?')[:10]}), "
-                f"status: {entry.get('status', '?')}"
-            )
-            if entry_domains:
-                parts.append(f"Domains: {', '.join(str(d) for d in entry_domains)}")
-            parts.append("")
-
-        return "\n".join(parts)
+        return f"No knowledge entries found matching: {query}"
 
     # -----------------------------------------------------------------------
     # Wave 34 B2: Proactive intelligence briefing resource
@@ -1309,6 +1403,148 @@ def create_mcp_server(runtime: Runtime) -> FastMCP:
         data_dir = runtime.settings.system.data_dir
         text = _render_journal(data_dir, workspace_id, max_lines=30)
         return text or "No journal entries yet."
+
+    # -----------------------------------------------------------------------
+    # Wave 75 Track 5: Economic MCP resources
+    # -----------------------------------------------------------------------
+
+    @mcp.resource("formicos://billing")
+    async def billing_resource() -> str:
+        """Current-period billing status for this FormicOS instance.
+
+        Reads the event store directly (not projections). Total tokens
+        includes reasoning tokens per METERING.md specification.
+        """
+        from formicos.surface.metering import (  # noqa: PLC0415
+            aggregate_period as _agg,
+        )
+        from formicos.surface.metering import (
+            current_period as _cur,
+        )
+        from formicos.surface.metering import (
+            format_billing_status as _fmt,
+        )
+
+        event_store = getattr(runtime, "_event_store", None)
+        if event_store is None:
+            return "Billing data unavailable (event store not accessible)."
+        start, end = _cur()
+        agg = await _agg(event_store, start, end)
+        return _fmt(agg)
+
+    @mcp.resource("formicos://receipt/{task_id}")
+    async def receipt_resource(task_id: str) -> str:
+        """Get a deterministic receipt for a completed colony/task.
+
+        Returns cost, quality, rounds, tokens, and status.
+        """
+        colony = runtime.projections.colonies.get(task_id)
+        if colony is None:
+            return f"No colony found with ID: {task_id}"
+
+        budget = colony.budget_truth
+        total_tokens = (
+            budget.total_input_tokens
+            + budget.total_output_tokens
+            + budget.total_reasoning_tokens
+        )
+        quality_str = (
+            f"{colony.quality_score:.0%}"
+            if colony.quality_score > 0
+            else "pending"
+        )
+        lines = [
+            f"# Task Receipt — {colony.display_name or task_id}",
+            "",
+            f"**Task ID:** {task_id}",
+            f"**Status:** {colony.status}",
+            f"**Rounds:** {colony.round_number}/{colony.max_rounds}",
+            f"**Quality:** {quality_str}",
+            f"**Total Cost:** ${budget.total_cost:.4f}",
+            f"**Total Tokens:** {total_tokens:,}",
+            f"  - Input: {budget.total_input_tokens:,}",
+            f"  - Output: {budget.total_output_tokens:,}",
+            f"  - Reasoning: {budget.total_reasoning_tokens:,}",
+            f"  - Cache-read: {budget.total_cache_read_tokens:,} (informational)",
+            "",
+        ]
+        if budget.model_usage:
+            lines.append("**Models Used:**")
+            for model, stats in sorted(budget.model_usage.items()):
+                m_total = (
+                    int(stats.get("input_tokens", 0))
+                    + int(stats.get("output_tokens", 0))
+                    + int(stats.get("reasoning_tokens", 0))
+                )
+                cost = float(stats.get("cost", 0))
+                lines.append(
+                    f"  - {model}: {m_total:,} tokens, ${cost:.4f}"
+                )
+        return "\n".join(lines)
+
+    # -----------------------------------------------------------------------
+    # Wave 75 Track 6: Economic MCP prompts
+    # -----------------------------------------------------------------------
+
+    @mcp.prompt("economic-status")
+    async def economic_status_prompt() -> str:
+        """Get a complete economic overview of this FormicOS instance.
+
+        Shows billing status, token breakdown, computed fee, and tier status.
+        Use this to understand current usage costs and billing position.
+        """
+        from formicos.surface.metering import (  # noqa: PLC0415
+            aggregate_period as _agg,
+        )
+        from formicos.surface.metering import (
+            current_period as _cur,
+        )
+        from formicos.surface.metering import (
+            format_billing_status as _fmt,
+        )
+        event_store = getattr(runtime, "_event_store", None)
+        if event_store is None:
+            return "Billing data unavailable (event store not accessible)."
+        start, end = _cur()
+        agg = await _agg(event_store, start, end)
+        status = _fmt(agg)
+        return (
+            "You are reviewing the economic status of a FormicOS instance.\n\n"
+            + status
+            + "\n\nSummarize the billing position and flag anything notable "
+            "(high spend, approaching tier boundaries, cost concentration)."
+        )
+
+    @mcp.prompt("review-task-receipt")
+    async def review_task_receipt_prompt(task_id: str) -> str:
+        """Review the economic receipt for a completed colony/task.
+
+        Shows cost breakdown, quality score, token usage, and models.
+        """
+        colony = runtime.projections.colonies.get(task_id)
+        if colony is None:
+            return f"No colony found with ID: {task_id}. Check the task ID."
+
+        budget = colony.budget_truth
+        total_tokens = (
+            budget.total_input_tokens
+            + budget.total_output_tokens
+            + budget.total_reasoning_tokens
+        )
+        return (
+            f"Review this task receipt and assess value-for-cost:\n\n"
+            f"Task: {colony.display_name or task_id}\n"
+            f"Status: {colony.status}\n"
+            f"Rounds: {colony.round_number}/{colony.max_rounds}\n"
+            f"Quality: {colony.quality_score:.0%}\n"
+            f"Cost: ${budget.total_cost:.4f}\n"
+            f"Tokens: {total_tokens:,} "
+            f"(input: {budget.total_input_tokens:,}, "
+            f"output: {budget.total_output_tokens:,}, "
+            f"reasoning: {budget.total_reasoning_tokens:,})\n\n"
+            f"Assess whether cost was proportionate to outcome quality "
+            f"and suggest optimization if applicable."
+        )
 
     # Activate transforms so @mcp.resource() and @mcp.prompt()
     # definitions are automatically exposed as tools.

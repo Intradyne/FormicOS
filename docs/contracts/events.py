@@ -1036,6 +1036,10 @@ class ParallelPlanCreated(EventEnvelope):
     reasoning: str = Field(...)
     knowledge_gaps: list[str] = Field(default_factory=list)
     estimated_cost: float = Field(default=0.0)
+    planner_model: str = Field(default="", description="Model that generated this plan.")
+    planning_signals: dict[str, Any] = Field(
+        default_factory=dict, description="Structured planning signals at plan creation time.",
+    )
 
 
 class KnowledgeDistilled(EventEnvelope):
@@ -1248,6 +1252,7 @@ class ServiceTriggerFired(EventEnvelope):
     type: Literal["ServiceTriggerFired"] = "ServiceTriggerFired"
     addon_name: str = Field(..., description="Addon that owns the trigger.")
     trigger_type: str = Field(default="", description="cron | event | webhook | manual")
+    handler: str = Field(default="", description="Handler reference that was invoked.")
     workspace_id: str = Field(default="")
     details: str = Field(default="", description="Human-readable trigger context.")
 

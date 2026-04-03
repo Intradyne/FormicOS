@@ -155,6 +155,7 @@ class GeminiAdapter:
         max_tokens: int = 4096,
         thinking_budget: int | None = None,
         tool_choice: object | None = None,  # Wave 58: accepted for LLMPort compat
+        extra_body: dict[str, object] | None = None,  # Wave 77.5: ignored for cloud
     ) -> LLMResponse:
         """Return a single structured completion from Gemini."""
         model_name = _strip_prefix(model)

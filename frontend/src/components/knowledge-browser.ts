@@ -9,7 +9,7 @@ import './knowledge-view.js';
 import './knowledge-search-results.js';
 import './knowledge-health-card.js';
 
-interface AddonPanel { target: string; display_type: string; path: string; addon_name: string; }
+interface AddonPanel { target: string; display_type: string; path: string; addon_name: string; refresh_interval_s?: number; }
 
 type SubView = 'catalog' | 'graph' | 'tree';
 
@@ -450,6 +450,11 @@ export class FcKnowledgeBrowser extends LitElement {
   /** Wave 69: Quick stats for search-first view. */
   @state() private _quickStats: { entryCount: number; domainCount: number } | null = null;
 
+  /** Wave 77.5 B1: Bulk confirmation state. */
+  @state() private _bulkInProgress = false;
+  @state() private _bulkProgress = 0;
+  @state() private _bulkTotal = 0;
+
   private _debounceTimer = 0;
 
   connectedCallback() {
@@ -718,6 +723,27 @@ export class FcKnowledgeBrowser extends LitElement {
     } catch { /* best-effort */ }
   }
 
+  /** Wave 77.5 B1: Bulk confirm all visible candidate entries via feedback endpoint. */
+  private async _confirmAllVisible() {
+    const visible = this.items.filter(e => e.status === 'candidate');
+    if (!visible.length) return;
+    this._bulkInProgress = true;
+    this._bulkTotal = visible.length;
+    this._bulkProgress = 0;
+    for (const entry of visible) {
+      try {
+        await fetch(`/api/v1/knowledge/${encodeURIComponent(entry.id)}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ positive: true }),
+        });
+      } catch { /* continue on error */ }
+      this._bulkProgress++;
+    }
+    this._bulkInProgress = false;
+    await this._fetchItems();
+  }
+
   /** Wave 50: Infer knowledge scope from entry fields. */
   private _inferScope(e: KnowledgeItemPreview): 'thread' | 'workspace' | 'global' {
     // Team 1 may add an explicit `scope` field; use it if present.
@@ -941,7 +967,9 @@ export class FcKnowledgeBrowser extends LitElement {
         <fc-addon-panel
           src="/addons/${p.addon_name}${p.path}"
           display-type="${p.display_type}"
-          label="${p.addon_name}">
+          label="${p.addon_name}"
+          workspace-id="${this.workspaceId}"
+          .refreshInterval=${p.refresh_interval_s ?? 60}>
         </fc-addon-panel>
       `)}
 
@@ -1300,6 +1328,16 @@ export class FcKnowledgeBrowser extends LitElement {
         <span class="divider"></span>
         <button class="maintenance-btn" style="border-color:rgba(45,212,168,0.3);color:#2DD4A8"
           @click=${() => { this._showCreate = true; }}>+ Create Entry</button>
+        ${this.items.some(e => e.status === 'candidate') ? html`
+          <span class="divider"></span>
+          <button class="maintenance-btn" style="border-color:rgba(245,183,49,0.3);color:#F5B731"
+            ?disabled=${this._bulkInProgress}
+            @click=${() => void this._confirmAllVisible()}>
+            ${this._bulkInProgress
+              ? `Confirming ${this._bulkProgress}/${this._bulkTotal}...`
+              : 'Confirm All Visible'}
+          </button>
+        ` : nothing}
       </div>
 
       ${this._showCreate ? this._renderCreateForm() : nothing}

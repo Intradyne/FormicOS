@@ -64,7 +64,7 @@ def _log_forage_task(task: Any) -> None:
     if not task.cancelled() and task.exception() is not None:
         log.error(
             "forager.background_task_failed",
-            error=str(task.exception()),
+            error=repr(task.exception()),
         )
 
 
@@ -128,7 +128,14 @@ class _ProviderCooldown:
         return self._max_retries_per_request
 
     def record_failure(self, provider: str) -> None:
-        """Record a provider failure. Starts cooldown if threshold is reached."""
+        """Record a provider failure. Starts cooldown if threshold is reached.
+
+        Local providers (llama-cpp*) skip cooldown — their failures are
+        transient VRAM contention, not rate limits. Retrying immediately
+        is correct for shared local inference servers.
+        """
+        if provider.startswith("llama-cpp"):
+            return  # No cooldown for local providers
         now = _time_mod.monotonic()
         failures = self._failures.setdefault(provider, [])
         failures.append(now)
@@ -173,7 +180,7 @@ class LLMRouter:
     # Default fallback chain (ADR-014): gemini → local → anthropic
     _DEFAULT_FALLBACK: list[str] = [
         "gemini/gemini-2.5-flash",
-        "llama-cpp/gpt-4",
+        "llama-cpp/qwen3.5-35b",
         "anthropic/claude-sonnet-4.6",
     ]
 
@@ -292,28 +299,50 @@ class LLMRouter:
         temperature: float = 0.0,
         max_tokens: int = 4096,
         tool_choice: object | None = None,  # Wave 54: reactive escalation
+        extra_body: dict[str, object] | None = None,  # Wave 77.5: thinking mode
     ) -> LLMResponse:
         prefix = model.split("/", 1)[0]
+
+        # Wave 77.5: forward extra_body to all llama-cpp variants (incl. swarm)
+        _extra = extra_body if prefix.startswith("llama-cpp") else None
+
+        # Wave 78.5: provider-aware tool schema sanitization
+        from formicos.engine.schema_sanitize import maybe_sanitize_tool_schemas  # noqa: PLC0415
+
+        _tools = maybe_sanitize_tool_schemas(prefix, tools)
+
+        # DEBUG: log sanitization result for llama-cpp
+        if prefix.startswith("llama-cpp") and _tools:
+            _nested = [t.get("name","?") for t in (_tools or []) if any(
+                p.get("items",{}).get("type") == "object"
+                for p in t.get("parameters",{}).get("properties",{}).values()
+                if isinstance(p.get("items"), dict)
+            )]
+            if _nested:
+                log.warning("schema_sanitize.STILL_NESTED", tools=_nested)
+            else:
+                log.info("schema_sanitize.ok", tool_count=len(_tools), provider=prefix)
 
         # ADR-024: Skip cooled-down providers, use fallback immediately
         if self._cooldown.is_cooled_down(prefix):
             log.info("llm_router.provider_cooled", provider=prefix, model=model)
             return await self._complete_with_fallback(
-                model, messages, tools, temperature, max_tokens,
+                model, messages, _tools, temperature, max_tokens,
                 tool_choice=tool_choice,
             )
 
         try:
             adapter = self._resolve(model)
             result = await adapter.complete(
-                model, messages, tools=tools,
+                model, messages, tools=_tools,
                 temperature=temperature, max_tokens=max_tokens,
                 tool_choice=tool_choice,
+                extra_body=_extra,
             )
         except Exception as exc:
             # Record failure for cooldown tracking (ADR-024)
             self._cooldown.record_failure(prefix)
-            log.warning("llm_router.provider_error", provider=prefix, error=str(exc))
+            log.warning("llm_router.provider_error", provider=prefix, error=repr(exc))
             return await self._complete_with_fallback(
                 model, messages, tools, temperature, max_tokens,
                 tool_choice=tool_choice,
@@ -342,6 +371,7 @@ class LLMRouter:
 
         Wave 50: per-request retry cap prevents infinite fallback loops.
         """
+        from formicos.engine.schema_sanitize import maybe_sanitize_tool_schemas  # noqa: PLC0415
         result: LLMResponse | None = None
         retries = 0
         max_retries = self._cooldown.max_retries_per_request
@@ -371,8 +401,10 @@ class LLMRouter:
             retries += 1
             try:
                 fb_adapter = self._adapters[fb_prefix]
+                # Wave 78.5: sanitize for fallback provider too
+                _fb_tools = maybe_sanitize_tool_schemas(fb_prefix, tools)
                 result = await fb_adapter.complete(
-                    fallback_model, messages, tools=tools,
+                    fallback_model, messages, tools=_fb_tools,
                     temperature=temperature, max_tokens=clamped,
                     tool_choice=tool_choice,
                 )
@@ -584,6 +616,12 @@ class Runtime:
                             ),
                         )
                         self.projections.entry_kg_nodes[entry_id] = node_id
+
+                        # Wave 86: conservative entry-to-module bridging.
+                        # Link entry to MODULE nodes from structured refs only.
+                        await self._bridge_entry_to_modules(
+                            entry, entry_id, node_id, ws_id,
+                        )
                     except Exception:  # noqa: BLE001
                         log.warning("kg_bridge.create_failed", entry_id=entry_id)
 
@@ -643,6 +681,77 @@ class Runtime:
                     self.projections.entry_kg_nodes[entry_id] = node_id
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def _bridge_entry_to_modules(
+        self,
+        entry: Any,
+        entry_id: str,
+        entry_node_id: str,
+        workspace_id: str,
+    ) -> None:
+        """Wave 86: Conservative entry-to-module bridging.
+
+        Links a memory entry's KG node to MODULE nodes using only
+        structured, low-risk references:
+        - source colony target_files
+        - artifact filenames/paths
+        - exact file-path patterns in title
+
+        Best-effort: failures are logged but do not propagate.
+        """
+        if self.kg_adapter is None:
+            return
+
+        file_refs: set[str] = set()
+
+        # 1. Source colony target files
+        if isinstance(entry, dict):
+            colony_id = entry.get("source_colony_id", "")
+            if colony_id:
+                colony = self.projections.get_colony(colony_id)
+                if colony:
+                    for tf in getattr(colony, "target_files", []) or []:
+                        if tf:
+                            file_refs.add(str(tf))
+
+        # 2. Artifact filenames from entry metadata
+        if isinstance(entry, dict):
+            for key in ("filename", "path", "file_path"):
+                val = entry.get(key)
+                if val and isinstance(val, str) and "." in val:
+                    file_refs.add(val)
+
+        # 3. Exact file-path refs in title (conservative: must have extension)
+        title = (
+            entry.get("title", "") if isinstance(entry, dict)
+            else getattr(entry, "title", "")
+        )
+        import re  # noqa: PLC0415
+
+        _FILE_REF_RE = re.compile(r"[A-Za-z0-9_/.-]+\.[A-Za-z0-9_]+")
+        for match in _FILE_REF_RE.findall(title):
+            if "/" in match or match.endswith(".py") or match.endswith(".ts"):
+                file_refs.add(match)
+
+        if not file_refs:
+            return
+
+        for fref in list(file_refs)[:5]:  # cap to avoid explosion
+            try:
+                module_id = await self.kg_adapter.resolve_entity(
+                    name=fref,
+                    entity_type="MODULE",
+                    workspace_id=workspace_id,
+                )
+                await self.kg_adapter.add_edge(
+                    from_node=entry_node_id,
+                    to_node=module_id,
+                    predicate="RELATED_TO",
+                    workspace_id=workspace_id,
+                    confidence=0.6,
+                )
+            except Exception:  # noqa: BLE001
+                continue
 
     # -- Operation functions (shared by MCP and WS commands) --
 
@@ -957,7 +1066,8 @@ class Runtime:
             # Compute effective policy from model record
             model_rec = registry_map.get(model)
             eff_output = (
-                model_rec.max_output_tokens if model_rec else recipe.max_tokens
+                min(recipe.max_tokens, model_rec.max_output_tokens)
+                if model_rec else recipe.max_tokens
             )
             eff_time = int(
                 recipe.max_execution_time_s

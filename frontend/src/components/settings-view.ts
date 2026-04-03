@@ -185,6 +185,7 @@ export class FcSettingsView extends LitElement {
   @property({ type: Object }) skillBankStats: SkillBankStats | null = null;
   @property({ type: Array }) tree: TreeNode[] = [];
   @property({ type: Array }) addons: AddonSummary[] = [];
+  @property({ type: String }) activeWorkspaceId = '';
 
   @state() private _editStrategy: 'stigmergic' | 'sequential' = 'stigmergic';
   @state() private _editMaxRounds = 25;
@@ -199,6 +200,15 @@ export class FcSettingsView extends LitElement {
   @state() private _diagSearchMode = '';
   @state() private _knowledgeTotal = 0;
   @state() private _showDiagnostics = false;
+
+  // Wave 81: project binding + code index status
+  @state() private _bindingBound = false;
+  @state() private _bindingRoot = '';
+  @state() private _bindingMode = '';
+  @state() private _indexStatus = '';
+  @state() private _indexChunks = 0;
+  @state() private _indexLastTime = '';
+  @state() private _indexReindexing = false;
 
   // Maintenance policy state
   @state() private _policyLoaded = false;
@@ -215,6 +225,7 @@ export class FcSettingsView extends LitElement {
     void this._fetchDiagnostics();
     void this._fetchKnowledgeSummary();
     void this._fetchMaintenancePolicy();
+    void this._fetchProjectBinding();
     this._syncFromConfig();
   }
 
@@ -238,7 +249,12 @@ export class FcSettingsView extends LitElement {
   }
 
   private get _workspaceId(): string {
-    return this.tree[0]?.id ?? '';
+    return this.activeWorkspaceId || this.tree[0]?.id || '';
+  }
+
+  private get _activeWorkspace() {
+    const id = this._workspaceId;
+    return this.tree.find(ws => ws.id === id) ?? this.tree[0];
   }
 
   // --- Instant save per field ---
@@ -400,7 +416,7 @@ export class FcSettingsView extends LitElement {
   // --- Helpers ---
 
   private get _taxonomyTags(): string[] {
-    const ws = this.tree[0];
+    const ws = this._activeWorkspace;
     if (!ws) return [];
     const cfg = (ws as unknown as { config?: Record<string, string> }).config;
     const raw = cfg?.taxonomy_tags;
@@ -425,6 +441,7 @@ export class FcSettingsView extends LitElement {
       <div class="subtitle">Operator controls and workspace configuration</div>
 
       ${this._renderIdentityCard()}
+      ${this._renderProjectBindingCard()}
       ${this._renderGovernanceCard()}
       ${this._renderBudgetingCard()}
       ${this._renderModelDefaultsCard()}
@@ -436,7 +453,7 @@ export class FcSettingsView extends LitElement {
   // --- Card 1: Workspace Identity ---
 
   private _renderIdentityCard() {
-    const wsName = this.tree[0]?.name ?? 'No workspace';
+    const wsName = this._activeWorkspace?.name ?? 'No workspace';
     const tags = this._taxonomyTags;
 
     return html`
@@ -743,6 +760,87 @@ export class FcSettingsView extends LitElement {
             </span>
           </div>
         `)}
+      </div>
+    `;
+  }
+
+  // --- Card: Project Binding + Code Index (Wave 81) ---
+
+  private async _fetchProjectBinding() {
+    const wsId = this.activeWorkspaceId;
+    if (!wsId) return;
+    try {
+      const res = await fetch(`/api/v1/workspaces/${encodeURIComponent(wsId)}/project-binding`);
+      if (res.ok) {
+        const data = await res.json() as Record<string, unknown>;
+        this._bindingBound = !!data.bound;
+        this._bindingRoot = (data.project_root as string) ?? '';
+        this._bindingMode = (data.binding_mode as string) ?? 'env';
+        const idx = data.code_index as Record<string, unknown> | undefined;
+        if (idx) {
+          this._indexStatus = (idx.status as string) ?? 'unavailable';
+          this._indexChunks = (idx.chunks_indexed as number) ?? 0;
+          this._indexLastTime = (idx.last_indexed_at as string) ?? '';
+        }
+      } else {
+        this._bindingBound = false;
+      }
+    } catch {
+      this._bindingBound = false;
+    }
+  }
+
+  private async _triggerReindex() {
+    const wsId = this.activeWorkspaceId;
+    if (!wsId) return;
+    this._indexReindexing = true;
+    try {
+      await fetch(`/api/v1/workspaces/${encodeURIComponent(wsId)}/reindex`, { method: 'POST' });
+      await this._fetchProjectBinding();
+    } finally {
+      this._indexReindexing = false;
+    }
+  }
+
+  private _renderProjectBindingCard() {
+    return html`
+      <div class="settings-card">
+        <h3>Project Binding</h3>
+        <div class="control-row">
+          <div>
+            <div class="control-label">
+              ${this._bindingBound
+                ? html`<span style="color:var(--v-success)">\u2713 Bound</span>`
+                : html`<span style="color:var(--v-fg-dim)">\u2014 Not bound</span>`}
+            </div>
+            <div class="control-hint">
+              ${this._bindingBound
+                ? html`Project root: <code style="font-size:10px">${this._bindingRoot}</code> (${this._bindingMode})`
+                : 'Set PROJECT_DIR to bind a project root'}
+            </div>
+          </div>
+        </div>
+        ${this._bindingBound ? html`
+          <div class="control-row" style="margin-top:8px">
+            <div>
+              <div class="control-label">Code Index</div>
+              <div class="control-hint">
+                ${this._indexStatus === 'ready'
+                  ? html`${this._indexChunks} chunks indexed${this._indexLastTime ? html` \u00B7 last: ${this._indexLastTime}` : nothing}`
+                  : this._indexStatus === 'indexing'
+                    ? 'Indexing in progress...'
+                    : this._indexStatus === 'unavailable'
+                      ? 'Index unavailable'
+                      : 'Not indexed yet'}
+              </div>
+            </div>
+            <fc-btn variant="ghost" sm
+              ?disabled=${this._indexReindexing}
+              @click=${() => void this._triggerReindex()}>
+              ${this._indexReindexing ? 'Reindexing...' : 'Reindex'}
+            </fc-btn>
+          </div>
+        ` : nothing}
       </div>
     `;
   }

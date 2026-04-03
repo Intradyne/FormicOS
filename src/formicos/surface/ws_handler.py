@@ -260,7 +260,7 @@ class WebSocketManager:
         by endpoint URL with probe results.  On any failure the endpoint
         is omitted — callers fall back to ``-1`` / unknown sentinel values.
         """
-        local_providers = {"llama-cpp", "ollama", "local"}
+        local_providers = {"llama-cpp", "llama-cpp-swarm", "ollama", "local"}
 
         seen: dict[str, str] = {}  # endpoint -> first address
         for m in self._settings.models.registry:

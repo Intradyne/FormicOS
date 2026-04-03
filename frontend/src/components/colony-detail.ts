@@ -566,6 +566,7 @@ export class FcColonyDetail extends LitElement {
           </fc-btn>
           ${c.status === 'completed' ? html`<fc-btn variant="secondary" sm @click=${() => this._saveAsTemplate(c)}>Save as Template</fc-btn>` : nothing}
           ${c.status === 'completed' && !isService ? html`<fc-btn variant="secondary" sm @click=${() => this._activateService(c)}>Activate as Service</fc-btn>` : nothing}
+          ${c.status === 'completed' ? html`<fc-btn variant="secondary" sm @click=${() => this._useOutputAsInput(c)}>Use Output As Input</fc-btn>` : nothing}
           <fc-btn variant="danger" sm @click=${() => this._fire('kill-colony', c.id)}>Kill Colony</fc-btn>
         </div>
 
@@ -956,6 +957,21 @@ export class FcColonyDetail extends LitElement {
         }),
       });
     } catch { /* best-effort */ }
+  }
+
+  /** Wave 79.5 B3: Seed a new colony with this colony's output as input. */
+  private _useOutputAsInput(c: Colony) {
+    // Gather output filenames from artifacts
+    const fileArts = this._colonyArtifacts
+      .filter(a => ['file', 'code', 'patch'].includes(a.artifact_type))
+      .map(a => a.name)
+      .slice(0, 10);
+
+    this._fire('use-output-as-input', {
+      colonyId: c.id,
+      task: c.task || '',
+      targetFiles: fileArts,
+    });
   }
 
   private async _toggleExport(c: Colony) {

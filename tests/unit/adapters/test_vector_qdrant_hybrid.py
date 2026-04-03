@@ -23,7 +23,7 @@ from formicos.core.types import VectorDocument, VectorSearchHit
 # ---------------------------------------------------------------------------
 
 
-def _deterministic_embed(texts: list[str]) -> list[list[float]]:
+def _deterministic_embed(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
     """Sync embed_fn: deterministic 8-dim vectors from text hash."""
     vectors: list[list[float]] = []
     for text in texts:
@@ -407,7 +407,7 @@ class TestEmbedClientPrecedence:
     async def test_embed_client_used_over_embed_fn(self) -> None:
         sync_called = False
 
-        def sync_embed(texts: list[str]) -> list[list[float]]:
+        def sync_embed(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
             nonlocal sync_called
             sync_called = True
             return [[0.0] * 4 for _ in texts]

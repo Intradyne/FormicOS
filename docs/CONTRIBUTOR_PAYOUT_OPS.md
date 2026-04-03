@@ -1,5 +1,11 @@
 # Contributor Payout Operations
 
+> **Implementation status (Wave 75):**
+> - **Implemented:** `scripts/attribution.py` — deterministic git-blame
+>   attribution with maintainer floor, email aliases, and JSON output.
+> - **Still manual/operational:** payout execution, Stripe Connect setup,
+>   tax compliance, sponsor verification, dispute resolution.
+
 Internal operations guide for administering the FormicOS Contributor
 Revenue Share program. This document covers tax compliance, payment
 mechanics, timing, and edge cases.
@@ -41,7 +47,7 @@ python scripts/attribution.py \
     --output reports/attribution-YYYY-QN.json
 ```
 
-The script (to be implemented as an addon or standalone tool):
+The script (`scripts/attribution.py`):
 
 1. Runs `git blame -w --line-porcelain` on all tracked files in
    `src/`, `frontend/src/`, `config/`, and `addons/`

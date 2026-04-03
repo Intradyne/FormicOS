@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colony Quality Trends Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00d9ff;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .card h2 {
+            color: #00d9ff;
+            margin-top: 0;
+            font-size: 1.2em;
+            border-bottom: 1px solid #00d9ff;
+            padding-bottom: 10px;
+        }
+        .metric {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #00ff88;
+            margin: 10px 0;
+        }
+        .metric-label {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        .trend-up {
+            color: #00ff88;
+        }
+        .trend-down {
+            color: #ff6b6b;
+        }
+        .chart-container {
+            background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .chart {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .chart-bar {
+            position: absolute;
+            bottom: 0;
+            width: 40px;
+            background: linear-gradient(180deg, #00ff88 0%, #00d9ff 100%);
+            border-radius: 4px 4px 0 0;
+            transition: height 0.3s ease;
+        }
+        .chart-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8em;
+            color: #aaa;
+        }
+        .chart-axis {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #00d9ff;
+        }
+        .chart-y-axis {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: #00d9ff;
+        }
+        .chart-y-label {
+            position: absolute;
+            left: -35px;
+            font-size: 0.7em;
+            color: #aaa;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .legend-quality {
+            background: linear-gradient(180deg, #00ff88 0%, #00d9ff 100%);
+        }
+        .legend-efficiency {
+            background: linear-gradient(180deg, #ff6b6b 0%, #ff8e53 100%);
+        }
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 217, 255, 0.1);
+            border-radius: 4px;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #00d9ff;
+        }
+        .stat-label {
+            font-size: 0.8em;
+            color: #aaa;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Colony Quality Trends Dashboard</h1>
+        
+        <div class="dashboard-grid">
+            <div class="card">
+                <h2>Current Quality Score</h2>
+                <div class="metric">92.8</div>
+                <div class="metric-label">
+                    <span class="trend-up">↑ 20.3</span> from baseline
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Active Tasks</h2>
+                <div class="metric">82</div>
+                <div class="metric-label">
+                    <span class="trend-up">↑ 37</span> from start
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>System Efficiency</h2>
+                <div class="metric">91.3%</div>
+                <div class="metric-label">
+                    <span class="trend-up">↑ 23.1%</span> improvement
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h2>Quality Score Trend (Last 12 Weeks)</h2>
+            <div class="chart" id="qualityChart">
+                <div class="chart-axis"></div>
+                <div class="chart-y-axis"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color legend-quality"></div>
+                    <span>Quality Score</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h2>Efficiency Trend (Last 12 Weeks)</h2>
+            <div class="chart" id="efficiencyChart">
+                <div class="chart-axis"></div>
+                <div class="chart-y-axis"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color legend-efficiency"></div>
+                    <span>Efficiency</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h2>Active Tasks Trend (Last 12 Weeks)</h2>
+            <div class="chart" id="tasksChart">
+                <div class="chart-axis"></div>
+                <div class="chart-y-axis"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: linear-gradient(180deg, #ffd93d 0%, #ff6b6b 100%);"></div>
+                    <span>Active Tasks</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h2>Summary Statistics</h2>
+            <div class="summary-stats">
+                <div class="stat-item">
+                    <div class="stat-value">20.3</div>
+                    <div class="stat-label">Total Quality Improvement</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">23.1%</div>
+                    <div class="stat-label">Efficiency Gain</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">37</div>
+                    <div class="stat-label">Tasks Added</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const data = [
+            { date: "2024-01-01", quality: 72.5, tasks: 45, efficiency: 68.2 },
+            { date: "2024-01-08", quality: 74.1, tasks: 52, efficiency: 71.5 },
+            { date: "2024-01-15", quality: 76.8, tasks: 48, efficiency: 73.9 },
+            { date: "2024-01-22", quality: 78.2, tasks: 55, efficiency: 75.4 },
+            { date: "2024-01-29", quality: 80.5, tasks: 61, efficiency: 78.1 },
+            { date: "2024-02-05", quality: 82.3, tasks: 58, efficiency: 79.8 },
+            { date: "2024-02-12", quality: 84.7, tasks: 63, efficiency: 82.3 },
+            { date: "2024-02-19", quality: 86.1, tasks: 67, efficiency: 84.5 },
+            { date: "2024-02-26", quality: 87.9, tasks: 71, efficiency: 86.2 },
+            { date: "2024-03-04", quality: 89.4, tasks: 74, efficiency: 87.9 },
+            { date: "2024-03-11", quality: 91.2, tasks: 78, efficiency: 89.6 },
+            { date: "2024-03-18", quality: 92.8, tasks: 82, efficiency: 91.3 }
+        ];
+        
+        function createChart(containerId, values, maxValue, labels, color) {
+            const container = document.getElementById(containerId);
+            const chartHeight = 300;
+            const chartWidth = container.offsetWidth;
+            const barWidth = 40;
+            const gap = 20;
+            const totalWidth = values.length * (barWidth + gap) - gap;
+            const startX = (chartWidth - totalWidth) / 2;
+            
+            values.forEach((value, index) => {
+                const barHeight = (value / maxValue) * (chartHeight - 40);
+                const bar = document.createElement('div');
+                bar.className = 'chart-bar';
+                bar.style.left = (startX + index * (barWidth + gap)) + 'px';
+                bar.style.height = barHeight + 'px';
+                bar.style.background = color;
+                container.appendChild(bar);
+                
+                const label = document.createElement('div');
+                label.className = 'chart-label';
+                label.style.left = (startX + index * (barWidth + gap) + barWidth / 2) + 'px';
+                label.textContent = labels[index];
+                container.appendChild(label);
+            });
+            
+            // Add Y-axis labels
+            for (let i = 0; i <= maxValue; i += maxValue / 4) {
+                const yLabel = document.createElement('div');
+                yLabel.className = 'chart-y-label';
+                yLabel.style.top = (chartHeight - (i / maxValue) * (chartHeight - 40) - 10) + 'px';
+                yLabel.textContent = Math.round(i);
+                container.appendChild(yLabel);
+            }
+        }
+        
+        // Create charts
+        createChart('qualityChart', data.map(d => d.quality), 100, data.map(d => d.date.slice(5)), 'linear-gradient(180deg, #00ff88 0%, #00d9ff 100%)');
+        createChart('efficiencyChart', data.map(d => d.efficiency), 100, data.map(d => d.date.slice(5)), 'linear-gradient(180deg, #ff6b6b 0%, #ff8e53 100%)');
+        createChart('tasksChart', data.map(d => d.tasks), 100, data.map(d => d.date.slice(5)), 'linear-gradient(180deg, #ffd93d 0%, #ff6b6b 100%)');
+    </script>
+</body>
+</html>

@@ -127,7 +127,7 @@ class TestValidatorEscalationInteraction:
             stall_count=4,
         )
         assert result.action == "force_halt"
-        assert result.reason == "stalled 4+ rounds"
+        assert result.reason == "stalled 3+ rounds"
 
     def test_successful_code_execute_overrides_stall(self) -> None:
         """A successful code_execute can trigger 'complete' even when stalled."""
@@ -257,7 +257,7 @@ class TestEscalationOutcomeMatrix:
             "c-escalated",
             routing_override={
                 "tier": "advanced",
-                "reason": "stalled 4+ rounds",
+                "reason": "stalled 3+ rounds",
                 "set_at_round": 3,
             },
             rounds=6,
@@ -267,7 +267,7 @@ class TestEscalationOutcomeMatrix:
 
         assert outcome.escalated is True
         assert outcome.escalated_tier == "advanced"
-        assert outcome.escalation_reason == "stalled 4+ rounds"
+        assert outcome.escalation_reason == "stalled 3+ rounds"
         assert outcome.escalation_round == 3
 
     def test_pre_escalation_cost_calculated_correctly(self) -> None:
@@ -313,7 +313,7 @@ class TestEscalationOutcomeMatrix:
             "c-fail-esc",
             routing_override={
                 "tier": "advanced",
-                "reason": "stalled 4+ rounds",
+                "reason": "stalled 3+ rounds",
                 "set_at_round": 4,
             },
             rounds=8,
@@ -374,9 +374,9 @@ class TestEscalationThresholds:
         result = self._evaluate(stall_count=2)
         assert result.action == "warn"
 
-    def test_stall_3_warns(self) -> None:
+    def test_stall_3_force_halts(self) -> None:
         result = self._evaluate(stall_count=3)
-        assert result.action == "warn"
+        assert result.action == "force_halt"
 
     def test_stall_4_force_halts(self) -> None:
         result = self._evaluate(stall_count=4)

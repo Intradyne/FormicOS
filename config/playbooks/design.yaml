@@ -1,5 +1,11 @@
 task_class: design
 castes: [coder]
+decomposition:
+  confidence: 0.9
+  colony_range: "2-3"
+  grouping: "one colony per design area; split docs from skeletons"
+  recommended_caste: "coder"
+  recommended_strategy: "sequential"
 workflow: "Survey structure -> Design components -> Document -> Create skeletons"
 steps:
   - "Survey existing structure with list_workspace_files (once)"

@@ -49,7 +49,7 @@ class MockLLMPort:
     async def complete(
         self, model: str, messages: object, tools: object = None,
         temperature: float = 0.0, max_tokens: int = 4096,
-        tool_choice: object | None = None,
+        tool_choice: object | None = None, extra_body: dict[str, object] | None = None,
     ) -> LLMResponse:
         self.calls.append(model)
         return LLMResponse(

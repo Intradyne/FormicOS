@@ -278,11 +278,12 @@ class TestCompaction:
 
     def test_compact_above_threshold(self, tmp_path: Path) -> None:
         data_dir = str(tmp_path)
+        # Wave 76: compaction only archives settled (non-pending_review) items,
+        # so create executed actions to exceed the threshold.
         for i in range(1100):
-            append_action(
-                data_dir, WS_ID,
-                create_action(kind="maintenance", title=f"A{i}"),
-            )
+            action = create_action(kind="maintenance", title=f"A{i}")
+            action["status"] = STATUS_EXECUTED
+            append_action(data_dir, WS_ID, action)
 
         result = compact_action_log(data_dir, WS_ID)
         assert result is True
@@ -392,3 +393,100 @@ class TestSelfRejected:
         )
         assert action["status"] == STATUS_SELF_REJECTED
         assert "auto_actions" in action["operator_reason"]
+
+
+# ---------------------------------------------------------------------------
+# Wave 76: Compaction preserves pending items
+# ---------------------------------------------------------------------------
+
+
+class TestCompactionPreservesPending:
+    def test_pending_items_survive_compaction(self, tmp_path: Path) -> None:
+        """Pending_review items at early positions must survive compaction."""
+        data_dir = str(tmp_path)
+
+        # Create 5 pending_review items at the start
+        pending_ids = []
+        for i in range(5):
+            action = create_action(kind="maintenance", title=f"Pending-{i}")
+            append_action(data_dir, WS_ID, action)
+            pending_ids.append(action["action_id"])
+
+        # Fill the rest with executed items to exceed threshold
+        for i in range(1100):
+            action = create_action(kind="maintenance", title=f"Executed-{i}")
+            action["status"] = STATUS_EXECUTED
+            append_action(data_dir, WS_ID, action)
+
+        result = compact_action_log(data_dir, WS_ID)
+        assert result is True
+
+        remaining = read_actions(data_dir, WS_ID)
+        remaining_ids = {a["action_id"] for a in remaining}
+
+        # All 5 pending items must survive
+        for pid in pending_ids:
+            assert pid in remaining_ids, f"Pending item {pid} was archived"
+
+        # No pending_review items in the archive
+        ops_dir = tmp_path / ".formicos" / "operations" / WS_ID
+        archives = list(ops_dir.glob("actions.*.jsonl.gz"))
+        assert len(archives) == 1
+        with gzip.open(archives[0], "rt", encoding="utf-8") as gz:
+            for line in gz:
+                entry = json.loads(line)
+                assert entry.get("status") != STATUS_PENDING_REVIEW
+
+
+# ---------------------------------------------------------------------------
+# Wave 76: State transition validation
+# ---------------------------------------------------------------------------
+
+
+class TestStateTransitionValidation:
+    def test_valid_pending_to_approved(self, tmp_path: Path) -> None:
+        data_dir = str(tmp_path)
+        action = create_action(kind="maintenance", title="T1")
+        append_action(data_dir, WS_ID, action)
+        updated = update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_APPROVED})
+        assert updated is not None
+        assert updated["status"] == STATUS_APPROVED
+
+    def test_valid_approved_to_executed(self, tmp_path: Path) -> None:
+        data_dir = str(tmp_path)
+        action = create_action(kind="maintenance", title="T2")
+        append_action(data_dir, WS_ID, action)
+        update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_APPROVED})
+        updated = update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_EXECUTED})
+        assert updated is not None
+        assert updated["status"] == STATUS_EXECUTED
+
+    def test_invalid_executed_to_pending(self, tmp_path: Path) -> None:
+        data_dir = str(tmp_path)
+        action = create_action(kind="maintenance", title="T3")
+        append_action(data_dir, WS_ID, action)
+        update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_APPROVED})
+        update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_EXECUTED})
+        with pytest.raises(ValueError, match="invalid transition"):
+            update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_PENDING_REVIEW})
+
+    def test_invalid_rejected_to_approved(self, tmp_path: Path) -> None:
+        data_dir = str(tmp_path)
+        action = create_action(kind="maintenance", title="T4")
+        append_action(data_dir, WS_ID, action)
+        update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_REJECTED})
+        with pytest.raises(ValueError, match="invalid transition"):
+            update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_APPROVED})
+
+    def test_retry_path_failed_to_pending(self, tmp_path: Path) -> None:
+        data_dir = str(tmp_path)
+        action = create_action(kind="maintenance", title="T5")
+        append_action(data_dir, WS_ID, action)
+        update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_APPROVED})
+        update_action(data_dir, WS_ID, action["action_id"], {"status": STATUS_FAILED})
+        updated = update_action(
+            data_dir, WS_ID, action["action_id"],
+            {"status": STATUS_PENDING_REVIEW},
+        )
+        assert updated is not None
+        assert updated["status"] == STATUS_PENDING_REVIEW

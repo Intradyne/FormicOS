@@ -13,7 +13,7 @@ Use these docs:
 - `docs/waves/wave_72/team_a_prompt.md`
 - `docs/waves/wave_72/team_b_prompt.md`
 - `docs/waves/wave_72/team_c_prompt.md`
-- `docs/waves/wave_72_polish_reference.md` - repo-truth polish reference
+- `docs/waves/wave_72/wave_72_polish_reference.md` - repo-truth polish reference
 
 ## Locked Boundaries
 

@@ -64,16 +64,20 @@ async def queue_continuation_proposals(
         return 0
 
     # Dedupe: read existing pending continuation actions by thread_id
+    # Wave 75 audit fix: also count failed attempts to prevent infinite re-proposal
     existing_actions = read_actions(data_dir, workspace_id)
     pending_thread_ids: set[str] = set()
+    failed_counts: dict[str, int] = {}
     for act in existing_actions:
-        if (
-            act.get("kind") == "continuation"
-            and act.get("status") == STATUS_PENDING_REVIEW
-        ):
-            tid = act.get("thread_id") or act.get("payload", {}).get("thread_id", "")
-            if tid:
-                pending_thread_ids.add(tid)
+        if act.get("kind") != "continuation":
+            continue
+        tid = act.get("thread_id") or act.get("payload", {}).get("thread_id", "")
+        if not tid:
+            continue
+        if act.get("status") == STATUS_PENDING_REVIEW:
+            pending_thread_ids.add(tid)
+        elif act.get("status") == STATUS_FAILED:
+            failed_counts[tid] = failed_counts.get(tid, 0) + 1
 
     queued = 0
     for candidate in candidates:
@@ -81,6 +85,9 @@ async def queue_continuation_proposals(
         if not thread_id:
             continue
         if thread_id in pending_thread_ids:
+            continue
+        # Wave 75 audit fix: stop re-proposing after 3 failures
+        if failed_counts.get(thread_id, 0) >= 3:
             continue
 
         description = candidate.get("description", "Continue stalled work")
@@ -274,6 +281,9 @@ async def execute_idle_continuations(
             dispatcher._daily_spend[workspace_id] = (  # pyright: ignore[reportPrivateUsage]
                 dispatcher._daily_spend.get(workspace_id, 0.0) + estimated_cost  # pyright: ignore[reportPrivateUsage]
             )
+            dispatcher._persist_daily_spend(workspace_id)  # pyright: ignore[reportPrivateUsage]
+            if estimated_cost > 0 and colony_id:
+                dispatcher._estimated_costs[colony_id] = estimated_cost  # pyright: ignore[reportPrivateUsage]
 
             # Journal the autonomous continuation
             import contextlib  # noqa: PLC0415

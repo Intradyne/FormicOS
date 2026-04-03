@@ -56,9 +56,11 @@ export class FcQueenOverview extends LitElement {
     .group-segment {
       flex: 1; border-radius: 2px; min-width: 8px;
     }
-    .group-segment.done { background: var(--v-success); }
-    .group-segment.active { background: var(--v-blue); animation: pulse 1.5s infinite; }
+    .group-segment.completed { background: var(--v-success); }
+    .group-segment.running { background: var(--v-blue); animation: pulse 1.5s infinite; }
     .group-segment.pending { background: rgba(255,255,255,0.06); }
+    .group-segment.blocked { background: rgba(232,88,26,0.25); border: 1px dashed rgba(232,88,26,0.4); }
+    .group-segment.failed { background: rgba(248,113,113,0.35); }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
     .plan-card:hover { border-color: var(--v-border-hover); }
     .plan-thread-name {
@@ -170,8 +172,8 @@ export class FcQueenOverview extends LitElement {
 
         <!-- Budget viz + Overrides row -->
         <div class="health-grid">
-          <fc-queen-budget-viz></fc-queen-budget-viz>
-          <fc-queen-overrides .workspaceId=${this.activeWorkspaceId} .workspace=${this.tree[0] ?? null}></fc-queen-overrides>
+          <fc-queen-budget-viz .workspaceId=${this.activeWorkspaceId}></fc-queen-budget-viz>
+          <fc-queen-overrides .workspaceId=${this.activeWorkspaceId} .workspace=${this._activeWorkspace ?? null}></fc-queen-overrides>
         </div>
 
         <!-- Tool usage stats -->
@@ -192,12 +194,19 @@ export class FcQueenOverview extends LitElement {
       </div>`;
   }
 
+  @property({ type: String }) externalActiveWorkspaceId = '';
+
   private get activeWorkspaceId(): string {
-    return this.tree[0]?.id ?? '';
+    return this.externalActiveWorkspaceId || this.tree[0]?.id || '';
+  }
+
+  private get _activeWorkspace() {
+    const id = this.activeWorkspaceId;
+    return this.tree.find((ws: any) => ws.id === id) ?? this.tree[0];
   }
 
   private get _isDemoWorkspace(): boolean {
-    const name = this.tree[0]?.name ?? '';
+    const name = this._activeWorkspace?.name ?? '';
     return name.toLowerCase().includes('demo');
   }
 
@@ -208,6 +217,47 @@ export class FcQueenOverview extends LitElement {
   }
 
   /** Render compact Active Plans summary from queenThreads with parallel plans. */
+  /**
+   * Wave 81: compute per-group state from colony projections.
+   * States: completed, running, failed, blocked (upstream incomplete), pending.
+   */
+  private _computeGroupStates(
+    groups: string[][],
+    taskMap: Map<string, Record<string, string>>,
+    colonyStatusMap: Map<string, string>,
+  ): ('completed' | 'running' | 'failed' | 'blocked' | 'pending')[] {
+    const states: ('completed' | 'running' | 'failed' | 'blocked' | 'pending')[] = [];
+    let upstreamAllDone = true;
+    for (const group of groups) {
+      let allCompleted = true;
+      let anyRunning = false;
+      let anyFailed = false;
+      let anySpawned = false;
+      for (const taskId of group) {
+        const taskData = taskMap.get(taskId);
+        const colonyId = taskData?.colony_id;
+        const status = colonyId ? colonyStatusMap.get(colonyId) : undefined;
+        if (status) anySpawned = true;
+        if (status === 'running' || status === 'pending' || status === 'queued') anyRunning = true;
+        if (status === 'failed' || status === 'killed') anyFailed = true;
+        if (status !== 'completed') allCompleted = false;
+      }
+      if (allCompleted && group.length > 0) {
+        states.push('completed');
+      } else if (anyFailed) {
+        states.push('failed');
+      } else if (anyRunning) {
+        states.push('running');
+      } else if (!upstreamAllDone && !anySpawned) {
+        states.push('blocked');
+      } else {
+        states.push('pending');
+      }
+      if (!allCompleted) upstreamAllDone = false;
+    }
+    return states;
+  }
+
   private _renderActivePlans() {
     const plans = this.queenThreads
       .filter(qt => qt.active_plan && qt.parallel_groups && qt.parallel_groups.length > 0)
@@ -226,20 +276,22 @@ export class FcQueenOverview extends LitElement {
             taskMap.set(t.task_id, t);
           }
         }
-        let completedGroups = 0;
-        let runningCount = 0;
-        for (const group of groups) {
-          let groupDone = true;
-          for (const taskId of group) {
-            const taskData = taskMap.get(taskId);
-            const colonyId = taskData?.colony_id;
-            const status = colonyId ? colonyStatusMap.get(colonyId) : undefined;
-            if (status === 'running') runningCount++;
-            if (status !== 'completed') groupDone = false;
-          }
-          if (groupDone && group.length > 0) completedGroups++;
-        }
-        return { threadId: qt.id, threadName: qt.name, completedGroups, totalGroups, runningCount };
+        const groupStates = this._computeGroupStates(groups, taskMap, colonyStatusMap);
+        const completedGroups = groupStates.filter(s => s === 'completed').length;
+        const blockedGroups = groupStates.filter(s => s === 'blocked').length;
+        const failedGroups = groupStates.filter(s => s === 'failed').length;
+        const runningCount = groupStates.filter(s => s === 'running').length;
+        const totalTasks = (qt.active_plan as any)?.tasks?.length ?? groups.flat().length;
+        const spawnedTasks = [...taskMap.values()].filter(t => {
+          const cid = (t as Record<string, string>).colony_id;
+          return cid && colonyStatusMap.has(cid);
+        }).length;
+        return {
+          threadId: qt.id, threadName: qt.name,
+          completedGroups, totalGroups, runningCount,
+          blockedGroups, failedGroups, groupStates,
+          totalTasks, spawnedTasks,
+        };
       });
 
     if (plans.length === 0) return nothing;
@@ -256,10 +308,19 @@ export class FcQueenOverview extends LitElement {
                 ${p.runningCount > 0 ? html`
                   <span class="plan-running">\u25CF ${p.runningCount} running</span>
                 ` : nothing}
+                ${p.blockedGroups > 0 ? html`
+                  <span class="plan-running" style="color:var(--v-accent)">\u25A0 ${p.blockedGroups} blocked</span>
+                ` : nothing}
+                ${p.failedGroups > 0 ? html`
+                  <span class="plan-running" style="color:var(--v-danger)">\u2717 ${p.failedGroups} failed</span>
+                ` : nothing}
+                ${p.spawnedTasks < p.totalTasks ? html`
+                  <span class="plan-groups" style="color:var(--v-fg-dim)">${p.spawnedTasks}/${p.totalTasks} tasks spawned</span>
+                ` : nothing}
               </div>
               <div class="plan-group-bar">
-                ${Array.from({length: p.totalGroups}, (_, i) => html`
-                  <div class="group-segment ${i < p.completedGroups ? 'done' : i === p.completedGroups && p.runningCount > 0 ? 'active' : 'pending'}"></div>
+                ${p.groupStates.map(gs => html`
+                  <div class="group-segment ${gs}" title="Group: ${gs}"></div>
                 `)}
               </div>
             </div>

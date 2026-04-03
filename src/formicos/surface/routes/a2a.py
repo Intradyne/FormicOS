@@ -29,6 +29,7 @@ from formicos.surface.event_translator import (
 )
 from formicos.surface.structured_error import KNOWN_ERRORS, to_http_error
 from formicos.surface.task_classifier import classify_task
+from formicos.surface.task_receipts import build_receipt, save_contract
 from formicos.surface.template_manager import load_all_templates
 from formicos.surface.transcript import build_transcript
 
@@ -207,6 +208,25 @@ def routes(
         if not description:
             return await _err("DESCRIPTION_REQUIRED")
 
+        # Wave 75: optional contract intake
+        contract = body.get("contract")
+        if contract is not None:
+            if not isinstance(contract, dict):
+                return await _err(
+                    "INVALID_JSON",
+                    details={"reason": "contract must be an object"},
+                )
+            if contract.get("schema") != "formicos/contribution-contract":
+                return await _err(
+                    "INVALID_JSON",
+                    details={"reason": "contract.schema must be 'formicos/contribution-contract'"},
+                )
+            if contract.get("version") != 1:
+                return await _err(
+                    "INVALID_JSON",
+                    details={"reason": "contract.version must be 1"},
+                )
+
         templates = await load_all_templates(
             projection_templates=projections.templates,
         )
@@ -236,6 +256,11 @@ def routes(
             budget_limit=budget_limit,
         )
         asyncio.create_task(colony_manager.start_colony(colony_id))
+
+        # Wave 75: persist contract if provided
+        if contract is not None:
+            data_dir = runtime.settings.system.data_dir
+            save_contract(data_dir, colony_id, contract)
 
         log.info(
             "a2a.task_created",
@@ -303,17 +328,22 @@ def routes(
         transcript = build_transcript(colony)
         # Wave 33 B2: redact credentials from transcript exports
         _redact_transcript(transcript)
-        return JSONResponse(
-            {
-                "task_id": task_id,
-                "status": colony.status,
-                "output": transcript.get("final_output", ""),
-                "transcript": transcript,
-                "quality_score": colony.quality_score,
-                "skills_extracted": colony.skills_extracted,
-                "cost": colony.cost,
-            },
-        )
+
+        # Wave 75: deterministic receipt for terminal tasks
+        receipt = build_receipt(runtime, task_id)
+
+        result: dict[str, Any] = {
+            "task_id": task_id,
+            "status": colony.status,
+            "output": transcript.get("final_output", ""),
+            "transcript": transcript,
+            "quality_score": colony.quality_score,
+            "skills_extracted": colony.skills_extracted,
+            "cost": colony.cost,
+        }
+        if receipt:
+            result["receipt"] = receipt
+        return JSONResponse(result)
 
     async def cancel_task(request: Request) -> JSONResponse:
         task_id = request.path_params["task_id"]

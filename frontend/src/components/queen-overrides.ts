@@ -77,6 +77,37 @@ export class FcQueenOverrides extends LitElement {
       font-size: 9px; font-family: var(--f-mono); color: var(--v-fg-muted);
       margin-bottom: 6px;
     }
+    .form-row {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .form-row select, .form-row input {
+      font-size: 10px; font-family: var(--f-mono); padding: 4px 8px;
+      border-radius: 4px; border: 1px solid var(--v-border);
+      background: var(--v-bg); color: var(--v-fg); outline: none;
+    }
+    .form-row select:focus, .form-row input:focus { border-color: rgba(232,88,26,0.3); }
+    .rule-list { margin-top: 8px; }
+    .rule-item {
+      display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+      font-size: 10px; font-family: var(--f-mono); color: var(--v-fg-muted);
+      background: var(--v-bg); border-radius: 4px; margin-bottom: 3px;
+    }
+    .rule-item .rule-text { flex: 1; }
+    .rule-del {
+      cursor: pointer; color: var(--v-fg-dim); font-size: 12px;
+      padding: 0 4px; border: none; background: none;
+    }
+    .rule-del:hover { color: var(--v-danger, #ef4444); }
+    .caste-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+    .caste-pill {
+      font-size: 9px; font-family: var(--f-mono); padding: 2px 8px;
+      border-radius: 10px; border: 1px solid var(--v-border); cursor: pointer;
+      background: var(--v-bg); color: var(--v-fg-dim); user-select: none;
+    }
+    .caste-pill.active {
+      background: rgba(232,88,26,0.15); border-color: var(--v-accent); color: var(--v-accent);
+    }
   `];
 
   @property() workspaceId = '';
@@ -84,10 +115,16 @@ export class FcQueenOverrides extends LitElement {
 
   @state() private _disabledTools: string[] = [];
   @state() private _customRules = '';
-  @state() private _teamCompJson = '';
-  @state() private _teamCompError = '';
-  @state() private _roundBudgetJson = '';
-  @state() private _roundBudgetError = '';
+  // Team composition form state
+  @state() private _teamRules: Array<{taskType: string; castes: string[]; strategy: string}> = [];
+  @state() private _newTaskType = '';
+  @state() private _newCastes: string[] = [];
+  @state() private _newStrategy = 'sequential';
+  // Round budget form state
+  @state() private _budgetTiers: Array<{tier: string; rounds: number; budget: number}> = [];
+  @state() private _newTier = 'simple';
+  @state() private _newRounds = 8;
+  @state() private _newBudget = 1.0;
   @state() private _initialized = false;
 
   override willUpdate() {
@@ -114,21 +151,36 @@ export class FcQueenOverrides extends LitElement {
           ? (cr.startsWith('"') ? JSON.parse(cr) : cr) : String(cr);
       } catch { this._customRules = String(cr); }
     }
-    // Team composition
+    // Team composition → structured rules
     const tc = cfg['queen.team_composition'];
     if (tc) {
       try {
         const obj = typeof tc === 'string' ? JSON.parse(tc) : tc;
-        this._teamCompJson = JSON.stringify(obj, null, 2);
-      } catch { this._teamCompJson = String(tc); }
+        if (typeof obj === 'object' && obj) {
+          this._teamRules = Object.entries(obj as Record<string, string>).map(([taskType, value]) => {
+            const parts = String(value).split(' / ');
+            const strategy = parts[1]?.trim() || 'sequential';
+            const castes = parts[0].split('+').map(c => c.trim()).filter(Boolean);
+            return { taskType, castes, strategy };
+          });
+        }
+      } catch { /* ignore */ }
     }
-    // Round budget
+    // Round budget → structured tiers
     const rb = cfg['queen.round_budget'];
     if (rb) {
       try {
         const obj = typeof rb === 'string' ? JSON.parse(rb) : rb;
-        this._roundBudgetJson = JSON.stringify(obj, null, 2);
-      } catch { this._roundBudgetJson = String(rb); }
+        if (typeof obj === 'object' && obj) {
+          this._budgetTiers = Object.entries(obj as Record<string, {rounds?: number; budget?: number}>).map(
+            ([tier, val]) => ({
+              tier,
+              rounds: typeof val === 'object' ? (val.rounds ?? 8) : 8,
+              budget: typeof val === 'object' ? (val.budget ?? 1.0) : 1.0,
+            }),
+          );
+        }
+      } catch { /* ignore */ }
     }
   }
 
@@ -160,32 +212,56 @@ export class FcQueenOverrides extends LitElement {
     this._emitConfig('queen.custom_rules', JSON.stringify(this._customRules));
   }
 
-  // ── Team composition ──
+  // ── Team composition (structured) ──
 
-  private _onTeamCompInput(value: string) {
-    this._teamCompJson = value;
-    if (!value.trim()) { this._teamCompError = ''; return; }
-    try { JSON.parse(value); this._teamCompError = ''; }
-    catch { this._teamCompError = 'Invalid JSON'; }
+  private _toggleNewCaste(caste: string) {
+    if (this._newCastes.includes(caste)) {
+      this._newCastes = this._newCastes.filter(c => c !== caste);
+    } else {
+      this._newCastes = [...this._newCastes, caste];
+    }
+  }
+
+  private _addTeamRule() {
+    const taskType = this._newTaskType.trim();
+    if (!taskType || this._newCastes.length === 0) return;
+    this._teamRules = [...this._teamRules, { taskType, castes: [...this._newCastes], strategy: this._newStrategy }];
+    this._newTaskType = '';
+    this._newCastes = [];
+    this._newStrategy = 'sequential';
+  }
+
+  private _removeTeamRule(idx: number) {
+    this._teamRules = this._teamRules.filter((_, i) => i !== idx);
   }
 
   private _saveTeamComp() {
-    if (this._teamCompError) return;
-    this._emitConfig('queen.team_composition', this._teamCompJson.trim() || '{}');
+    const obj: Record<string, string> = {};
+    for (const rule of this._teamRules) {
+      obj[rule.taskType] = `${rule.castes.join(' + ')} / ${rule.strategy}`;
+    }
+    this._emitConfig('queen.team_composition', JSON.stringify(obj));
   }
 
-  // ── Round budget ──
+  // ── Round budget (structured) ──
 
-  private _onRoundBudgetInput(value: string) {
-    this._roundBudgetJson = value;
-    if (!value.trim()) { this._roundBudgetError = ''; return; }
-    try { JSON.parse(value); this._roundBudgetError = ''; }
-    catch { this._roundBudgetError = 'Invalid JSON'; }
+  private _addBudgetTier() {
+    const tier = this._newTier.trim();
+    if (!tier) return;
+    this._budgetTiers = [...this._budgetTiers, { tier, rounds: this._newRounds, budget: this._newBudget }];
+    this._newTier = 'simple';
+    this._newRounds = 8;
+    this._newBudget = 1.0;
+  }
+
+  private _removeBudgetTier(idx: number) {
+    this._budgetTiers = this._budgetTiers.filter((_, i) => i !== idx);
   }
 
   private _saveRoundBudget() {
-    if (this._roundBudgetError) return;
-    this._emitConfig('queen.round_budget', this._roundBudgetJson.trim() || '{}');
+    const obj: Record<string, {rounds: number; budget: number}> = {};
+    for (const t of this._budgetTiers) obj[t.tier] = { rounds: t.rounds, budget: t.budget };
+    this._emitConfig('queen.round_budget', JSON.stringify(obj));
   }
 
   // ── Render ──
@@ -248,40 +324,94 @@ export class FcQueenOverrides extends LitElement {
   }
 
   private _renderTeamComp() {
+    const TASK_TYPES = ['code_simple', 'code_complex', 'research', 'analysis', 'review', 'documentation'];
+    const CASTES = ['coder', 'reviewer', 'researcher', 'archivist'];
     return html`
       <div class="section">
         <div class="section-title">Team Composition Overrides</div>
         <p class="section-desc">
-          JSON mapping task types to team shapes. Overrides the Queen's default team suggestions.
+          Map task types to team shapes. Overrides the Queen's default team suggestions.
         </p>
-        <textarea class="json-editor"
-          .value=${this._teamCompJson}
-          placeholder='{"code_simple": "coder / sequential", "research": "researcher + archivist / sequential"}'
-          @input=${(e: Event) => this._onTeamCompInput((e.target as HTMLTextAreaElement).value)}
-        ></textarea>
-        ${this._teamCompError ? html`<div class="json-error">${this._teamCompError}</div>` : nothing}
+        <div class="form-row">
+          <select .value=${this._newTaskType}
+            @change=${(e: Event) => { this._newTaskType = (e.target as HTMLSelectElement).value; }}>
+            <option value="">Task type...</option>
+            ${TASK_TYPES.map(t => html`<option value=${t}>${t}</option>`)}
+          </select>
+          <input type="text" placeholder="or custom type" style="width:100px"
+            .value=${this._newTaskType && !TASK_TYPES.includes(this._newTaskType) ? this._newTaskType : ''}
+            @input=${(e: Event) => { this._newTaskType = (e.target as HTMLInputElement).value; }}>
+          <div class="caste-pills">
+            ${CASTES.map(c => html`
+              <span class="caste-pill ${this._newCastes.includes(c) ? 'active' : ''}"
+                @click=${() => this._toggleNewCaste(c)}>${c}</span>
+            `)}
+          </div>
+          <select .value=${this._newStrategy}
+            @change=${(e: Event) => { this._newStrategy = (e.target as HTMLSelectElement).value; }}>
+            <option value="sequential">sequential</option>
+            <option value="stigmergic">stigmergic</option>
+          </select>
+          <button class="save-btn" style="padding:3px 8px"
+            ?disabled=${!this._newTaskType.trim() || this._newCastes.length === 0}
+            @click=${this._addTeamRule}>Add</button>
+        </div>
+        ${this._teamRules.length > 0 ? html`
+          <div class="rule-list">
+            ${this._teamRules.map((rule, i) => html`
+              <div class="rule-item">
+                <span class="rule-text">${rule.taskType}: ${rule.castes.join(' + ')} / ${rule.strategy}</span>
+                <button class="rule-del" @click=${() => this._removeTeamRule(i)}>\u00d7</button>
+              </div>
+            `)}
+          </div>
+        ` : nothing}
         <div class="save-row">
-          <button class="save-btn" ?disabled=${!!this._teamCompError} @click=${this._saveTeamComp}>Save</button>
+          <button class="save-btn" @click=${this._saveTeamComp}>Save</button>
         </div>
       </div>
     `;
   }
 
   private _renderRoundBudget() {
+    const TIERS = ['simple', 'standard', 'complex', 'critical'];
     return html`
       <div class="section">
         <div class="section-title">Round / Budget Overrides</div>
         <p class="section-desc">
-          JSON mapping complexity tiers to round and budget limits.
+          Set per-tier round limits and dollar budgets.
         </p>
-        <textarea class="json-editor"
-          .value=${this._roundBudgetJson}
-          placeholder='{"simple": {"rounds": 4, "budget": 1.5}, "standard": {"rounds": 8, "budget": 2.5}}'
-          @input=${(e: Event) => this._onRoundBudgetInput((e.target as HTMLTextAreaElement).value)}
-        ></textarea>
-        ${this._roundBudgetError ? html`<div class="json-error">${this._roundBudgetError}</div>` : nothing}
+        <div class="form-row">
+          <select .value=${this._newTier}
+            @change=${(e: Event) => { this._newTier = (e.target as HTMLSelectElement).value; }}>
+            ${TIERS.map(t => html`<option value=${t}>${t}</option>`)}
+          </select>
+          <input type="text" placeholder="or custom" style="width:80px"
+            @input=${(e: Event) => { const v = (e.target as HTMLInputElement).value; if (v) this._newTier = v; }}>
+          <label style="font-size:9px;font-family:var(--f-mono);color:var(--v-fg-dim)">Rounds:</label>
+          <input type="number" min="1" max="50" style="width:50px"
+            .value=${String(this._newRounds)}
+            @input=${(e: Event) => { this._newRounds = parseInt((e.target as HTMLInputElement).value) || 8; }}>
+          <label style="font-size:9px;font-family:var(--f-mono);color:var(--v-fg-dim)">Budget $:</label>
+          <input type="number" min="0.10" max="100" step="0.10" style="width:60px"
+            .value=${String(this._newBudget)}
+            @input=${(e: Event) => { this._newBudget = parseFloat((e.target as HTMLInputElement).value) || 1.0; }}>
+          <button class="save-btn" style="padding:3px 8px"
+            ?disabled=${!this._newTier.trim()}
+            @click=${this._addBudgetTier}>Add</button>
+        </div>
+        ${this._budgetTiers.length > 0 ? html`
+          <div class="rule-list">
+            ${this._budgetTiers.map((t, i) => html`
+              <div class="rule-item">
+                <span class="rule-text">${t.tier}: ${t.rounds} rounds, $${t.budget.toFixed(2)}</span>
+                <button class="rule-del" @click=${() => this._removeBudgetTier(i)}>\u00d7</button>
+              </div>
+            `)}
+          </div>
+        ` : nothing}
         <div class="save-row">
-          <button class="save-btn" ?disabled=${!!this._roundBudgetError} @click=${this._saveRoundBudget}>Save</button>
+          <button class="save-btn" @click=${this._saveRoundBudget}>Save</button>
         </div>
       </div>
     `;

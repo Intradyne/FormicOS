@@ -457,6 +457,7 @@ export interface AddonPanelSummary {
   displayType: string;
   path: string;
   addonName: string;
+  refreshIntervalS?: number;  // Wave 87: per-panel refresh interval
 }
 
 export interface AddonSummary {
@@ -1024,6 +1025,8 @@ export interface ParallelPlanCreatedEvent extends BaseEvent {
   reasoning: string;
   knowledgeGaps: string[];
   estimatedCost: number;
+  plannerModel: string;
+  planningSignals: Record<string, unknown>;
 }
 
 export interface KnowledgeDistilledEvent extends BaseEvent {
@@ -1174,6 +1177,7 @@ export interface ServiceTriggerFiredEvent extends BaseEvent {
   type: "ServiceTriggerFired";
   addonName: string;
   triggerType: string;
+  handler: string;
   workspaceId: string;
   details: string;
 }

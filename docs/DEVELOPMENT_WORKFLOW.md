@@ -329,6 +329,8 @@ Workflow docs should evolve with the repo, not trail it by multiple waves.
 When a wave lands, review:
 
 - `docs/DEVELOPMENT_WORKFLOW.md`
+- `docs/OPERATORS_GUIDE.md`
+- `docs/PLANNING_WORKBENCH.md`
 - `CLAUDE.md`
 - `AGENTS.md`
 - `CONTRIBUTING.md`
@@ -336,12 +338,32 @@ When a wave lands, review:
 - protocol docs
 - ADR index and statuses
 
+### Current-facing docs vs historical wave plans
+
+Current-facing operator docs (`OPERATORS_GUIDE.md`, `PLANNING_WORKBENCH.md`,
+`DEPLOYMENT.md`, `KNOWLEDGE_LIFECYCLE.md`) describe the shipped product
+surface. They should be updated when the surface changes, even if the wave
+that changed it also has its own plan doc under `docs/waves/`.
+
+Historical wave plans under `docs/waves/` are point-in-time records. They
+document what was planned and dispatched. Do not rewrite them to match the
+current surface. Do not treat them as operator-facing truth.
+
+When updating current-facing docs:
+
+- describe what the operator can actually do, not internal implementation
+- do not fabricate UI affordances that do not exist
+- distinguish summary-only surfaces from full-structure surfaces honestly
+- link to focused docs (e.g. `PLANNING_WORKBENCH.md`) instead of bloating
+  a single guide
+- remove stale wording that implies superseded behavior is still current
+
 At minimum, docs should stay truthful about:
 
 - current event union size
 - current replay / projection boundaries
 - current protocol conformance
-- current operator workflow
+- current operator workflow (including the planning workbench)
 - current acceptance and smoke discipline
 
 ---

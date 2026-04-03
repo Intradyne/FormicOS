@@ -196,6 +196,9 @@ export interface PreviewCardMeta {
   targetFiles?: string[];
   threadId?: string;
   workspaceId?: string;
+  /** Wave 81: parallel plan group structure for preview. */
+  groups?: { taskIds: string[]; tasks: string[] }[];
+  totalPlannedTasks?: number;
   /** Wave 50: Template provenance when a learned template matches. */
   template?: {
     templateId: string;
@@ -206,6 +209,12 @@ export interface PreviewCardMeta {
     useCount?: number;
     taskCategory?: string;
   };
+  /** Wave 82 Track D: planning signals for why-this-plan rendering. */
+  planningSignals?: PlanningSignals;
+  /** Wave 82 Track D: richer task previews for parallel plans. */
+  taskPreviews?: DelegationTaskPreview[];
+  /** Wave 82 Track A: model that generated the plan. */
+  plannerModel?: string;
 }
 
 /** Wave 49: Result card payload shape (from Queen follow-up metadata). */
@@ -223,6 +232,12 @@ export interface ResultCardMeta {
   threadId?: string;
   total_reasoning_tokens?: number;
   total_cache_read_tokens?: number;
+  filesChanged?: number;
+  outputFiles?: string[];
+  /** Wave 81: plan-level truth for result aggregation. */
+  totalPlannedTasks?: number;
+  totalSpawnedTasks?: number;
+  planGroupStates?: PlanGroupState[];
 }
 
 /** Wave 61: Proposal card payload from Queen's propose_plan tool. */
@@ -285,6 +300,10 @@ export interface ParallelResultMeta {
   colonies: ParallelColonyResult[];
   totalCost: number;
   durationMs: number;
+  /** Wave 82 Track D: plan-level truth for honest result aggregation. */
+  totalPlannedTasks?: number;
+  totalSpawnedTasks?: number;
+  groupStates?: PlanGroupState[];
 }
 
 export interface ParallelColonyResult {
@@ -338,6 +357,96 @@ export interface DelegationTaskPreview {
   task: string;
   caste: string;
   colony_id?: string;
+  // Wave 82 Track D: richer preview fields
+  strategy?: string;
+  depends_on?: string[];
+  expected_outputs?: string[];
+  target_files?: string[];
+}
+
+// Wave 82 Track D: planning signals for why-this-plan rendering
+export interface PlanningSignals {
+  patterns?: Array<{ title: string; quality: number; score: number }>;
+  playbook?: { hint: string; source?: string } | null;
+  capability?: { model: string; short_name: string; summary?: string | null } | null;
+  coupling?: Record<string, unknown> | null;
+  previous_plans?: Array<Record<string, unknown>>;
+}
+
+// Wave 83 Track D: plan workbench types.
+
+/** Validation result from validate_reviewed_plan backend command. */
+export interface PlanValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/** Saved plan pattern from the plan-patterns backend. */
+export interface SavedPlanPattern {
+  pattern_id: string;
+  name: string;
+  description: string;
+  workspace_id: string;
+  thread_id: string;
+  source_query: string;
+  planner_model: string;
+  task_previews: DelegationTaskPreview[];
+  groups: { taskIds: string[]; tasks?: string[] }[];
+  created_at: string;
+  created_from: 'queen_preview' | 'reviewed_plan';
+  outcome_summary?: string;
+}
+
+/** Planning history entry from planning-history endpoint. */
+export interface PlanningHistoryEntry {
+  strategy: string;
+  avg_quality: number;
+  count: number;
+  avg_rounds: number;
+  caste_mix: string;
+  success_rate: number;
+  relevance: number;
+  evidence: string;
+  planner_model?: string;
+  worker_model?: string;
+  evidence_type?: 'summary_history';
+  has_dag_structure?: boolean;
+}
+
+// Wave 83 Track C: editor event payloads.
+
+/** Emitted by fc-plan-editor when the plan is edited. */
+export interface PlanEditorChange {
+  taskPreviews: DelegationTaskPreview[];
+  groups: { taskIds: string[]; tasks?: string[] }[];
+  totalPlannedTasks: number;
+}
+
+/** Emitted by fc-plan-editor for file-move operations. */
+export interface FileMoveAction {
+  file: string;
+  fromTaskId: string;
+  toTaskId: string;
+  field: 'target_files' | 'expected_outputs';
+}
+
+// Wave 81: Group-level state for parallel plan truth.
+export type PlanGroupState = 'pending' | 'running' | 'blocked' | 'completed' | 'failed';
+
+// Wave 81: Project binding and code-index status.
+export interface ProjectBindingStatus {
+  bound: boolean;
+  projectRoot?: string;
+  bindingMode?: string;
+  codeIndex?: {
+    chunksIndexed: number;
+    collectionName?: string;
+    lastIndexedAt?: string;
+    lastFileCount?: number;
+    lastErrorCount?: number;
+    status: 'ready' | 'indexing' | 'unavailable' | 'unbound';
+  };
 }
 
 export interface ApprovalRequest {
@@ -704,6 +813,7 @@ export interface AddonPanelSummary {
   displayType: string;
   path: string;
   addonName: string;
+  refreshIntervalS?: number;  // Wave 87: per-panel refresh interval
 }
 
 export interface AddonConfigParam {
@@ -838,7 +948,8 @@ export type WSCommandAction =
   | 'create_merge' | 'prune_merge' | 'broadcast'
   | 'approve' | 'deny' | 'kill_colony' | 'spawn_colony' | 'update_config'
   | 'create_thread' | 'rename_colony' | 'rename_thread'
-  | 'chat_colony' | 'activate_service';
+  | 'chat_colony' | 'activate_service'
+  | 'confirm_reviewed_plan' | 'validate_reviewed_plan';
 
 export interface WSCommand {
   action: WSCommandAction;

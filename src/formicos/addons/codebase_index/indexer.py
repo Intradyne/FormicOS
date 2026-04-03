@@ -8,8 +8,11 @@ fall back to sliding-window chunks.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -18,7 +21,6 @@ from formicos.core.types import VectorDocument
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
 log = structlog.get_logger()
 
@@ -44,6 +46,44 @@ _BOUNDARY_RE = re.compile(
 COLLECTION_NAME = "code_index"
 DEFAULT_CHUNK_SIZE = 500
 DEFAULT_CHUNK_OVERLAP = 100
+_STATUS_FILENAME = "codebase_index_status.json"
+
+
+def _status_path(data_dir: str, workspace_id: str) -> Path:
+    """Return the sidecar status file path for a workspace."""
+    return Path(data_dir) / ".formicos" / "runtime" / workspace_id / _STATUS_FILENAME
+
+
+def write_index_status(
+    data_dir: str,
+    workspace_id: str,
+    workspace_root: str,
+    result: dict[str, Any],
+) -> None:
+    """Persist reindex results as a JSON sidecar for status reporting."""
+    path = _status_path(data_dir, workspace_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "workspace_root": workspace_root,
+        "collection": COLLECTION_NAME,
+        "last_indexed_at": datetime.now(UTC).isoformat(),
+        "file_count": result.get("file_count", 0),
+        "chunk_count": result.get("chunk_count", 0),
+        "error_count": result.get("errors", 0),
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    log.debug("codebase_index.status_written", path=str(path))
+
+
+def read_index_status(data_dir: str, workspace_id: str) -> dict[str, Any] | None:
+    """Read persisted reindex status, or None if not yet indexed."""
+    path = _status_path(data_dir, workspace_id)
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @dataclass
@@ -134,6 +174,10 @@ def _chunks_to_docs(chunks: Sequence[CodeChunk]) -> list[VectorDocument]:
 async def full_reindex(
     workspace_path: Path,
     vector_port: Any,
+    *,
+    data_dir: str = "",
+    workspace_id: str = "",
+    runtime_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Walk workspace, chunk files, upsert to vector store.
 
@@ -174,11 +218,20 @@ async def full_reindex(
         chunks=chunk_count,
         errors=errors,
     )
-    return {
+    result = {
         "file_count": file_count,
         "chunk_count": chunk_count,
         "errors": errors,
     }
+
+    # Wave 81: persist reindex status sidecar
+    if data_dir and workspace_id:
+        write_index_status(data_dir, workspace_id, str(workspace_path), result)
+
+    # Wave 86: reflect project structure into knowledge graph (best-effort)
+    await _post_reindex_graph_reflection(runtime_context, workspace_id)
+
+    return result
 
 
 async def incremental_reindex(
@@ -186,13 +239,20 @@ async def incremental_reindex(
     vector_port: Any,
     *,
     changed_files: list[str] | None = None,
+    data_dir: str = "",
+    workspace_id: str = "",
+    runtime_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Re-index only changed files.
 
     If ``changed_files`` is None, falls back to full reindex.
     """
     if changed_files is None:
-        return await full_reindex(workspace_path, vector_port)
+        return await full_reindex(
+            workspace_path, vector_port,
+            data_dir=data_dir, workspace_id=workspace_id,
+            runtime_context=runtime_context,
+        )
 
     chunk_count = 0
     errors = 0
@@ -211,11 +271,48 @@ async def incremental_reindex(
         except Exception:  # noqa: BLE001
             errors += 1
 
-    return {
+    result = {
         "file_count": len(changed_files),
         "chunk_count": chunk_count,
         "errors": errors,
     }
+
+    if data_dir and workspace_id:
+        write_index_status(data_dir, workspace_id, str(workspace_path), result)
+
+    # Wave 86: reflect project structure into knowledge graph (best-effort)
+    await _post_reindex_graph_reflection(runtime_context, workspace_id)
+
+    return result
+
+
+async def _post_reindex_graph_reflection(
+    runtime_context: dict[str, Any] | None,
+    workspace_id: str,
+) -> None:
+    """Wave 86: Shared post-reindex graph reflection.
+
+    Best-effort: failures are logged but do not fail the reindex itself.
+    """
+    if not runtime_context or not workspace_id:
+        return
+    runtime = runtime_context.get("runtime")
+    if runtime is None:
+        return
+    try:
+        from formicos.surface.structural_planner import (  # noqa: PLC0415
+            reflect_structure_to_graph,
+        )
+
+        edges = await reflect_structure_to_graph(runtime, workspace_id)
+        if edges > 0:
+            log.info(
+                "codebase_index.graph_reflected",
+                workspace_id=workspace_id,
+                edges=edges,
+            )
+    except Exception:  # noqa: BLE001
+        log.debug("codebase_index.graph_reflection_failed", workspace_id=workspace_id)
 
 
 async def on_scheduled_reindex(

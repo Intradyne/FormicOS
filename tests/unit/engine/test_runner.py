@@ -64,7 +64,7 @@ class MockLLMPort:
 
     async def complete(
         self, model, messages, tools=None, temperature=0.0, max_tokens=4096,
-        tool_choice=None,
+        tool_choice=None, extra_body=None,
     ) -> LLMResponse:
         self._call_count += 1
         # Return tool_calls only for the first N calls
@@ -259,7 +259,7 @@ async def test_governance_force_halt_on_carried_stall_streak() -> None:
     assert result.convergence.is_stalled
     assert result.stall_count == 4
     assert result.governance.action == "force_halt"
-    assert result.governance.reason == "stalled 4+ rounds"
+    assert result.governance.reason == "stalled 3+ rounds"
 
 
 @pytest.mark.asyncio
@@ -619,7 +619,7 @@ def test_governance_still_halts_without_productive_action() -> None:
         recent_productive_action=False,
     )
     assert decision.action == "force_halt"
-    assert "stalled 4+" in decision.reason
+    assert "stalled 3+" in decision.reason
 
 
 def test_governance_warns_without_productive_action() -> None:

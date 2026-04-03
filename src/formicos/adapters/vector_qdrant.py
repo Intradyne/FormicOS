@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 import structlog
 from qdrant_client import AsyncQdrantClient, models
@@ -47,6 +47,12 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+class EmbedFn(Protocol):
+    """Callable protocol for sync embedding functions with optional is_query."""
+
+    def __call__(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]: ...
+
+
 class QdrantVectorPort:
     """VectorPort implementation backed by Qdrant.
 
@@ -65,7 +71,7 @@ class QdrantVectorPort:
     def __init__(
         self,
         url: str = "http://qdrant:6333",
-        embed_fn: Callable[[list[str]], list[list[float]]] | None = None,
+        embed_fn: EmbedFn | None = None,
         embed_client: Qwen3Embedder | None = None,
         prefer_grpc: bool = True,
         default_collection: str = "skill_bank",
@@ -97,7 +103,7 @@ class QdrantVectorPort:
         if self._embed_client is not None:
             return await self._embed_client.embed(texts, is_query=is_query)
         if self._embed_fn is not None:
-            return self._embed_fn(texts)
+            return self._embed_fn(texts, is_query=is_query)
         return []
 
     # ------------------------------------------------------------------

@@ -51,14 +51,14 @@ def test_load_config() -> None:
     assert settings.system.host == "0.0.0.0"
     assert settings.system.port == 8080
 
-    assert settings.models.defaults.queen == "llama-cpp/gpt-4"
-    assert settings.models.defaults.archivist == "ollama-cloud/qwen3-coder:480b"
-    assert len(settings.models.registry) == 44
-    assert settings.models.registry[0].address == "llama-cpp/gpt-4"
+    assert settings.models.defaults.queen == "anthropic/claude-sonnet-4-6"
+    assert settings.models.defaults.archivist == "anthropic/claude-haiku-4-5"
+    assert len(settings.models.registry) == 46
+    assert settings.models.registry[0].address == "llama-cpp/qwen3.5-35b"
     assert settings.models.registry[0].provider == "llama-cpp"
 
-    assert settings.embedding.model == "qwen3-embedding-0.6b"
-    assert settings.embedding.dimensions == 1024
+    assert settings.embedding.model == "nomic-ai/nomic-embed-text-v1.5"
+    assert settings.embedding.dimensions == 768
 
     assert settings.governance.max_rounds_per_colony == 25
     assert settings.governance.default_budget_per_colony == 1.0

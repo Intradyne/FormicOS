@@ -101,6 +101,15 @@ export class FcResultCard extends LitElement {
     @media (prefers-reduced-motion: reduce) { .files-badge { transition: none; } }
     .files-badge:hover { border-color: var(--v-border-hover); color: var(--v-fg); background: rgba(255,255,255,0.04); }
     .files-icon { font-size: 10px; }
+    .output-files {
+      display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+    }
+    .output-file {
+      font-size: 9px; font-family: var(--f-mono); padding: 1px 6px;
+      border-radius: 3px; background: rgba(255,255,255,0.04);
+      color: var(--v-fg-dim); max-width: 120px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
   `];
 
   @property({ type: Object }) result: ResultCardMeta | null = null;
@@ -152,16 +161,35 @@ export class FcResultCard extends LitElement {
           ` : nothing}
         </div>
 
+        ${r.totalPlannedTasks != null && r.totalSpawnedTasks != null && r.totalSpawnedTasks < r.totalPlannedTasks ? html`
+          <div class="meta-row" style="color:var(--v-accent)">
+            <div class="meta-item">
+              Plan: <span class="meta-value">${r.totalSpawnedTasks}/${r.totalPlannedTasks} tasks spawned</span>
+            </div>
+            ${r.planGroupStates?.includes('blocked') ? html`
+              <div class="meta-item">
+                <span class="meta-value" style="color:var(--v-accent)">\u25A0 Groups blocked</span>
+              </div>
+            ` : nothing}
+          </div>
+        ` : nothing}
+
         <div class="actions">
           <span class="link-btn" @click=${() => this._nav('colony')}>Colony Detail</span>
           ${r.threadId ? html`
             <span class="link-btn" @click=${() => this._nav('timeline')}>Timeline</span>
           ` : nothing}
-          ${(r as Record<string, unknown>).filesChanged ? html`
+          ${r.filesChanged ? html`
             <span class="files-badge" @click=${() => this._nav('colony')}>
               <span class="files-icon">\u2261</span>
-              Files: ${(r as Record<string, unknown>).filesChanged} changed
+              Files: ${r.filesChanged} changed
             </span>
+            ${r.outputFiles?.length ? html`
+              <span class="output-files">
+                ${r.outputFiles.slice(0, 3).map(f => html`<span class="output-file" title=${f}>${f.split('/').pop()}</span>`)}
+                ${(r.outputFiles.length > 3) ? html`<span class="output-file">+${r.outputFiles.length - 3} more</span>` : nothing}
+              </span>
+            ` : nothing}
           ` : nothing}
           ${isFailure ? html`
             <span class="retry-btn" @click=${() => this._retry()}>Retry</span>

@@ -1,10 +1,8 @@
 # FormicOS System Configuration
 # Modify these values for your deployment. Workspace-level overrides take precedence.
 #
-# DEFAULT STACK (RTX 5090 / 32GB VRAM):
-#   LLM: Qwen3-30B-A3B via llama.cpp (--alias gpt-4), 80k ctx default
-#   Embedding: Qwen3-Embedding-0.6B via llama.cpp sidecar (GPU)
-#   ~27 GB VRAM total with Blackwell image. ~5 GB headroom.
+# Cloud-first by default: set ANTHROPIC_API_KEY in .env and go.
+# For local GPU: set model env vars in .env (see .env.example).
 #
 # The provider prefix (before /) routes to the correct adapter:
 #   "llama-cpp/*"    → OpenAI-compatible adapter → http://llm:8080/v1
@@ -16,8 +14,6 @@
 #   "minimax/*"      → OpenAI-compatible adapter → https://api.minimax.io/v1
 #   "mistral/*"      → OpenAI-compatible adapter → https://api.mistral.ai/v1
 #   "groq/*"         → OpenAI-compatible adapter → https://api.groq.com/openai/v1
-#
-# For cloud models, set defaults to "anthropic/claude-sonnet-4-6" and set ANTHROPIC_API_KEY.
 
 system:
   host: "0.0.0.0"
@@ -26,35 +22,49 @@ system:
 
 models:
   # Default model assignments per caste (nullable cascade: thread → workspace → system)
-  # Queen needs strong tool-calling capability — Qwen3-30B-A3B is ideal.
-  # The "gpt-4" alias matches --alias gpt-4 in the llama.cpp server command.
+  # Queen needs strong tool-calling capability — Qwen3.5-35B-A3B is ideal.
+  # The "qwen3.5-35b" alias matches --alias qwen3.5-35b in the llama.cpp server command.
+  # Cloud-first defaults. Override per-caste via env vars in .env.
+  # Local GPU: set QUEEN_MODEL=llama-cpp/qwen3.5-35b etc. in .env.
   defaults:
-    queen: "llama-cpp/gpt-4"
-    coder: "llama-cpp/gpt-4"
-    reviewer: "llama-cpp/gpt-4"
-    researcher: "llama-cpp/gpt-4"
-    # archivist: "llama-cpp/gpt-4"  # Wave 57: local self-extraction
-    # archivist: "ollama-cloud/qwen3-coder:480b"  # Wave 58: ollama cloud (pending)
-    # archivist: "gemini/gemini-2.5-flash"  # DISABLED: Gemini tokens exhausted
-    archivist: "ollama-cloud/qwen3-coder:480b"
+    queen: "${QUEEN_MODEL:anthropic/claude-sonnet-4-6}"
+    cheap_queen: "${CHEAP_QUEEN_MODEL:}"  # empty = disabled; set to route simple messages cheaply
+    coder: "${CODER_MODEL:anthropic/claude-sonnet-4-6}"
+    reviewer: "${REVIEWER_MODEL:anthropic/claude-haiku-4-5}"
+    researcher: "${RESEARCHER_MODEL:anthropic/claude-haiku-4-5}"
+    archivist: "${ARCHIVIST_MODEL:anthropic/claude-haiku-4-5}"
 
   # Model registry — available models and their endpoints
   # cost_per_input_token / cost_per_output_token: USD per token.
   # Local models are 0.0 (hardware is a sunk cost). Cloud models use actual rates.
   # Last verified: March 24, 2026.
   registry:
-    # --- llama.cpp server (default, GPU) ---
-    # context_window must match docker-compose.yml LLM_CONTEXT_SIZE (default 80000).
-    # The runtime also reads the live value from llama.cpp /props at startup.
-    - address: "llama-cpp/gpt-4"
+    # --- llama.cpp unified server (Queen + colony workers) ---
+    # Single 35B MoE model serves all roles. FormicOS differentiates via
+    # system prompts, tool schemas, and temperature — not model weights.
+    # On the current shared-pool hybrid deployment, Queen budgeting uses
+    # the full per-slot context window rather than dividing by LLM_SLOTS.
+    - address: "llama-cpp/qwen3.5-35b"
       endpoint: "${LLM_HOST:http://localhost:8008}"
-      context_window: 80000
+      context_window: ${LLM_CONTEXT_SIZE:260000}
       supports_tools: true
       supports_vision: false
       cost_per_input_token: 0.0
       cost_per_output_token: 0.0
       max_output_tokens: 8192
+      max_concurrent: ${LLM_SLOTS:5}
       time_multiplier: 1.0
+      tool_call_multiplier: 1.0
+    - address: "llama-cpp/devstral-small-2-24b"
+      endpoint: "${LLM_HOST:http://localhost:8008}"
+      context_window: ${LLM_CONTEXT_SIZE:32768}
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0
+      cost_per_output_token: 0.0
+      max_output_tokens: 8192
+      max_concurrent: ${LLM_SLOTS:3}
+      time_multiplier: 1.15
       tool_call_multiplier: 1.0
 
     # --- OpenAI models (require OPENAI_API_KEY) ---
@@ -316,6 +326,19 @@ models:
       max_output_tokens: 65536
       time_multiplier: 2.0
       tool_call_multiplier: 1.5
+    # Gemini via OpenAI-compatible endpoint (avoids native schema issues)
+    - address: "openai/gemini-2.5-flash"
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/v1"
+      api_key_env: "GEMINI_API_KEY"
+      context_window: 1048576
+      supports_tools: true
+      supports_vision: false
+      cost_per_input_token: 0.0
+      cost_per_output_token: 0.0
+      max_output_tokens: 65536
+      time_multiplier: 2.0
+      tool_call_multiplier: 1.5
+
     - address: "gemini/gemini-2.5-flash-lite"
       endpoint: "https://generativelanguage.googleapis.com/v1beta"
       api_key_env: "GEMINI_API_KEY"
@@ -549,9 +572,14 @@ models:
       tool_call_multiplier: 1.5
 
 embedding:
-  model: "qwen3-embedding-0.6b"
-  endpoint: "${EMBED_URL:http://localhost:8200}/v1/embeddings"
-  dimensions: 1024
+  # Cloud-first: nomic-embed-text-v1.5 (768-dim, ~270MB auto-download).
+  # Supports asymmetric search via instruction prefixes (search_query / search_document).
+  # Local GPU: set EMBED_MODEL, EMBED_URL, EMBED_DIMENSIONS in .env.
+  # WARNING: Switching embedding model on an existing Qdrant collection
+  # requires re-indexing (dimension mismatch). Choose once at setup time.
+  model: "${EMBED_MODEL:nomic-ai/nomic-embed-text-v1.5}"
+  endpoint: "${EMBED_URL:}/v1/embeddings"
+  dimensions: ${EMBED_DIMENSIONS:768}
   instruction: "Given a skill description, retrieve the matching agent capability"
 
 governance:
@@ -571,18 +599,16 @@ routing:
   # Caste×Phase compute routing table (ADR-012).
   # Keys are phase names; values are per-caste model overrides.
   # Missing phases/castes inherit the cascade default.
+  # Caste×Phase overrides. Cloud-first defaults; override via env vars.
   model_routing:
     execute:
-      queen: "llama-cpp/gpt-4"
-      coder: "llama-cpp/gpt-4"                    # local GPU, free, fast code gen
-      reviewer: "openai/gpt-4o"                    # heavy cloud, best review quality
-      researcher: "openai/gpt-4o-mini"             # lighter cloud, good for research
-      archivist: "ollama-cloud/qwen3-coder:480b"   # free tier, async extraction
+      queen: "${QUEEN_MODEL:anthropic/claude-sonnet-4-6}"
+      coder: "${CODER_MODEL:anthropic/claude-sonnet-4-6}"
+      reviewer: "${REVIEWER_MODEL:anthropic/claude-haiku-4-5}"
+      researcher: "${RESEARCHER_MODEL:anthropic/claude-haiku-4-5}"
+      archivist: "${ARCHIVIST_MODEL:anthropic/claude-haiku-4-5}"
     goal:
-      queen: "llama-cpp/gpt-4"
-    # Heavy-tier goal phase: use Opus for maximum reasoning capability.
-    # Activate by setting workspace queen model to anthropic/claude-opus-4.6.
-    # Not wired as default — operator must explicitly select Opus.
+      queen: "${QUEEN_MODEL:anthropic/claude-sonnet-4-6}"
 
 # Vector store backend (ADR-013).
 # Qdrant is the sole vector backend (LanceDB removed in Wave 13).
@@ -628,6 +654,12 @@ context:
     prev_round_summary: 3600
     skill_bank: 6000
   compaction_threshold: 2400
+
+# Shadow checkpoint configuration (Wave 78).
+# Automatic pre-mutation checkpoints for file safety.
+checkpoints:
+  enabled: true
+  max_count: 50   # auto-prune beyond this many per workspace
 
 # Effector configuration (Wave 25).
 # Gated execution tools for colonies to produce outcomes, not just text.

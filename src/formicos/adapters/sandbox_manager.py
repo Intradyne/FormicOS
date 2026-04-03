@@ -872,7 +872,7 @@ async def _execute_workspace_docker(
                 timed_out=start_timed_out,
             )
 
-        workspace_archive = _archive_workspace(work_path)
+        workspace_archive = await asyncio.to_thread(_archive_workspace, work_path)
         copy_in_code, _, copy_in_stderr, copy_in_timed_out = await _run_exec(
             "docker", "exec", "-i", container_id,
             "sh", "-lc", "mkdir -p /workspace && tar -xf - -C /workspace",
@@ -921,7 +921,9 @@ async def _execute_workspace_docker(
                 timed_out=copy_out_timed_out,
             )
 
-        _restore_workspace_from_archive(archive_bytes, work_path)
+        await asyncio.to_thread(
+            _restore_workspace_from_archive, archive_bytes, work_path,
+        )
         return _build_workspace_result(
             command=command,
             work_path=work_path,

@@ -142,8 +142,8 @@ class TestSnapshotFields:
             entry["address"]: entry
             for entry in snapshot["runtimeConfig"]["models"]["registry"]
         }
-        local_entry = registry["llama-cpp/gpt-4"]
+        local_entry = registry["llama-cpp/qwen3.5-35b"]
         assert local_entry["status"] == "loaded"
         assert local_entry["contextWindow"] == 80000
         assert snapshot["localModels"][0]["ctx"] == 80000
-        assert snapshot["localModels"][0]["name"] == "Qwen3-30B-A3B"
+        assert snapshot["localModels"][0]["name"] == "Qwen3.5-35B-A3B-Q4_K_M"

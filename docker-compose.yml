@@ -1,20 +1,11 @@
 # FormicOS v2 — Docker Compose
 #
-# Default stack: llama.cpp LLM (GPU) + Qwen3-Embedding sidecar (GPU) + FormicOS
-# Tuned for RTX 5090 (32 GB VRAM) with Qwen3-30B-A3B Q4_K_M + Qwen3-Embedding-0.6B.
-# See .env.example for all tunable knobs.
+# Cloud-first by default: 3 containers (FormicOS + Qdrant + Docker proxy).
+# Set ANTHROPIC_API_KEY in .env and run: docker compose build && docker compose up -d
 #
-# Setup:
-#   1. Download models:
-#      mkdir -p .models && cd .models
-#      huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507-GGUF \
-#        Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf --local-dir .
-#      huggingface-cli download Qwen/Qwen3-Embedding-0.6B-GGUF \
-#        Qwen3-Embedding-0.6B-Q8_0.gguf --local-dir .
-#   2. Build the local llama.cpp image once if you are using the default local stack:
-#      bash scripts/build_llm_image.sh
-#   3. docker compose up -d
-#   4. Open http://localhost:8080
+# For local GPU inference (5 containers): set COMPOSE_PROFILES=local-gpu in .env,
+# or run: bash scripts/setup-local-gpu.sh
+# See .env.example for all tunable knobs.
 
 services:
   # ── Qdrant Vector Store (ADR-013) ─────────────
@@ -43,17 +34,17 @@ services:
   #   huggingface-cli download Qwen/Qwen3-Embedding-0.6B-GGUF \
   #     Qwen3-Embedding-0.6B-Q8_0.gguf --local-dir .models
   formicos-embed:
-    image: ${LLM_IMAGE:-local/llama.cpp:server-cuda-blackwell}
+    profiles: [local-gpu]
+    image: ${EMBED_IMAGE:-${LLM_IMAGE:-local/llama.cpp:server-cuda-blackwell}}
     container_name: formicos-embed
     ports:
       - "8200:8200"
     volumes:
       - ${LLM_MODEL_DIR:-./.models}:/models:ro
     environment:
-      # GPU pinning: CUDA_VISIBLE_DEVICES is the effective control on
-      # Docker Desktop / WSL2 (device_ids in deploy is ignored there).
-      # Set CUDA_DEVICE in .env to target a different GPU index.
-      - CUDA_VISIBLE_DEVICES=${CUDA_DEVICE:-0}
+      # GPU pinning: embedding can run on a secondary GPU to free VRAM
+      # on the primary. Set CUDA_DEVICE_EMBED in .env.
+      - CUDA_VISIBLE_DEVICES=${CUDA_DEVICE_EMBED:-${CUDA_DEVICE:-0}}
     command: >
       --model /models/Qwen3-Embedding-0.6B-Q8_0.gguf
       --embedding
@@ -66,9 +57,8 @@ services:
       resources:
         reservations:
           devices:
-            # device_ids works on native Linux; ignored on Docker Desktop / WSL2.
             - driver: nvidia
-              device_ids: ['${CUDA_DEVICE:-0}']
+              device_ids: ['${CUDA_DEVICE_EMBED:-${CUDA_DEVICE:-0}}']
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
@@ -114,32 +104,41 @@ services:
   formicos:
     build: .
     container_name: formicos-colony
+    cap_drop:
+      - NET_RAW
+      - SYS_CHROOT
+      - MKNOD
+      - AUDIT_WRITE
     ports:
       - "8080:8080"
     volumes:
       - formicos-data:/data
-      # Wave 60.5: Aider polyglot benchmark exercises (read-only)
-      - C:/Users/User/polyglot-benchmark:/benchmark:ro
+      # Wave 81: bind real project root (read-write).
+      # Set PROJECT_DIR in .env to your project path. Default: current directory.
+      - ${PROJECT_DIR:-.}:/project
+      # Dev-only: mount benchmark exercises for evaluation runs.
+      # Uncomment and set BENCHMARK_DIR in .env to your local path.
+      # - ${BENCHMARK_DIR:-/dev/null}:/benchmark:ro
       # Wave 43: No raw Docker socket mount. Use the socket proxy instead.
       # To bypass the proxy (dev only), uncomment the line below and remove
       # DOCKER_HOST, then remove the docker-proxy service dependency.
       # - /var/run/docker.sock:/var/run/docker.sock
     env_file:
-      - path: .env
+      - path: ${FORMICOS_ENV_FILE:-.env}
         required: false
     environment:
       - FORMICOS_DATA_DIR=/data
-      - LLM_HOST=http://llm:8080
+      - PROJECT_DIR=/project
+      - LLM_HOST=${LLM_HOST:-}
       - QDRANT_URL=http://qdrant:6333
-      - EMBED_URL=http://formicos-embed:8200
+      - EMBED_URL=${EMBED_URL:-}
       # Wave 43: Route Docker commands through the socket proxy
       - DOCKER_HOST=tcp://docker-proxy:2375
     depends_on:
-      llm:
-        condition: service_healthy
+      # Profile-gated services (llm, formicos-embed) cannot be hard
+      # dependencies — they only start with COMPOSE_PROFILES=local-gpu.
+      # Adapters handle missing endpoints gracefully at first call.
       qdrant:
-        condition: service_healthy
-      formicos-embed:
         condition: service_healthy
       docker-proxy:
         condition: service_healthy
@@ -151,33 +150,68 @@ services:
       retries: 3
       start_period: 30s
 
-  # ── LLM Inference — llama.cpp (GPU) ─────────────
-  # Qwen3-30B-A3B: MoE with 3.3B active params per token.
-  # Excellent tool calling. The --alias gpt-4 maps to "llama-cpp/gpt-4" in formicos.yaml.
+  # ── OPTIONAL: HTTPS Reverse Proxy — Caddy ──────────
+  # Not needed for local Claude Desktop or Claude Code connections.
+  # Claude Desktop uses mcp-remote (stdio→HTTP bridge) over localhost.
+  # Enable HTTPS only for production/exposed deployments.
   #
-  # VRAM budget (RTX 5090 32GB, Qwen3-30B-A3B Q4_K_M, 80000 ctx):
-  #   Model weights:  ~17.3 GB (Q4_K_M, MoE — only 3.3B active per token)
-  #   KV cache:       ~5.2 GB (80000 ctx x 2 slots x q8_0)
+  # To enable: uncomment below, or use the override file:
+  #   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+  #
+  # First-time setup on host:
+  #   mkcert -install
+  #   mkdir -p certs
+  #   mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 ::1
+  #
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: formicos-caddy
+  #   ports:
+  #     - "8443:8443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - ./certs:/certs:ro
+  #   depends_on:
+  #     formicos:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:8443/health || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 5s
+
+  # ── LLM Inference — llama.cpp (GPU) ─────────────
+  # Qwen3.5-35B-A3B: MoE with 3.5B active params per token.
+  # Alias and chat-template args are configurable so the same service can
+  # host alternative local models without code changes.
+  #
+  # VRAM budget (RTX 5090 32GB, Qwen3.5-35B-A3B Q4_K_M, 65536 ctx):
+  #   Model weights:  ~19.5 GB (Q4_K_M, MoE — only 3.5B active per token)
+  #   KV cache:       ~5.5 GB (65536 ctx x 2 slots x bf16)
   #   Compute buffers: ~2.4 GB
   #   Embed sidecar:   ~0.7 GB (Qwen3-Embedding-0.6B Q8_0)
   #   Prompt cache:    ~1 GB (--cache-ram, in system RAM not VRAM)
   #   ─────────────────────────
-  #   Total GPU:      ~25.6 GB — leaves ~6.4 GB headroom
+  #   Total GPU:      ~29.1 GB — leaves ~2.9 GB headroom
   #   --fit on auto-sizes KV cache to available VRAM (OOM safety net).
   #
-  # Requires Blackwell-native image for full 80000 context.
+  # Requires Blackwell-native image for full 65536 context.
   # Build with: bash scripts/build_llm_image.sh
   # Fallback: LLM_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda (PTX JIT, ~16k effective).
   #
   # COUPLING: LLM_SLOTS must match the adapter concurrency limit.
   # The adapter reads LLM_SLOTS from the environment automatically.
   llm:
+    profiles: [local-gpu]
     image: ${LLM_IMAGE:-local/llama.cpp:server-cuda-blackwell}
     container_name: formicos-llm
     ports:
       - "${LLM_PORT:-8008}:8080"
     volumes:
       - ${LLM_MODEL_DIR:-./.models}:/models:ro
+      - ./config:/config:ro
     environment:
       # GPU pinning: CUDA_VISIBLE_DEVICES is the effective control on
       # Docker Desktop / WSL2 (device_ids in deploy is ignored there).
@@ -185,26 +219,28 @@ services:
       - CUDA_VISIBLE_DEVICES=${CUDA_DEVICE:-0}
       - GGML_CUDA_GRAPH_OPT=1
     command: >
-      --model /models/${LLM_MODEL_FILE:-Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf}
-      --alias gpt-4
-      --ctx-size ${LLM_CONTEXT_SIZE:-80000}
+      --model /models/${LLM_MODEL_FILE:-Qwen3.5-35B-A3B-Q4_K_M.gguf}
+      --alias ${LLM_MODEL_ALIAS:-qwen3.5-35b}
+      --ctx-size ${LLM_CONTEXT_SIZE:-65536}
       --n-gpu-layers 99
-      --flash-attn on
+      --flash-attn ${LLM_FLASH_ATTN:-on}
       --fit on
-      --cache-type-k q8_0
-      --cache-type-v q8_0
-      --batch-size 8192
-      --ubatch-size 4096
+      --kv-unified
+      --cache-type-k ${LLM_CACHE_TYPE_K:-q4_0}
+      --cache-type-v ${LLM_CACHE_TYPE_V:-q4_0}
+      --batch-size ${LLM_BATCH_SIZE:-8192}
+      --ubatch-size ${LLM_UBATCH_SIZE:-4096}
       --threads 8
       --threads-batch 16
       --jinja
-      --reasoning-format none
+      ${LLM_CHAT_TEMPLATE_ARGS:---chat-template-file /config/qwen35-chat.jinja}
       --slots
       -np ${LLM_SLOTS:-2}
       -sps ${LLM_SLOT_PROMPT_SIMILARITY:-0.5}
       --cache-ram ${LLM_CACHE_RAM:-1024}
       --host 0.0.0.0
       --port 8080
+      ${LLM_SPEC_ARGS:-}
     ipc: host
     deploy:
       resources:

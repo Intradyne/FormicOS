@@ -112,16 +112,16 @@ def test_load_config_execute_phase_entries() -> None:
     settings = load_config(CONFIG_PATH)
     execute = settings.routing.model_routing.get("execute")
     assert execute is not None
-    assert execute.queen == "llama-cpp/gpt-4"
-    assert execute.coder == "llama-cpp/gpt-4"
-    assert execute.reviewer == "openai/gpt-4o"
+    assert execute.queen == "anthropic/claude-sonnet-4-6"
+    assert execute.coder == "anthropic/claude-sonnet-4-6"
+    assert execute.reviewer == "anthropic/claude-haiku-4-5"
 
 
 def test_load_config_goal_phase_entries() -> None:
     settings = load_config(CONFIG_PATH)
     goal = settings.routing.model_routing.get("goal")
     assert goal is not None
-    assert goal.queen == "llama-cpp/gpt-4"
+    assert goal.queen == "anthropic/claude-sonnet-4-6"
     assert goal.coder is None  # not set in YAML
 
 

@@ -78,6 +78,8 @@ class AddonManifest(BaseModel):
     content_kinds: list[str] = Field(default_factory=list)
     path_globs: list[str] = Field(default_factory=list)
     search_tool: str = Field(default="")
+    # Wave 88 Track A: per-addon MCP permissions
+    mcp_permissions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -384,12 +386,18 @@ def register_addon(
 
     # Register panels
     for panel_spec in manifest.panels:
-        result.registered_panels.append({
+        panel_entry: dict[str, Any] = {
             "target": panel_spec.get("target", ""),
             "display_type": panel_spec.get("display_type", "status_card"),
             "path": panel_spec.get("path", ""),
             "addon_name": manifest.name,
-        })
+        }
+        # Wave 87: preserve refresh interval for frontend polling
+        if "refresh_interval_s" in panel_spec:
+            panel_entry["refresh_interval_s"] = int(
+                panel_spec["refresh_interval_s"],
+            )
+        result.registered_panels.append(panel_entry)
         log.info(
             "addon_loader.panel_registered",
             addon=manifest.name,
@@ -431,6 +439,154 @@ def _validate_tool_params(params: dict[str, Any], addon_name: str, tool_name: st
         )
         return False
     return True
+
+
+def validate_new_addon(
+    manifest: AddonManifest,
+    existing_registrations: list[AddonRegistration],
+) -> list[str]:
+    """Validate a new addon before loading. Returns a list of errors (empty = ok).
+
+    Checks:
+    - addon name uniqueness
+    - handler module imports
+    - handler reference resolution
+    - panel/route path collisions
+    """
+    errors: list[str] = []
+
+    # Name uniqueness
+    existing_names = {r.manifest.name for r in existing_registrations}
+    if manifest.name in existing_names:
+        errors.append(f"Addon name '{manifest.name}' already exists")
+
+    # Handler import validation
+    for tool in manifest.tools:
+        try:
+            _resolve_handler(tool.handler, manifest.name)
+        except Exception as exc:
+            errors.append(f"Tool '{tool.name}' handler error: {exc}")
+
+    for route in manifest.routes:
+        handler_ref = route.get("handler", "")
+        if handler_ref:
+            try:
+                _resolve_handler(handler_ref, manifest.name)
+            except Exception as exc:
+                errors.append(f"Route '{route.get('path', '')}' handler error: {exc}")
+
+    for panel in manifest.panels:
+        handler_ref = panel.get("handler", "")
+        if handler_ref:
+            try:
+                _resolve_handler(handler_ref, manifest.name)
+            except Exception as exc:
+                errors.append(f"Panel handler error: {exc}")
+
+    # Panel/route path collisions
+    existing_paths: set[tuple[str, str]] = set()
+    for reg in existing_registrations:
+        for aroute in reg.registered_routes:
+            existing_paths.add((aroute["addon_name"], aroute["path"]))
+
+    for route in manifest.routes:
+        path = route.get("path", "")
+        for existing_addon, existing_path in existing_paths:
+            if existing_addon != manifest.name and existing_path == path:
+                errors.append(
+                    f"Route '{path}' conflicts with addon '{existing_addon}'",
+                )
+
+    return errors
+
+
+async def load_new_addon(
+    manifest: AddonManifest,
+    *,
+    app_state: Any,
+    runtime: Any,
+    base_runtime_context: dict[str, Any],
+    queen_dispatcher: Any | None = None,
+    service_router: Any | None = None,
+) -> tuple[AddonRegistration | None, list[str]]:
+    """Load a brand-new addon into the running app with strict validation.
+
+    Returns ``(registration, errors)``. On failure, ``registration`` is None
+    and ``errors`` is non-empty. No partial registration on failure.
+
+    Reuses the same wiring path as startup (governed gateway, register_addon,
+    AddonLoaded event, app state update).
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    existing: list[AddonRegistration] = getattr(
+        app_state, "addon_registrations", [],
+    )
+
+    # Strict validation
+    errors = validate_new_addon(manifest, existing)
+    if errors:
+        return None, errors
+
+    # Build per-addon context (same as startup)
+    per_addon_ctx = dict(base_runtime_context)
+    if getattr(manifest, "mcp_permissions", None):
+        mcp_bridge = base_runtime_context.get("mcp_bridge")
+        if mcp_bridge:
+            try:
+                from formicos.addons.mcp_bridge.gateway import (  # noqa: PLC0415
+                    create_gateway_for_addon,
+                )
+                per_addon_ctx["mcp_gateway"] = create_gateway_for_addon(
+                    mcp_bridge, manifest.name, manifest.mcp_permissions,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Register (same as startup)
+    tool_registry = (
+        queen_dispatcher._handlers  # pyright: ignore[reportAttributeAccessIssue]
+        if queen_dispatcher is not None else None
+    )
+    reg = register_addon(
+        manifest,
+        tool_registry=tool_registry,
+        service_router=service_router,
+        runtime_context=per_addon_ctx,
+    )
+
+    # Update app state (same as startup)
+    existing.append(reg)
+    app_state.addon_registrations = existing  # type: ignore[attr-defined]
+
+    # Update Queen tool specs
+    if queen_dispatcher is not None:
+        new_specs = build_addon_tool_specs([manifest])
+        queen_dispatcher._addon_tool_specs.extend(new_specs)  # pyright: ignore[reportAttributeAccessIssue]
+
+    # Emit AddonLoaded event
+    try:
+        from formicos.core.events import AddonLoaded  # noqa: PLC0415
+        await runtime.emit_and_broadcast(AddonLoaded(
+            seq=0,
+            timestamp=datetime.now(UTC),
+            address="system",
+            addon_name=manifest.name,
+            version=manifest.version,
+            tools=reg.registered_tools,
+            handlers=reg.registered_handlers,
+            panels=[p.get("target", "") for p in manifest.panels],
+        ))
+    except Exception:  # noqa: BLE001
+        log.warning("addon_loader.event_failed", addon=manifest.name)
+
+    log.info(
+        "addon_loader.new_addon_loaded",
+        addon=manifest.name,
+        tools=reg.registered_tools,
+        panels=len(manifest.panels),
+    )
+    return reg, []
 
 
 def build_addon_tool_specs(manifests: list[AddonManifest]) -> list[dict[str, Any]]:

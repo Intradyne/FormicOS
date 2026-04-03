@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-import pytest
-
 from formicos.surface.memory_extractor import (
     build_harvest_prompt,
     is_environment_noise_text,
@@ -16,8 +12,18 @@ from formicos.surface.memory_extractor import (
 class TestBuildHarvestPrompt:
     def test_includes_all_turns(self) -> None:
         turns = [
-            {"agent_id": "agent-1", "caste": "coder", "content": "Fixed the bug", "round_number": 1},
-            {"agent_id": "agent-2", "caste": "researcher", "content": "Found docs", "round_number": 2},
+            {
+                "agent_id": "agent-1",
+                "caste": "coder",
+                "content": "Fixed the bug",
+                "round_number": 1,
+            },
+            {
+                "agent_id": "agent-2",
+                "caste": "researcher",
+                "content": "Found docs",
+                "round_number": 2,
+            },
         ]
         prompt = build_harvest_prompt(turns)
 
@@ -36,20 +42,28 @@ class TestBuildHarvestPrompt:
             {"agent_id": "a", "caste": "c", "content": "x" * 1000, "round_number": 0},
         ]
         prompt = build_harvest_prompt(turns)
-        # Content should be truncated to 500 chars
-        assert len("x" * 1000) > 500
+        assert "x" * 500 in prompt
+        assert "x" * 501 not in prompt
 
 
 class TestParseHarvestResponse:
     def test_valid_json(self) -> None:
-        text = '{"entries": [{"turn_index": 0, "type": "bug", "summary": "Found null pointer"}]}'
+        text = (
+            '{"entries": [{"turn_index": 0, "type": "bug", '
+            '"summary": "Found null pointer"}]}'
+        )
         result = parse_harvest_response(text)
         assert len(result) == 1
         assert result[0]["type"] == "bug"
         assert result[0]["summary"] == "Found null pointer"
 
     def test_code_fenced_json(self) -> None:
-        text = '```json\n{"entries": [{"turn_index": 1, "type": "convention", "summary": "Use structlog"}]}\n```'
+        text = (
+            "```json\n"
+            '{"entries": [{"turn_index": 1, "type": "convention", '
+            '"summary": "Use structlog"}]}\n'
+            "```"
+        )
         result = parse_harvest_response(text)
         assert len(result) == 1
         assert result[0]["type"] == "convention"
@@ -77,7 +91,8 @@ class TestParseHarvestResponse:
     def test_environment_noise_is_filtered(self) -> None:
         text = (
             '{"entries": [{"turn_index": 0, "type": "learning", '
-            '"summary": "The workspace directory remains unconfigured despite repeated attempts."}]}'
+            '"summary": "The workspace directory remains unconfigured '
+            'despite repeated attempts."}]}'
         )
         result = parse_harvest_response(text)
         assert result == []
@@ -138,7 +153,7 @@ class TestHarvestHookReplaySafety:
         assert "col-1:harvest" in projections.memory_extractions_completed
 
     def test_not_harvested_proceeds(self) -> None:
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from formicos.surface.colony_manager import ColonyManager
 
@@ -152,7 +167,11 @@ class TestHarvestHookReplaySafety:
 
         mgr = ColonyManager.__new__(ColonyManager)
         mgr._runtime = runtime
+        mgr._deferred_post_colony_work = []
+        mgr._active = {}
+        mgr._post_colony_drain_task = None
+        mgr._schedule_post_colony_drain = MagicMock()
 
-        with patch("asyncio.create_task") as mock_create:
-            mgr._hook_transcript_harvest("col-1", "ws-1", succeeded=True)
-            mock_create.assert_called_once()
+        mgr._hook_transcript_harvest("col-1", "ws-1", succeeded=True)
+        assert len(mgr._deferred_post_colony_work) == 1
+        mgr._schedule_post_colony_drain.assert_called_once()

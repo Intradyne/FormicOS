@@ -231,6 +231,174 @@ class TestQueenRespond:
         assert emitted.role == "queen"
         assert "language model" in emitted.content.lower()
 
+    @pytest.mark.anyio()
+    async def test_retries_once_after_recon_only_on_build_task(self) -> None:
+        thread = _make_thread([
+            SimpleNamespace(
+                role="operator",
+                content="build test-sentinel addon with scanner.py coverage.py handlers.py and tests",
+            ),
+        ])
+        tool_response = _make_llm_response(
+            content="",
+            tool_calls=[{"name": "run_command", "input": {"command": "ls -la"}}],
+        )
+        recon_only_response = _make_llm_response(
+            content="I checked the workspace and found the relevant files.",
+            tool_calls=[],
+        )
+        final_response = _make_llm_response(
+            content="I will propose the execution plan now.",
+            tool_calls=[],
+        )
+
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.colonies = {}
+        runtime.projections.workspaces = {}
+        runtime.projections.list_colonies = MagicMock(return_value=[])
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
+        runtime.llm_router.complete = AsyncMock(
+            side_effect=[tool_response, recon_only_response, final_response],
+        )
+
+        queen = QueenAgent(runtime)
+        queen._execute_tool = AsyncMock(return_value=("workspace listing", None))  # type: ignore[method-assign]
+
+        result = await queen.respond("ws1", "th1")
+
+        assert result.reply == "I will propose the execution plan now."
+        assert runtime.llm_router.complete.await_count >= 3
+
+    @pytest.mark.anyio()
+    async def test_injects_pre_llm_colony_directive_for_implementation_turn(self) -> None:
+        thread = _make_thread([
+            SimpleNamespace(
+                role="operator",
+                content="Strengthen checkpoint coverage in tests and add missing rollback cases.",
+            ),
+        ])
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.colonies = {}
+        runtime.projections.workspaces = {}
+        runtime.projections.list_colonies = MagicMock(return_value=[])
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
+
+        queen = QueenAgent(runtime)
+        await queen.respond("ws1", "th1")
+
+        call = runtime.llm_router.complete.await_args_list[0]
+        messages = call.kwargs["messages"]
+        directive_idx = next(
+            i for i, m in enumerate(messages)
+            if m["role"] == "system"
+            and "IMPORTANT: The operator's message is implementation work" in m["content"]
+        )
+        first_user_idx = next(i for i, m in enumerate(messages) if m["role"] == "user")
+        assert directive_idx < first_user_idx
+
+    @pytest.mark.anyio()
+    async def test_implementation_turn_narrowing_excludes_propose_plan(self) -> None:
+        thread = _make_thread([
+            SimpleNamespace(
+                role="operator",
+                content="Refactor runner.py to share workspace root logic cleanly.",
+            ),
+        ])
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.colonies = {}
+        runtime.projections.workspaces = {}
+        runtime.projections.list_colonies = MagicMock(return_value=[])
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
+
+        queen = QueenAgent(runtime)
+        await queen.respond("ws1", "th1")
+
+        call = runtime.llm_router.complete.await_args_list[0]
+        tool_names = {tool["name"] for tool in call.kwargs["tools"]}
+        assert "spawn_colony" in tool_names
+        assert "spawn_parallel" in tool_names
+        assert "propose_plan" not in tool_names
+
+    @pytest.mark.anyio()
+    async def test_simple_implementation_turn_prefers_single_colony(self) -> None:
+        thread = _make_thread([
+            SimpleNamespace(
+                role="operator",
+                content="Fix src/ssrf_validate.py host parsing.",
+            ),
+        ])
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.colonies = {}
+        runtime.projections.workspaces = {}
+        runtime.projections.list_colonies = MagicMock(return_value=[])
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
+
+        queen = QueenAgent(runtime)
+        await queen.respond("ws1", "th1")
+
+        call = runtime.llm_router.complete.await_args_list[0]
+        tool_names = {tool["name"] for tool in call.kwargs["tools"]}
+        assert "spawn_colony" in tool_names
+        assert "spawn_parallel" not in tool_names
+
+    @pytest.mark.anyio()
+    async def test_narrowed_spawn_preview_is_forced_to_dispatch(self) -> None:
+        thread = _make_thread([
+            SimpleNamespace(
+                role="operator",
+                content="Fix src/ssrf_validate.py host parsing.",
+            ),
+        ])
+        tool_response = _make_llm_response(
+            content="",
+            tool_calls=[{"name": "spawn_colony", "input": {
+                "task": "Fix src/ssrf_validate.py host parsing.",
+                "preview": True,
+            }}],
+        )
+        final_response = _make_llm_response(content="Colony spawned successfully.")
+
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.colonies = {}
+        runtime.projections.workspaces = {}
+        runtime.projections.list_colonies = MagicMock(return_value=[])
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
+        runtime.llm_router.complete = AsyncMock(side_effect=[tool_response, final_response])
+        runtime.spawn_colony = AsyncMock(return_value="colony-fast")
+
+        queen = QueenAgent(runtime)
+        result = await queen.respond("ws1", "th1")
+
+        assert result.actions[0]["tool"] == "spawn_colony"
+        call_kwargs = runtime.spawn_colony.call_args.kwargs
+        assert call_kwargs["fast_path"] is True
+        assert result.actions[0]["colony_id"] == "colony-fast"
+
+    @pytest.mark.anyio()
+    async def test_skips_pre_llm_colony_directive_for_deliberative_turn(self) -> None:
+        thread = _make_thread([
+            SimpleNamespace(
+                role="operator",
+                content="Should we improve checkpoint coverage next, or focus on API tests first?",
+            ),
+        ])
+        runtime = _make_runtime(thread=thread)
+        runtime.projections.colonies = {}
+        runtime.projections.workspaces = {}
+        runtime.projections.list_colonies = MagicMock(return_value=[])
+        runtime.retrieve_relevant_memory = AsyncMock(return_value=("", []))
+
+        queen = QueenAgent(runtime)
+        await queen.respond("ws1", "th1")
+
+        call = runtime.llm_router.complete.await_args_list[0]
+        messages = call.kwargs["messages"]
+        assert not any(
+            m["role"] == "system"
+            and "IMPORTANT: The operator's message is implementation work" in m["content"]
+            for m in messages
+        )
+
 
 # ---------------------------------------------------------------------------
 # _build_messages tests

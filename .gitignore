@@ -51,3 +51,18 @@ lint-imports-*
 
 # Lock file (committed but generated)
 # uv.lock
+
+# TLS certs (mkcert -- never commit private keys)
+certs/
+.certs/
+
+# Test mock artifacts
+MagicMock/
+
+# Temp directories
+.codex_tmp/
+.tmp_pytest/
+.tmp_runtime_tests/
+
+# Ruff cache
+.ruff_cache/

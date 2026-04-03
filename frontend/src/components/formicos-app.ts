@@ -20,6 +20,7 @@ import './settings-view.js';
 import './knowledge-view.js';
 import './knowledge-browser.js';
 import './colony-creator.js';
+import './plan-workbench.js';
 import './colony-chat.js';
 import './workspace-browser.js';
 import './addons-view.js';
@@ -287,7 +288,16 @@ export class FormicOSApp extends LitElement {
   @state() private queenThreads: QueenThread[] = [];
   @state() private showCreator = false;
   @state() private creatorTemplateId = '';
+  // Wave 79.5 Track A: shared draft target-file state
+  @state() private _draftTargetFiles: string[] = [];
+  @state() private _draftQueenMessage = '';
+  // Wave 79.5 Track B3: colony-to-colony file handoff
+  @state() private _creatorInputFrom = '';
+  @state() private _creatorTargetFiles: string[] = [];
   @state() private knowledgeSourceColony = '';
+
+  // Wave 83 Track D: plan workbench state
+  @state() private _workbenchPreview: Record<string, unknown> | null = null;
   @state() private _showBudgetPopover = false;
   @state() private _autonomyData: { grade: string; level: string; budget_spent: number; budget_total: number; daily_maintenance_budget?: number } | null = null;
   @state() private _showCreateWorkspace = false;
@@ -487,6 +497,8 @@ export class FormicOSApp extends LitElement {
             <fc-colony-creator
               .castes=${store.state.castes}
               .initialTemplateId=${this.creatorTemplateId}
+              .initialInputFrom=${this._creatorInputFrom}
+              .initialTargetFiles=${[...this._draftTargetFiles, ...this._creatorTargetFiles]}
               .governance=${store.state.runtimeConfig?.governance ?? null}
               @spawn-colony=${(e: CustomEvent) => {
                 store.send('spawn_colony', this.activeWorkspaceId, e.detail);
@@ -494,6 +506,19 @@ export class FormicOSApp extends LitElement {
               }}
               @cancel=${() => this._closeCreator()}
             ></fc-colony-creator>
+          </div>
+        </div>` : nothing}
+
+      ${this._workbenchPreview ? html`
+        <div class="creator-overlay" @click=${(e: Event) => { if (e.target === e.currentTarget) this._closeWorkbench(); }}>
+          <div class="creator-panel" style="width:900px;max-width:95vw;height:80vh">
+            <fc-plan-workbench
+              .preview=${this._workbenchPreview}
+              .workspaceId=${(this._workbenchPreview as Record<string, string>).workspaceId || this.activeWorkspaceId}
+              .threadId=${(this._workbenchPreview as Record<string, string>).threadId || this.activeQT}
+              @workbench-dispatch=${(e: CustomEvent) => this._handleWorkbenchDispatch(e)}
+              @workbench-close=${() => this._closeWorkbench()}
+            ></fc-plan-workbench>
           </div>
         </div>` : nothing}`;
   }
@@ -610,7 +635,7 @@ export class FormicOSApp extends LitElement {
   private _renderQueen() {
     const s = store.state;
     return html`<fc-queen-overview
-      .tree=${this.tree} .approvals=${s.approvals} .localModels=${s.localModels}
+      .tree=${this.tree} .externalActiveWorkspaceId=${this.activeWorkspaceId} .approvals=${s.approvals} .localModels=${s.localModels}
       .cloudEndpoints=${s.cloudEndpoints}
       .queenThreads=${this.queenThreads} .activeQT=${this.activeQT} .castes=${s.castes}
       .runtimeConfig=${s.runtimeConfig}
@@ -634,6 +659,7 @@ export class FormicOSApp extends LitElement {
       @send-colony-message=${(e: CustomEvent) => store.send('chat_colony', this.activeWorkspaceId, e.detail)}
       @confirm-preview=${(e: CustomEvent) => this._handleConfirmPreview(e)}
       @open-colony-editor=${() => this._openCreator()}
+      @open-plan-workbench=${(e: CustomEvent) => this._openWorkbench(e)}
       @update-config=${(e: CustomEvent) => store.send('update_config', this.activeWorkspaceId, e.detail)}
     ></fc-queen-overview>`;
   }
@@ -657,6 +683,12 @@ export class FormicOSApp extends LitElement {
         this.knowledgeSourceColony = (e.detail as any)?.sourceColonyId ?? '';
         this.view = 'knowledge' as ViewId;
       }}
+      @use-output-as-input=${(e: CustomEvent) => {
+        const d = e.detail as { colonyId: string; task: string; targetFiles: string[] };
+        this._creatorInputFrom = d.colonyId;
+        this._creatorTargetFiles = d.targetFiles ?? [];
+        this._openCreator();
+      }}
     ></fc-colony-detail>`;
     if (sel?.type === 'thread') return html`<fc-thread-view .thread=${sel} .parentWsName=${this.parentWs?.name ?? ''}
       .merges=${this.merges}
@@ -674,6 +706,7 @@ export class FormicOSApp extends LitElement {
         this.knowledgeSourceColony = '';
         this.view = 'knowledge' as ViewId;
       }}
+      @open-plan-workbench=${(e: CustomEvent) => this._openWorkbench(e)}
     ></fc-thread-view>`;
     if (sel?.type === 'workspace') return html`<fc-workspace-config .workspace=${sel as any}
       .castes=${s.castes} .runtimeConfig=${s.runtimeConfig}
@@ -704,7 +737,17 @@ export class FormicOSApp extends LitElement {
 
   private _renderWorkspace() {
     return html`<fc-workspace-browser .workspaceId=${this.activeWorkspaceId}
-      .addonPanels=${this._addonPanels}></fc-workspace-browser>`;
+      .addonPanels=${this._addonPanels}
+      @use-as-target-file=${(e: CustomEvent) => {
+        this._draftTargetFiles = [...this._draftTargetFiles, e.detail.path];
+      }}
+      @open-in-creator=${(e: CustomEvent) => {
+        this._openCreator('', [e.detail.path]);
+      }}
+      @ask-queen=${(e: CustomEvent) => {
+        this._draftQueenMessage = `Regarding file \`${e.detail.path}\`: `;
+      }}
+    ></fc-workspace-browser>`;
   }
 
   private _renderPlaybook() {
@@ -726,7 +769,7 @@ export class FormicOSApp extends LitElement {
 
   private _renderSettings() {
     const s = store.state;
-    return html`<fc-settings-view .protocolStatus=${s.protocolStatus} .runtimeConfig=${s.runtimeConfig} .skillBankStats=${s.skillBankStats} .tree=${this.tree} .addons=${s.addons}></fc-settings-view>`;
+    return html`<fc-settings-view .protocolStatus=${s.protocolStatus} .runtimeConfig=${s.runtimeConfig} .skillBankStats=${s.skillBankStats} .tree=${this.tree} .addons=${s.addons} .activeWorkspaceId=${this.activeWorkspaceId}></fc-settings-view>`;
   }
 
   private _renderQueenChatRail() {
@@ -737,6 +780,7 @@ export class FormicOSApp extends LitElement {
       .threads=${this.queenThreads}
       .activeThreadId=${this.activeQT}
       .runningColonies=${rc}
+      .draftMessage=${this._draftQueenMessage}
       @switch-thread=${(e: CustomEvent) => { this.activeQT = e.detail; }}
       @new-thread=${() => {
         const name = `thread-${Date.now().toString(36)}`;
@@ -753,6 +797,7 @@ export class FormicOSApp extends LitElement {
       @confirm-preview=${(e: CustomEvent) => this._handleConfirmPreview(e)}
       @navigate=${(e: CustomEvent) => this.navTree(e.detail)}
       @open-colony-editor=${() => this._openCreator()}
+      @open-plan-workbench=${(e: CustomEvent) => this._openWorkbench(e)}
     ></fc-queen-chat>`;
   }
 
@@ -762,7 +807,25 @@ export class FormicOSApp extends LitElement {
     if (!preview) return;
     const wsId = preview.workspaceId || this.activeWorkspaceId;
     const threadId = preview.threadId || this.activeQT;
-    // Build spawn payload from preview metadata
+
+    // Wave 82 Track D: parallel plan dispatch path
+    if (preview.groups?.length) {
+      store.send('confirm_reviewed_plan', wsId, {
+        threadId,
+        preview,
+      });
+      store.send('send_queen_message', wsId, {
+        threadId,
+        content: (
+          `\u2713 Confirmed: dispatching parallel plan `
+          + `(${preview.totalPlannedTasks ?? '?'} tasks, `
+          + `${preview.groups.length} groups)`
+        ),
+      });
+      return;
+    }
+
+    // Single-colony dispatch path
     const payload: Record<string, unknown> = {
       task: preview.task,
       strategy: preview.strategy,
@@ -775,21 +838,43 @@ export class FormicOSApp extends LitElement {
       payload.targetFiles = preview.targetFiles;
     }
     store.send('spawn_colony', wsId, payload);
-    // Send a visible confirmation message to the thread
     store.send('send_queen_message', wsId, {
       threadId,
       content: `\u2713 Confirmed: dispatching colony for "${preview.task}"`,
     });
   }
 
-  private _openCreator(templateId = '') {
+  private _openCreator(templateId = '', targetFiles: string[] = []) {
     this.creatorTemplateId = templateId;
+    if (targetFiles.length) this._draftTargetFiles = targetFiles;
     this.showCreator = true;
   }
 
   private _closeCreator() {
     this.showCreator = false;
     this.creatorTemplateId = '';
+    this._draftTargetFiles = [];
+    // Wave 79.5 B3: clear handoff state
+    this._creatorInputFrom = '';
+    this._creatorTargetFiles = [];
+  }
+
+  /** Wave 83 Track D: open the plan workbench. */
+  private _openWorkbench(e: CustomEvent) {
+    this._workbenchPreview = e.detail as Record<string, unknown>;
+  }
+
+  private _closeWorkbench() {
+    this._workbenchPreview = null;
+  }
+
+  private _handleWorkbenchDispatch(e: CustomEvent) {
+    const detail = e.detail as { preview: Record<string, unknown>; threadId: string; workspaceId: string };
+    store.send('confirm_reviewed_plan', detail.workspaceId || this.activeWorkspaceId, {
+      threadId: detail.threadId || this.activeQT,
+      preview: detail.preview,
+    });
+    this._workbenchPreview = null;
   }
 
   private async _createWorkspace() {

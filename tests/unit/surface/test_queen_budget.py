@@ -23,10 +23,12 @@ class TestQueenContextBudget:
             thread_context=100,
             tool_memory=100,
             conversation_history=100,
+            working_memory=100,
         )
         assert b.system_prompt == 100
         assert b.operating_procedures == 100
         assert b.queen_journal == 100
+        assert b.working_memory == 100
 
     def test_fallback_values(self) -> None:
         assert FALLBACK_BUDGET.system_prompt == 2000
@@ -70,11 +72,11 @@ class TestComputeQueenBudget:
         """200K model -> proportional values exceed floors."""
         result = compute_queen_budget(200_000, 4096)
         # available = 200_000 - 4096 = 195904
-        # conversation_history = 28% of 195904 = 54853
-        assert result.conversation_history >= 54000
+        # conversation_history = 26% of 195904 = 50935
+        assert result.conversation_history >= 50000
         assert result.conversation_history > 6000
-        # thread_context = 13% of 195904 = 25467
-        assert result.thread_context >= 25000
+        # thread_context = 12% of 195904 = 23508
+        assert result.thread_context >= 23000
         assert result.thread_context > 1500
 
     def test_no_regression_guarantee(self) -> None:
@@ -98,13 +100,13 @@ class TestComputeQueenBudget:
         """ADR-051 example: 32K model, 4096 reserve."""
         result = compute_queen_budget(32768, 4096)
         available = 32768 - 4096  # 28672
-        # conversation_history = 28% of 28672 = 8028
+        # conversation_history = 26% of 28672 = 7454
         assert result.conversation_history == max(
-            6000, int(available * 0.28),
+            6000, int(available * 0.26),
         )
-        # thread_context = 13% of 28672 = 3727
+        # thread_context = 12% of 28672 = 3440
         assert result.thread_context == max(
-            1500, int(available * 0.13),
+            1500, int(available * 0.12),
         )
         # tool_memory = 9% of 28672 = 2580 < 4000 floor
         assert result.tool_memory == 4000

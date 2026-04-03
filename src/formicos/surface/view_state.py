@@ -92,6 +92,7 @@ def _build_addons(
                     "displayType": p.get("display_type", "status_card"),
                     "path": p.get("path", ""),
                     "addonName": p.get("addon_name", manifest.name),
+                    "refreshIntervalS": p.get("refresh_interval_s", 0),
                 }
                 for p in reg.registered_panels
             ],
@@ -112,8 +113,15 @@ def _build_addons(
     return result
 
 
+_MAX_COLONIES_PER_THREAD = 20
+
+
 def _build_tree(store: ProjectionStore) -> list[dict[str, Any]]:
-    """Build tree nodes from workspaces → threads → colonies."""
+    """Build tree nodes from workspaces → threads → colonies.
+
+    Wave 87: skip archived threads and cap colonies per thread to the
+    most recent ``_MAX_COLONIES_PER_THREAD`` to bound snapshot size.
+    """
     nodes: list[dict[str, Any]] = []
     for ws in store.workspaces.values():
         ws_node: dict[str, Any] = {
@@ -125,6 +133,9 @@ def _build_tree(store: ProjectionStore) -> list[dict[str, Any]]:
             "children": [],
         }
         for thread in ws.threads.values():
+            # Wave 87: skip archived threads from default snapshot
+            if getattr(thread, "status", "active") == "archived":
+                continue
             thread_node: dict[str, Any] = {
                 "id": thread.id,
                 "type": "thread",
@@ -132,7 +143,11 @@ def _build_tree(store: ProjectionStore) -> list[dict[str, Any]]:
                 "parentId": ws.id,
                 "children": [],
             }
-            for colony in thread.colonies.values():
+            # Wave 87: cap colonies to most recent N by sequence/recency
+            all_colonies = list(thread.colonies.values())
+            if len(all_colonies) > _MAX_COLONIES_PER_THREAD:
+                all_colonies = all_colonies[-_MAX_COLONIES_PER_THREAD:]
+            for colony in all_colonies:
                 colony_node: dict[str, Any] = {
                     "id": colony.id,
                     "type": "colony",
@@ -422,7 +437,7 @@ def _build_protocol_status(
     }
 
 
-_LOCAL_PROVIDERS = {"llama-cpp", "ollama", "local"}
+_LOCAL_PROVIDERS = {"llama-cpp", "llama-cpp-swarm", "ollama", "local"}
 _CLOUD_PROVIDERS = {"anthropic", "gemini", "openai", "ollama-cloud", "deepseek", "minimax"}
 
 
@@ -498,7 +513,7 @@ def _derive_local_model_name(model: Any, probe: dict[str, Any]) -> str:
 
     if getattr(model, "provider", "") == "llama-cpp":
         env_label = _humanize_local_model_name(
-            os.environ.get("LLM_MODEL_FILE", "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"),
+            os.environ.get("LLM_MODEL_FILE", "Qwen3.5-35B-A3B-Q4_K_M.gguf"),
         )
         if env_label:
             return env_label

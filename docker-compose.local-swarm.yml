@@ -1,0 +1,63 @@
+# FormicOS Local Swarm — Docker Compose Override
+#
+# Adds a second llama.cpp instance running a small, fast model (Qwen3.5-4B)
+# for parallel colony workers. The main LLM service handles the Queen.
+#
+# Multi-GPU: The swarm defaults to a secondary GPU (CUDA_DEVICE_SWARM=1)
+# so the Queen model gets the primary GPU to itself. The swarm image
+# defaults to the official multi-arch llama.cpp build, which runs on
+# any CUDA GPU (Ampere, Ada, Blackwell). Override LLM_SWARM_IMAGE with
+# a native build for peak throughput on a specific architecture.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.local-swarm.yml up -d
+#
+# Download model first:
+#   huggingface-cli download Qwen/Qwen3.5-4B-GGUF Qwen3.5-4B-Q4_K_M.gguf --local-dir .models
+#
+# See .env.example for swarm profiles (Deep Queen, Max Parallelism, Benchmark).
+
+services:
+  llm-swarm:
+    profiles: [local-gpu]
+    image: ${LLM_SWARM_IMAGE:-${LLM_IMAGE:-local/llama.cpp:server-cuda-blackwell}}
+    container_name: formicos-llm-swarm
+    ports:
+      - "127.0.0.1:${LLM_SWARM_PORT:-8009}:8080"
+    volumes:
+      - ${LLM_MODEL_DIR:-./.models}:/models:ro
+      - ./config:/config:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=${CUDA_DEVICE_SWARM:-${CUDA_DEVICE:-0}}
+    command: >-
+      --model /models/${LLM_SWARM_MODEL:-Qwen3.5-4B-Q4_K_M.gguf}
+      --alias qwen3.5-4b-swarm
+      --ctx-size ${LLM_SWARM_CTX:-128000}
+      -np ${LLM_SWARM_SLOTS:-4}
+      --n-gpu-layers 99
+      --flash-attn on
+      --fit on
+      --cache-type-k q8_0
+      --cache-type-v q4_0
+      --batch-size 4096
+      --ubatch-size 2048
+      --threads 4
+      --jinja
+      --chat-template-file /config/qwen35-chat.jinja
+      --slots
+      --host 0.0.0.0
+      --port 8080
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${CUDA_DEVICE_SWARM:-${CUDA_DEVICE:-0}}']
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

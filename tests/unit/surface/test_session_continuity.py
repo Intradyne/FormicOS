@@ -73,7 +73,7 @@ class TestEmitSessionSummary:
         agent.emit_session_summary("ws-1", "thr-1")
 
         session_path = (
-            tmp_path / ".formicos" / "sessions" / "thr-1.md"
+            tmp_path / ".formicos" / "sessions" / "ws-1" / "thr-1.md"
         )
         assert session_path.is_file()
         content = session_path.read_text(encoding="utf-8")
@@ -105,7 +105,7 @@ class TestEmitSessionSummary:
         agent.emit_session_summary("ws-1", "thr-1")
 
         session_path = (
-            tmp_path / ".formicos" / "sessions" / "thr-1.md"
+            tmp_path / ".formicos" / "sessions" / "ws-1" / "thr-1.md"
         )
         content = session_path.read_text(encoding="utf-8")
         assert "## Active Plan" in content

@@ -25,15 +25,16 @@ _CHARS_PER_TOKEN = 4
 # ---------------------------------------------------------------------------
 
 _FRACTIONS = {
-    "system_prompt": 0.15,
-    "memory_retrieval": 0.13,
+    "system_prompt": 0.14,
+    "memory_retrieval": 0.12,
     "project_context": 0.08,
     "project_plan": 0.05,
     "operating_procedures": 0.05,
     "queen_journal": 0.04,
-    "thread_context": 0.13,
+    "thread_context": 0.12,
     "tool_memory": 0.09,
-    "conversation_history": 0.28,
+    "conversation_history": 0.26,
+    "working_memory": 0.05,
 }
 
 _FALLBACKS = {
@@ -46,6 +47,7 @@ _FALLBACKS = {
     "thread_context": 1500,
     "tool_memory": 4000,
     "conversation_history": 6000,
+    "working_memory": 400,
 }
 
 
@@ -62,6 +64,7 @@ class QueenContextBudget:
     thread_context: int
     tool_memory: int
     conversation_history: int
+    working_memory: int
 
 
 # Singleton fallback budget matching current hardcoded defaults.
@@ -71,8 +74,13 @@ FALLBACK_BUDGET = QueenContextBudget(**_FALLBACKS)
 def compute_queen_budget(
     context_window: int | None,
     output_reserve: int,
+    *,
+    num_slots: int = 1,
 ) -> QueenContextBudget:
     """Compute proportional token budgets from the model's context window.
+
+    When *num_slots* > 1 (llama.cpp parallel slots), the effective context
+    per inference slot is ``context_window // num_slots``.
 
     Returns the fallback budget unchanged when *context_window* is missing,
     invalid, or too small to produce any proportional gain.
@@ -80,7 +88,10 @@ def compute_queen_budget(
     if context_window is None or context_window <= 0:
         return FALLBACK_BUDGET
 
-    available = max(0, context_window - output_reserve)
+    effective_window = (
+        context_window // max(1, num_slots) if num_slots > 1 else context_window
+    )
+    available = max(0, effective_window - output_reserve)
     if available <= 0:
         return FALLBACK_BUDGET
 
@@ -94,6 +105,7 @@ def compute_queen_budget(
     log.debug(
         "queen_budget.computed",
         context_window=context_window,
+        num_slots=num_slots,
         output_reserve=output_reserve,
         available=available,
         slots={
@@ -106,6 +118,7 @@ def compute_queen_budget(
             "thread_context": budget.thread_context,
             "tool_memory": budget.tool_memory,
             "conversation_history": budget.conversation_history,
+            "working_memory": budget.working_memory,
         },
     )
 

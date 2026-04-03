@@ -11,9 +11,11 @@ colonies to synthesize knowledge.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -277,6 +279,7 @@ class MaintenanceDispatcher:
         self._runtime = runtime
         self._daily_spend: dict[str, float] = {}  # workspace_id -> USD spent today
         self._last_reset: date | None = None
+        self._estimated_costs: dict[str, float] = {}  # colony_id -> estimated cost at dispatch
 
     async def evaluate_and_dispatch(
         self, workspace_id: str, briefing: ProactiveBriefing,
@@ -383,6 +386,8 @@ class MaintenanceDispatcher:
                 self._daily_spend[workspace_id] = (
                     self._daily_spend.get(workspace_id, 0.0) + cost
                 )
+                self._persist_daily_spend(workspace_id)
+                self._estimated_costs[colony_id] = cost
                 budget_remaining -= cost
 
         return dispatched
@@ -508,6 +513,9 @@ class MaintenanceDispatcher:
             self._daily_spend[workspace_id] = (
                 self._daily_spend.get(workspace_id, 0.0) + estimated_cost
             )
+            self._persist_daily_spend(workspace_id)
+            if estimated_cost > 0 and colony_id:
+                self._estimated_costs[colony_id] = estimated_cost
             budget_remaining -= estimated_cost
 
         return dispatched
@@ -594,6 +602,73 @@ class MaintenanceDispatcher:
         if self._last_reset != today:
             self._daily_spend.clear()
             self._last_reset = today
+            # Wave 76: reload persisted spend for current day
+            try:
+                for ws_id in self._runtime.projections.workspaces:
+                    persisted = self._load_daily_spend(ws_id)
+                    if persisted > 0:
+                        self._daily_spend[ws_id] = persisted
+            except (AttributeError, OSError):
+                pass  # settings/data_dir not available (e.g. test mocks)
+
+    # ------------------------------------------------------------------ #
+    # Wave 76: budget reconciliation                                       #
+    # ------------------------------------------------------------------ #
+
+    def reconcile_colony_cost(
+        self, workspace_id: str, colony_id: str, actual_cost: float,
+    ) -> None:
+        """Reconcile estimated vs actual colony cost in daily spend."""
+        if colony_id not in self._estimated_costs:
+            return  # only reconcile colonies that this dispatcher budgeted for
+        estimated = self._estimated_costs.pop(colony_id, 0.0)
+        if estimated == 0.0 and actual_cost == 0.0:
+            return
+        adjustment = actual_cost - estimated
+        if adjustment != 0.0:
+            self._daily_spend[workspace_id] = max(
+                0.0,
+                self._daily_spend.get(workspace_id, 0.0) + adjustment,
+            )
+            self._persist_daily_spend(workspace_id)
+
+    # ------------------------------------------------------------------ #
+    # Wave 76: daily spend persistence                                     #
+    # ------------------------------------------------------------------ #
+
+    def _spend_path(self, workspace_id: str) -> Path:
+        data_dir = self._runtime.settings.system.data_dir
+        return (
+            Path(data_dir) / ".formicos" / "operations"
+            / workspace_id / "daily_spend.json"
+        )
+
+    def _persist_daily_spend(self, workspace_id: str) -> None:
+        """Write current daily spend to disk."""
+        try:
+            path = self._spend_path(workspace_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "date": str(datetime.now(UTC).date()),
+                "spend": self._daily_spend.get(workspace_id, 0.0),
+                "last_updated": datetime.now(UTC).isoformat(),
+            }
+            path.write_text(json.dumps(data, indent=2) + "\n")
+        except (AttributeError, OSError):
+            pass  # settings/data_dir not available
+
+    def _load_daily_spend(self, workspace_id: str) -> float:
+        """Load persisted daily spend, or 0.0 if absent or stale."""
+        path = self._spend_path(workspace_id)
+        if not path.exists():
+            return 0.0
+        try:
+            data = json.loads(path.read_text())
+            if data.get("date") != str(datetime.now(UTC).date()):
+                return 0.0  # Stale -- different day
+            return float(data.get("spend", 0.0))
+        except (json.JSONDecodeError, OSError, TypeError, ValueError):
+            return 0.0
 
     async def _spawn_maintenance_colony(
         self, workspace_id: str, insight: KnowledgeInsight,

@@ -6,6 +6,8 @@ construction. All consumer surfaces read from this registry.
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,6 +16,48 @@ from typing import Any
 class ToolEntry:
     name: str
     description: str
+
+
+@dataclass(frozen=True)
+class QueenToolEntry:
+    """Self-describing Queen tool: schema + dispatch metadata (Wave 78)."""
+
+    name: str
+    toolset: str
+    schema: dict[str, Any]
+    handler_name: str
+    is_async: bool = True
+    mutates_workspace: bool = False
+    checkpoint_mode: str = "none"  # none | always | destructive_only
+
+
+def queen_tool(
+    *,
+    name: str,
+    toolset: str,
+    schema: dict[str, Any],
+    mutates_workspace: bool = False,
+    checkpoint_mode: str = "none",
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator that writes a ``_queen_tool_entry`` on the handler method.
+
+    ``QueenToolDispatcher.__init__`` scans bound methods once and builds
+    the runtime registry from those entries.
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        fn._queen_tool_entry = QueenToolEntry(  # type: ignore[attr-defined]
+            name=name,
+            toolset=toolset,
+            schema=schema,
+            handler_name=fn.__name__,
+            is_async=inspect.iscoroutinefunction(fn),
+            mutates_workspace=mutates_workspace,
+            checkpoint_mode=checkpoint_mode,
+        )
+        return fn
+
+    return decorator
 
 
 @dataclass(frozen=True)
@@ -80,4 +124,10 @@ class CapabilityRegistry:
         }
 
 
-__all__ = ["CapabilityRegistry", "ProtocolEntry", "ToolEntry"]
+__all__ = [
+    "CapabilityRegistry",
+    "ProtocolEntry",
+    "QueenToolEntry",
+    "ToolEntry",
+    "queen_tool",
+]

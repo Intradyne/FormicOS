@@ -571,7 +571,7 @@ reviewer feedback should use the normal colony path.
 
 ---
 
-## Preview (Wave 47)
+## Preview and Planning Workbench
 
 Both spawn paths support a preview mode that returns a plan summary without
 dispatching work.
@@ -580,11 +580,24 @@ dispatching work.
 
 - `spawn_colony(preview=true)` — returns team composition, task, estimated
   cost, and fast-path mode indication
-- `spawn_parallel(preview=true)` — returns DAG summary with task count,
-  group count, and estimated cost
+- `spawn_parallel(preview=true)` — returns a DAG preview card with task
+  details, group structure, expected outputs, target files, and planning
+  signals
 
-Preview is useful for operators who want to confirm the Queen's plan before
-committing resources.
+### Operator flow
+
+When the Queen proposes a parallel plan, the preview card appears inline
+in chat. From there the operator can:
+
+- **Dispatch Plan** — accept the Queen's proposal as-is
+- **Open Workbench** — open the full planning workbench to edit tasks,
+  regroup, adjust dependencies, compare against saved patterns, and then
+  dispatch the reviewed plan deterministically
+- **Reject** — decline the proposal
+
+The planning workbench edits the real plan contract and validates against
+the backend before dispatch. See [PLANNING_WORKBENCH.md](PLANNING_WORKBENCH.md)
+for the full operator workflow.
 
 ---
 
@@ -670,8 +683,9 @@ intended operator flow:
   (notify/ask), `render` (text/preview_card/result_card), and `meta`
   (structured payload). Additive, optional, replay-safe.
 - **Preview cards** render inline in Queen chat showing task, team shape,
-  strategy, fast-path badge, cost estimate, and target files. Confirm /
-  Cancel / Open Full Editor actions available.
+  strategy, fast-path badge, cost estimate, and target files. For single-
+  colony previews: Confirm / Cancel. For parallel plans: Dispatch Plan /
+  Open Workbench / Reject.
 - **Result cards** render inline showing status (color-coded), rounds,
   cost, quality score, extracted knowledge count, and validator verdict.
   Deep-link buttons navigate to colony detail, audit, and timeline.
@@ -720,8 +734,9 @@ older messages are compacted into a structured summary block:
 
 ### What was deferred
 
-- Inline adjust controls — deferred in favor of the "Open Full Editor"
-  escape hatch for complex parameter changes.
+- Inline adjust controls — the planning workbench (Wave 83) replaced the
+  original "Open Full Editor" escape hatch with a full DAG editor. See
+  [PLANNING_WORKBENCH.md](PLANNING_WORKBENCH.md).
 
 ### Architectural notes
 

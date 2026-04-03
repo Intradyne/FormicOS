@@ -42,12 +42,12 @@ class McpBridge:
     per-server and exported as a structured dict for generic consumption.
     """
 
-    servers: list[dict[str, str]] = field(default_factory=list)
+    servers: list[dict[str, Any]] = field(default_factory=list)
     _clients: dict[str, Client] = field(default_factory=dict, repr=False)
     _health: dict[str, ServerHealth] = field(default_factory=dict, repr=False)
     _locks: dict[str, asyncio.Lock] = field(default_factory=dict, repr=False)
 
-    def configure(self, servers: list[dict[str, str]]) -> None:
+    def configure(self, servers: list[dict[str, Any]]) -> None:
         """Set or replace the server list. Does not eagerly connect."""
         self.servers = list(servers)
         # Initialise health entries for newly-configured servers
@@ -79,13 +79,14 @@ class McpBridge:
             url = server_cfg.get("url", "")
             if not url:
                 return None
+            auth = server_cfg.get("auth") or None
 
             health = self._health.setdefault(
                 name, ServerHealth(name=name, url=url),
             )
 
             try:
-                client = Client(url, timeout=10)
+                client = Client(url, timeout=10, auth=auth)
                 await client.__aenter__()
                 health.connected = True
                 health.last_connected = datetime.now(UTC).isoformat()

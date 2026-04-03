@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +41,16 @@ _VALID_STATUSES = {
     STATUS_EXECUTED,
     STATUS_SELF_REJECTED,
     STATUS_FAILED,
+}
+
+# Wave 76: valid state transitions — terminal states have no outgoing edges
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    STATUS_PENDING_REVIEW: {STATUS_APPROVED, STATUS_REJECTED, STATUS_SELF_REJECTED},
+    STATUS_APPROVED: {STATUS_EXECUTED, STATUS_FAILED},
+    STATUS_REJECTED: set(),
+    STATUS_EXECUTED: set(),
+    STATUS_SELF_REJECTED: set(),
+    STATUS_FAILED: {STATUS_PENDING_REVIEW},  # allow retry
 }
 
 # ---------------------------------------------------------------------------
@@ -124,6 +135,8 @@ def append_action(
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(action, default=str) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def read_actions(
@@ -158,6 +171,19 @@ def update_action(
 
     for act in actions:
         if act.get("action_id") == action_id:
+            # Wave 76: validate state transitions
+            new_status = updates.get("status")
+            if new_status is not None:
+                old_status = act.get("status", "")
+                allowed = _VALID_TRANSITIONS.get(old_status, set())
+                if new_status not in allowed:
+                    log.warning(
+                        "action_queue.invalid_transition",
+                        action_id=action_id,
+                        old_status=old_status,
+                        new_status=new_status,
+                    )
+                    raise ValueError(f"invalid transition: {old_status} -> {new_status}")
             act.update(updates)
             act["updated_at"] = datetime.now(UTC).isoformat()
             target = act
@@ -260,9 +286,15 @@ def compact_action_log(data_dir: str, workspace_id: str) -> bool:
     if len(actions) <= _COMPACT_THRESHOLD:
         return False
 
-    # Archive the older entries
-    archive_entries = actions[:-_COMPACT_KEEP]
-    keep_entries = actions[-_COMPACT_KEEP:]
+    # Wave 76: partition by status — never archive pending_review items
+    pending = [a for a in actions if a.get("status") == STATUS_PENDING_REVIEW]
+    settled = [a for a in actions if a.get("status") != STATUS_PENDING_REVIEW]
+
+    if len(settled) <= _COMPACT_KEEP:
+        return False  # Not enough settled items to compact
+
+    archive_entries = settled[:-_COMPACT_KEEP]
+    keep_entries = pending + settled[-_COMPACT_KEEP:]
 
     date_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     archive_path = _actions_dir(data_dir, workspace_id) / f"actions.{date_str}.jsonl.gz"

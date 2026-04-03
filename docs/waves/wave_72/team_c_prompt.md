@@ -7,7 +7,7 @@ product surfaces that still feel cluttered or underpowered.
 
 - `docs/waves/wave_72/wave_72_plan.md`
 - `docs/waves/wave_72/design_note.md`
-- `docs/waves/wave_72_polish_reference.md`
+- `docs/waves/wave_72/wave_72_polish_reference.md`
 - `CLAUDE.md`
 
 ## Repo Truth You Must Start From

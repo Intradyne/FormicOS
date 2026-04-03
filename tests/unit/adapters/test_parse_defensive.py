@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
+import formicos.adapters.parse_defensive as parse_defensive_module
 from formicos.adapters.parse_defensive import parse_tool_calls_defensive
 
 # ---------------------------------------------------------------------------
@@ -143,6 +146,34 @@ Let me format the tool call.
     def test_total_failure_returns_empty(self) -> None:
         text = "This is just plain text with no JSON at all."
         assert parse_tool_calls_defensive(text) == []
+
+    def test_large_plain_text_skips_expensive_repair(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_repair(
+            _text: str,
+            _known_tools: set[str] | None,
+        ) -> list[parse_defensive_module.ParsedToolCall] | None:
+            raise AssertionError("large plain text should not invoke repair")
+
+        monkeypatch.setattr(
+            parse_defensive_module,
+            "_try_json_repair",
+            fail_repair,
+        )
+        text = "plain text only\n" * 10_000
+        assert parse_tool_calls_defensive(text) == []
+
+    def test_large_text_with_small_fenced_json_still_recovers(self) -> None:
+        text = ("context\n" * 10_000) + (
+            "```json\n"
+            '{"name": "search", "arguments": {"q": "hello"}}\n'
+            "```"
+        )
+        result = parse_tool_calls_defensive(text)
+        assert len(result) == 1
+        assert result[0].name == "search"
 
 
 # ---------------------------------------------------------------------------

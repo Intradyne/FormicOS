@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from unittest.mock import AsyncMock, patch
 
@@ -13,8 +14,10 @@ from formicos.adapters.sandbox_manager import (
     SANDBOX_IMAGE,
     _execute_docker,
     _execute_subprocess,
+    _execute_workspace_docker,
     execute_sandboxed,
 )
+from formicos.core.types import WorkspaceExecutionResult
 
 
 class TestSandboxEnabled:
@@ -148,3 +151,71 @@ class TestDockerExecution:
             mock_proc.communicate.assert_awaited_once()
             sent_input = mock_proc.communicate.call_args.kwargs.get("input")
             assert sent_input == b"print(2+2)"
+
+
+class TestWorkspaceDockerExecution:
+    @pytest.mark.asyncio
+    async def test_workspace_archive_and_restore_use_to_thread(self) -> None:
+        from pathlib import Path
+
+        work_path = Path(".sandbox-manager-test-workspace")
+        if work_path.exists():
+            shutil.rmtree(work_path)
+        work_path.mkdir()
+        try:
+            (work_path / "example.txt").write_text("hello", encoding="utf-8")
+            before_snapshot = (set(), {})
+
+            async def fake_run_exec(*cmd: str, **kwargs: object) -> tuple[int, bytes, bytes, bool]:
+                if cmd[:2] == ("docker", "create"):
+                    return 0, b"container-123\n", b"", False
+                if cmd[:2] == ("docker", "start"):
+                    return 0, b"", b"", False
+                if cmd[:3] == ("docker", "exec", "-i"):
+                    assert kwargs["input_bytes"] == b"workspace-archive"
+                    return 0, b"", b"", False
+                if cmd[:3] == ("docker", "exec", "container-123") and "cd /workspace && tar -cf - ." in cmd:
+                    return 0, b"restored-archive", b"", False
+                if cmd[:3] == ("docker", "exec", "container-123"):
+                    return 0, b"stdout", b"stderr", False
+                if cmd[:3] == ("docker", "rm", "-f"):
+                    return 0, b"", b"", False
+                msg = f"unexpected command: {cmd}"
+                raise AssertionError(msg)
+
+            async def fake_to_thread(func: object, *args: object) -> object:
+                if getattr(func, "__name__", "") == "_archive_workspace":
+                    assert args == (work_path,)
+                    return b"workspace-archive"
+                if getattr(func, "__name__", "") == "_restore_workspace_from_archive":
+                    assert args == (b"restored-archive", work_path)
+                    return None
+                msg = f"unexpected to_thread target: {func!r}"
+                raise AssertionError(msg)
+
+            with (
+                patch("formicos.adapters.sandbox_manager._run_exec", side_effect=fake_run_exec),
+                patch("formicos.adapters.sandbox_manager.asyncio.to_thread", side_effect=fake_to_thread) as mock_to_thread,
+                patch(
+                    "formicos.adapters.sandbox_manager._build_workspace_result",
+                    return_value=WorkspaceExecutionResult(
+                        stdout="stdout",
+                        stderr="stderr",
+                        exit_code=0,
+                        command="pytest -q",
+                        working_dir=str(work_path),
+                    ),
+                ) as mock_result,
+            ):
+                result = await _execute_workspace_docker(
+                    "pytest -q",
+                    work_path,
+                    30,
+                    before_snapshot,
+                )
+        finally:
+            shutil.rmtree(work_path, ignore_errors=True)
+
+        assert result.exit_code == 0
+        assert mock_to_thread.await_count == 2
+        assert mock_result.called

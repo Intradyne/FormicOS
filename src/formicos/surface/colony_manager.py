@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -50,6 +50,7 @@ from formicos.surface.knowledge_constants import (
 # Alpha starts at 5.0 (PRIOR_ALPHA). Each successful access adds 0.5â€"1.5.
 # Threshold 8.0 â‰ˆ 6 successful accesses at minimum delta.
 _PROMOTION_ALPHA_THRESHOLD = 8.0
+_POST_COLONY_DRAIN_POLL_S = 1.0
 
 if TYPE_CHECKING:
     from formicos.surface.runtime import Runtime
@@ -190,8 +191,6 @@ def _build_workspace_execute_handler(
     Returns an async callable (command, workspace_id, timeout_s) that
     executes commands in the workspace directory with structured output.
     """
-    from pathlib import Path
-
     from formicos.adapters.sandbox_manager import execute_workspace_command
     from formicos.core.types import WorkspaceExecutionResult
 
@@ -201,7 +200,9 @@ def _build_workspace_execute_handler(
         timeout_s: int,
     ) -> WorkspaceExecutionResult:
         # Resolve workspace working directory
-        ws_dir = str(Path(data_dir) / "workspaces" / workspace_id / "files")
+        from formicos.surface.workspace_roots import workspace_runtime_root  # noqa: PLC0415
+
+        ws_dir = str(workspace_runtime_root(data_dir, workspace_id))
         return await execute_workspace_command(command, ws_dir, timeout_s)
 
     return _handle
@@ -403,9 +404,18 @@ class ColonyManager:
     def __init__(self, runtime: Runtime) -> None:
         self._runtime = runtime
         self._active: dict[str, asyncio.Task[None]] = {}
+        self._deferred_post_colony_work: list[
+            tuple[str, str, Callable[[], Awaitable[None]]]
+        ] = []
+        self._post_colony_drain_task: asyncio.Task[None] | None = None
         self._service_router = ServiceRouter(inject_fn=self.inject_message)
         # Injected messages queue â€" operator messages to be included in next round context
         self._injected_messages: dict[str, list[dict[str, Any]]] = {}
+        self._maintenance_dispatcher: Any | None = None
+
+    def set_maintenance_dispatcher(self, dispatcher: Any) -> None:
+        """Wave 76: wire maintenance dispatcher for cost reconciliation."""
+        self._maintenance_dispatcher = dispatcher
 
     @property
     def service_router(self) -> ServiceRouter:
@@ -425,7 +435,9 @@ class ColonyManager:
 
         task = asyncio.create_task(self._run_colony(colony_id))
         self._active[colony_id] = task
-        task.add_done_callback(lambda _t: self._active.pop(colony_id, None))
+        task.add_done_callback(
+            lambda _t: self._on_colony_task_done(colony_id),
+        )
         log.info("colony_manager.started", colony_id=colony_id)
 
     async def stop_colony(self, colony_id: str) -> None:
@@ -445,6 +457,65 @@ class ColonyManager:
     @property
     def active_count(self) -> int:
         return len(self._active)
+
+    def _on_colony_task_done(self, colony_id: str) -> None:
+        """Remove finished colony task and resume deferred post-colony work."""
+        self._active.pop(colony_id, None)
+        self._schedule_post_colony_drain()
+
+    def _has_live_colony_work(self) -> bool:
+        """Return True while any colony round loop task is still running."""
+        return any(not task.done() for task in self._active.values())
+
+    def _enqueue_post_colony_work(
+        self,
+        kind: str,
+        colony_id: str,
+        work: Callable[[], Awaitable[None]],
+    ) -> None:
+        """Queue post-colony work until live colonies have drained."""
+        self._deferred_post_colony_work.append((kind, colony_id, work))
+        log.info(
+            "colony.post_work_deferred",
+            kind=kind,
+            colony_id=colony_id,
+            queued=len(self._deferred_post_colony_work),
+            active_count=self.active_count,
+        )
+        self._schedule_post_colony_drain()
+
+    def _schedule_post_colony_drain(self) -> None:
+        """Ensure the deferred post-colony queue has a single drain task."""
+        if not self._deferred_post_colony_work:
+            return
+        if self._post_colony_drain_task is not None and not self._post_colony_drain_task.done():
+            return
+        self._post_colony_drain_task = asyncio.create_task(
+            self._drain_deferred_post_colony_work(),
+        )
+        self._post_colony_drain_task.add_done_callback(_log_task_exception)
+
+    async def _drain_deferred_post_colony_work(self) -> None:
+        """Run queued extraction/harvest work once live colonies go idle."""
+        while self._deferred_post_colony_work:
+            while self._has_live_colony_work():
+                await asyncio.sleep(_POST_COLONY_DRAIN_POLL_S)
+            kind, colony_id, work = self._deferred_post_colony_work.pop(0)
+            log.info(
+                "colony.post_work_draining",
+                kind=kind,
+                colony_id=colony_id,
+                remaining=len(self._deferred_post_colony_work),
+            )
+            try:
+                await work()
+            except Exception:  # noqa: BLE001
+                log.warning(
+                    "colony.post_work_failed",
+                    kind=kind,
+                    colony_id=colony_id,
+                    exc_info=True,
+                )
 
     async def inject_message(
         self,
@@ -712,6 +783,30 @@ class ColonyManager:
             _active = getattr(fresh, "active_goal", None)
             goal = _active if isinstance(_active, str) and _active else colony.task
 
+            # Wave 77: amnesiac forking — inject reflection for retry colonies (ADR-052)
+            if round_num == start_round and goal.startswith("[retry_of:"):
+                try:
+                    from formicos.surface.ai_filesystem import (  # noqa: PLC0415
+                        parse_retry_of,
+                        read_reflection,
+                    )
+
+                    orig_id, clean_goal = parse_retry_of(goal)
+                    if orig_id:
+                        refl = read_reflection(
+                            _safe_data_dir(self._runtime),
+                            colony.workspace_id, orig_id,
+                        )
+                        if refl:
+                            goal = (
+                                f"[Reflection from failed colony {orig_id}]\n"
+                                f"{refl}\n\n{clean_goal}"
+                            )
+                        else:
+                            goal = clean_goal
+                except Exception:  # noqa: BLE001
+                    log.debug("colony.retry_reflection_failed", colony_id=colony_id)
+
             # Re-fetch knowledge and playbook on goal change (redirect / active-goal shift)
             if goal != _prev_goal:
                 knowledge_items = await self._runtime.fetch_knowledge_for_colony(
@@ -953,6 +1048,17 @@ class ColonyManager:
                 # write path.  skill_bank_v2 continues as read-only archival
                 # data via the knowledge catalog.
                 skills_count = 0
+                # Wave 25: persist accumulated artifacts on completion
+                completion_proj = self._runtime.projections.get_colony(colony_id)
+                final_artifacts = completion_proj.artifacts if completion_proj else []
+                # Wave 76: guard against kill/completion race
+                if completion_proj is not None and completion_proj.status in ("killed", "failed"):
+                    log.info(
+                        "colony.completion_after_kill",
+                        colony_id=colony_id,
+                        current_status=completion_proj.status,
+                    )
+                    return
                 # Chat: colony completion (algorithms.md Â§8)
                 from formicos.core.events import ColonyChatMessage
                 await self._runtime.emit_and_broadcast(ColonyChatMessage(
@@ -964,9 +1070,6 @@ class ColonyManager:
                         f"(${total_cost:.2f})"
                     ),
                 ))
-                # Wave 25: persist accumulated artifacts on completion
-                completion_proj = self._runtime.projections.get_colony(colony_id)
-                final_artifacts = completion_proj.artifacts if completion_proj else []
                 await self._runtime.emit_and_broadcast(ColonyCompleted(
                     seq=0, timestamp=_now(), address=address,
                     colony_id=colony_id, summary=result.round_summary,
@@ -1092,6 +1195,14 @@ class ColonyManager:
         # Wave 25: persist accumulated artifacts on completion (max-rounds path)
         max_proj = self._runtime.projections.get_colony(colony_id)
         max_artifacts = max_proj.artifacts if max_proj else []
+        # Wave 76: guard against kill/completion race (max-rounds path)
+        if max_proj is not None and max_proj.status in ("killed", "failed"):
+            log.info(
+                "colony.completion_after_kill",
+                colony_id=colony_id,
+                current_status=max_proj.status,
+            )
+            return
         await self._runtime.emit_and_broadcast(ColonyCompleted(
             seq=0, timestamp=_now(), address=address,
             colony_id=colony_id, summary=prev_summary or "",
@@ -1169,6 +1280,135 @@ class ColonyManager:
             await self._hook_trajectory_extraction(
                 colony_id, ws_id, quality,
                 productive_calls, total_calls,
+            )
+        # Wave 86.5: auto-learn plan pattern from standout single-colony success
+        # Wave 86.5: auto-learn from standout single-colony success
+        # spawn_source may be "queen" or "" (colonies always go through
+        # Queen dispatch in practice; empty means the projection hasn't
+        # replayed the spawn event field yet on fresh data volumes).
+        _spawn_src = getattr(colony, "spawn_source", "")
+        _queen_spawned = _spawn_src in ("queen", "")
+        if succeeded and _queen_spawned:
+            log.debug(
+                "colony.auto_learn_gate",
+                colony_id=colony_id,
+                quality=quality,
+                productive_calls=productive_calls,
+                spawn_source=_spawn_src,
+                gate_passed=quality >= 0.7 and productive_calls > 0,
+            )
+        if (
+            succeeded
+            and quality >= 0.7
+            and productive_calls > 0
+            and _queen_spawned
+        ):
+            try:
+                from formicos.surface.plan_patterns import (  # noqa: PLC0415
+                    auto_learn_pattern,
+                    verify_outcome,
+                )
+
+                verification = verify_outcome(
+                    quality,
+                    failed_colonies=0,
+                    total_colonies=1,
+                    productive_calls=productive_calls,
+                    total_calls=total_calls,
+                )
+                log.debug(
+                    "colony.verify_outcome_result",
+                    colony_id=colony_id,
+                    verification=verification,
+                )
+                if verification.get("learnable"):
+                    data_dir = getattr(
+                        getattr(self._runtime, "settings", None),
+                        "system", None,
+                    )
+                    data_dir_str = getattr(data_dir, "data_dir", "") if data_dir else ""
+                    if data_dir_str:
+                        task_text = getattr(colony, "task", "")
+                        target_files = getattr(colony, "target_files", []) or []
+                        strategy = getattr(colony, "strategy", "sequential")
+                        auto_learn_pattern(
+                            data_dir_str,
+                            ws_id,
+                            plan_data={
+                                "tasks": [{
+                                    "task_id": colony_id,
+                                    "task": task_text,
+                                    "caste": "coder",
+                                    "strategy": strategy,
+                                    "target_files": target_files,
+                                    "expected_outputs": target_files,
+                                }],
+                                "parallel_groups": [[colony_id]],
+                                "reasoning": f"Single-colony fast_path: {task_text[:80]}",
+                            },
+                            outcome={
+                                "quality": quality,
+                                "succeeded": 1,
+                                "total": 1,
+                            },
+                        )
+                        log.info(
+                            "colony.auto_learn_single",
+                            colony_id=colony_id,
+                            quality=quality,
+                        )
+            except Exception:
+                log.debug("colony.auto_learn_failed", colony_id=colony_id)
+
+        # Wave 77: write reflection.md on failure (ADR-052, amnesiac forking)
+        if not succeeded:
+            try:
+                from formicos.surface.ai_filesystem import write_reflection  # noqa: PLC0415
+
+                data_dir = getattr(self._runtime, "settings", None)
+                data_dir_str = ""
+                if data_dir and hasattr(data_dir, "system"):
+                    data_dir_str = getattr(data_dir.system, "data_dir", "")
+                if data_dir_str and ws_id:
+                    # Fetch last round summary from projection
+                    proj = self._runtime.projections.get_colony(colony_id)
+                    last_summary = ""
+                    if proj and proj.round_records:
+                        last_rec = proj.round_records[-1]
+                        last_summary = getattr(last_rec, "summary", "") or ""
+                    caste_str = ", ".join(
+                        str(c) for c in (
+                            colony.castes if hasattr(colony, "castes") else []
+                        )
+                    )
+                    write_reflection(
+                        data_dir_str, ws_id, colony_id,
+                        task=getattr(colony, "task", "") or "",
+                        failure_reason=(
+                            getattr(colony, "failure_reason", "")
+                            or f"status={getattr(colony, 'status', 'unknown')}"
+                        ),
+                        rounds_completed=rounds_completed,
+                        quality=quality,
+                        stall_count=stall_count,
+                        last_round_summary=last_summary,
+                        strategy=getattr(colony, "strategy", ""),
+                        castes=caste_str,
+                    )
+            except Exception:  # noqa: BLE001
+                log.debug("colony.reflection_write_failed", colony_id=colony_id)
+
+        # Wave 78 Track 4: propose playbook from successful multi-caste colonies
+        if succeeded:
+            self._hook_playbook_proposal(
+                colony_id, colony, quality,
+                rounds_completed, productive_calls, total_calls,
+            )
+
+        # Wave 76: reconcile estimated vs actual cost for dispatcher-owned colonies
+        if self._maintenance_dispatcher is not None:
+            self._maintenance_dispatcher.reconcile_colony_cost(
+                ws_id, colony_id, total_cost,
             )
 
     # -- Individual post-colony hooks (Wave 32 B3) --
@@ -1271,24 +1511,33 @@ class ColonyManager:
     def _hook_memory_extraction(
         self, colony_id: str, ws_id: str, succeeded: bool,
     ) -> None:
-        """Institutional memory extraction (Wave 26 A5) â€" fire-and-forget."""
+        """Institutional memory extraction (Wave 26 A5) -- deferred until idle."""
+        # Replay-safety guard: skip if already extracted (matches transcript harvest pattern)
+        extraction_key = f"{colony_id}:institutional"
+        if extraction_key in self._runtime.projections.memory_extractions_completed:
+            return
         colony_proj = self._runtime.projections.get_colony(colony_id)
         if colony_proj is not None and ws_id:
             art_list: list[dict[str, Any]] = list(colony_proj.artifacts or [])
-            _memory_task = asyncio.create_task(self.extract_institutional_memory(
-                colony_id=colony_id,
-                workspace_id=ws_id,
-                colony_status="completed" if succeeded else "failed",
-                final_summary=getattr(colony_proj, "summary", "") or "",
-                artifacts=art_list,
-                failure_reason=None if succeeded else "Colony failed",
-            ))
-            _memory_task.add_done_callback(_log_task_exception)
+            final_summary = getattr(colony_proj, "summary", "") or ""
+
+            self._enqueue_post_colony_work(
+                "memory_extraction",
+                colony_id,
+                lambda: self.extract_institutional_memory(
+                    colony_id=colony_id,
+                    workspace_id=ws_id,
+                    colony_status="completed" if succeeded else "failed",
+                    final_summary=final_summary,
+                    artifacts=art_list,
+                    failure_reason=None if succeeded else "Colony failed",
+                ),
+            )
 
     def _hook_transcript_harvest(
         self, colony_id: str, ws_id: str, succeeded: bool,
     ) -> None:
-        """Transcript harvest at hook position 4.5 (Wave 33 A1) â€" fire-and-forget."""
+        """Transcript harvest at hook position 4.5 (Wave 33 A1) â€" deferred until idle."""
         harvest_key = f"{colony_id}:harvest"
         if harvest_key in self._runtime.projections.memory_extractions_completed:
             return  # replay-safe: already harvested
@@ -1297,15 +1546,13 @@ class ColonyManager:
         if colony_proj is None or not ws_id:
             return
 
-        _harvest_coro = self._run_transcript_harvest(
-            colony_id, ws_id, succeeded, colony_proj,
+        self._enqueue_post_colony_work(
+            "transcript_harvest",
+            colony_id,
+            lambda: self._run_transcript_harvest(
+                colony_id, ws_id, succeeded, colony_proj,
+            ),
         )
-        _harvest_task = asyncio.create_task(_harvest_coro)
-        if not isinstance(_harvest_task, asyncio.Task):
-            # Some tests patch asyncio.create_task with a plain mock. Close the
-            # coroutine in that case so the test doesn't leak an un-awaited coro.
-            _harvest_coro.close()
-        _harvest_task.add_done_callback(_log_task_exception)
 
     async def _run_transcript_harvest(
         self,
@@ -1922,6 +2169,80 @@ class ColonyManager:
             quality=round(quality, 2),
         )
 
+    def _hook_playbook_proposal(
+        self,
+        colony_id: str,
+        colony: Any,
+        quality: float,
+        rounds_completed: int,
+        productive_calls: int,
+        total_calls: int,
+    ) -> None:
+        """Wave 78 Track 4: Propose a reusable playbook from a successful colony.
+
+        Quality gate: quality >= 0.7, >= 3 rounds, >= 50% productive-call
+        ratio, and at least 2 castes (single-caste isn't a novel workflow).
+        """
+        if quality < 0.7 or rounds_completed < 3:
+            return
+        if productive_calls / max(total_calls, 1) < 0.5:
+            return
+
+        castes = list(getattr(colony, "castes", []))
+        if len(castes) < 2:
+            return
+
+        strategy = getattr(colony, "strategy", "sequential")
+        task = str(getattr(colony, "task", ""))[:200]
+        # Extract tool usage from round records
+        proj = self._runtime.projections.get_colony(colony_id)
+        tools_used: set[str] = set()
+        if proj and proj.round_records:
+            for rec in proj.round_records:
+                for tc in getattr(rec, "tool_calls", []):
+                    name = tc.get("name", "") if isinstance(tc, dict) else ""
+                    if name:
+                        tools_used.add(name)
+
+        caste_names = [
+            str(c.caste if hasattr(c, "caste") else c) for c in castes
+        ]
+
+        playbook_data = {
+            "task_class": "auto_generated",
+            "castes": caste_names,
+            "workflow": f"Auto-extracted from colony {colony_id[:12]} ({strategy})",
+            "steps": [f"Task: {task}"],
+            "productive_tools": sorted(
+                t for t in tools_used
+                if t not in {"memory_search", "list_workspace_files", "read_workspace_file"}
+            ),
+            "observation_tools": sorted(
+                t for t in tools_used
+                if t in {"memory_search", "list_workspace_files", "read_workspace_file"}
+            ),
+            "observation_limit": 2,
+            "source": "agent",
+            "status": "candidate",
+            "proposed_by": colony_id,
+            "proposed_at": datetime.now(UTC).isoformat(),
+        }
+
+        try:
+            from formicos.engine.playbook_loader import save_playbook  # noqa: PLC0415
+
+            result = save_playbook(playbook_data)
+            if result:
+                log.info(
+                    "colony.playbook_proposed",
+                    colony_id=colony_id,
+                    file=result.get("_file", ""),
+                    castes=caste_names,
+                    strategy=strategy,
+                )
+        except Exception:  # noqa: BLE001
+            log.debug("colony.playbook_proposal_failed", colony_id=colony_id)
+
     async def _follow_up_colony(
         self, colony_id: str, workspace_id: str, thread_id: str,
         step_continuation: str = "",
@@ -2402,6 +2723,9 @@ class ColonyManager:
             entries_created=emitted_count,
             workspace_id=workspace_id,
         ))
+
+        # Mark as extracted for replay safety (matches transcript harvest pattern)
+        self._runtime.projections.memory_extractions_completed.add(f"{colony_id}:institutional")
 
         log.info(
             "memory_extraction.complete",

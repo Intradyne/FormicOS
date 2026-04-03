@@ -10,7 +10,7 @@ FormicOS is also an MCP server. Connect Claude Code or any MCP client, and the Q
 
 ## What makes it different
 
-- **Plans work in parallel and shows you why** -- The Queen decomposes tasks into a DAG of parallel groups. You see colonies execute side-by-side with live status, cost accumulation, and dependency arrows. The Queen's reasoning is always accessible.
+- **Plans work in parallel and shows you why** -- The Queen decomposes tasks into a DAG of parallel groups with deferred-group dispatch. A planning workbench lets you reshape, compare, and validate plans before launch. You see colonies execute side-by-side with live status, cost accumulation, and dependency arrows. The Queen's reasoning is always accessible.
 
 - **Extracts and maintains institutional knowledge** -- Colonies produce knowledge entries with Bayesian confidence posteriors, hierarchical domains, provenance chains, and 7-signal composite retrieval scoring including Personalized PageRank. Knowledge improves with use, decays when stale, and gets distilled into higher-order entries. The operator can review, confirm, edit, or invalidate entries through the Operations inbox.
 
@@ -20,33 +20,43 @@ FormicOS is also an MCP server. Connect Claude Code or any MCP client, and the Q
 
 - **Operates across sessions and idle time** -- The Queen maintains a journal, follows operating procedures, and continues work on pending milestones when the operator is away. An operational sweep runs every 30 minutes, queuing and executing work within guardrails. The action queue captures every proposal, execution, and rejection for full audit.
 
-- **Bridges to your editor** -- FormicOS is an MCP server with 27 tools, 9 resources, and 6 prompts. Run `python -m formicos init-mcp` to connect Claude Code. Search institutional memory, delegate tasks, review autonomous work, and record discoveries -- all from your editor.
+- **Bridges to your editor** -- FormicOS is an MCP server with 29 tools, 12 resources, and 8 prompts. Run `python -m formicos init-mcp` to connect Claude Code. Search institutional memory, delegate tasks, review autonomous work, and record discoveries -- all from your editor.
+
+## Why FormicOS?
+
+Every agent framework has knowledge, planning, and multi-agent. Here is what FormicOS has that others don't:
+
+- **Event-sourced everything.** LangGraph has checkpointing. AutoGen has memory. FormicOS has a closed 69-event union where every state change is an immutable fact. Crash, replay, same state. No other framework does this at the event level. A planning workbench lets operators reshape, compare, and dispatch parallel plans through deterministic reviewed-plan validation.
+- **Earned autonomy.** CrewAI lets agents run. FormicOS gates autonomy through blast radius estimation, daily budget caps, and graduated trust scores. The system earns the right to work unsupervised.
+- **Bayesian knowledge that improves with use.** Not just RAG. Not just a vector store. Entries carry Beta posteriors, decay naturally, strengthen through successful use, and get distilled into higher-order knowledge. The system gets smarter without retraining.
+- **MCP-native.** Not a library you import. A server you connect to. Claude Code and Claude Desktop become your interface. The agent framework disappears into your existing workflow.
 
 ## Quick Start
+
+### Cloud (recommended -- 3 commands)
 
 ```bash
 git clone https://github.com/Intradyne/FormicOS.git
 cd FormicOS
-cp .env.example .env          # optional: add ANTHROPIC_API_KEY or GEMINI_API_KEY
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env   # your real key
+docker compose build && docker compose up -d
 ```
 
-For the default local stack:
+Three containers start: FormicOS, Qdrant, and Docker proxy. No GPU needed.
+
+### Local GPU (advanced)
+
+For local inference with no cloud dependency:
 
 ```bash
-mkdir -p .models
-
-# download the GGUFs into .models before first boot
-# see docs/LOCAL_FIRST_QUICKSTART.md for the exact huggingface-cli commands
-
-# build the local llama.cpp image once if you are using the default local model
-bash scripts/build_llm_image.sh
-
-docker compose up -d
+bash scripts/setup-local-gpu.sh    # downloads models, builds image, patches .env
+docker compose up -d               # 5 containers
 ```
 
-If you want cloud-only operation instead, add `ANTHROPIC_API_KEY` and/or `GEMINI_API_KEY` to `.env` and skip the local-model build.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for manual setup and GPU configuration.
 
-When the app is ready:
+### When the app is ready
+
 1. Open **http://localhost:8080**
 2. Wait for the startup panel to clear and the Queen welcome message to appear
 3. Click **Try the Demo** to create a pre-seeded workspace and see FormicOS in action
@@ -57,23 +67,50 @@ When the app is ready:
 ```bash
 python -m formicos init-mcp
 # Generates .mcp.json for Claude Code + .formicos/DEVELOPER_QUICKSTART.md
-# Restart Claude Code to connect
+# Restart Claude Code to connect via http://localhost:8080/mcp
 ```
 
-Once connected, try these from Claude Code:
+### Connect Claude Desktop (optional)
+
+Prerequisites: [Node.js](https://nodejs.org/) (for `npx mcp-remote`).
+
+Add FormicOS to Claude Desktop's config
+(`%APPDATA%\Claude\claude_desktop_config.json` on Windows,
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "formicOSa": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8080/mcp"]
+    }
+  }
+}
+```
+
+Or run `python -m formicos init-mcp --desktop` to print the snippet.
+Restart Claude Desktop. The FormicOS tools appear via the hammer icon.
+
+Both Claude Code and Claude Desktop connect to the same FormicOS instance simultaneously.
+
+Once connected, try these from either client:
 - `morning-status` -- what happened, what's pending, project plan status
 - `delegate-task` -- hand off work to a colony
 - `knowledge-for-context` -- search institutional memory
 - `log-finding` -- record a discovery
 
+See [docs/DEVELOPER_BRIDGE.md](docs/DEVELOPER_BRIDGE.md) for daily workflows, available prompts, and knowledge population.
+
 ### Startup verification
 
 ```bash
-docker compose ps
-curl http://localhost:8080/health
-curl http://localhost:8008/health
-curl http://localhost:8200/health
-curl http://localhost:6333/collections
+docker compose ps                      # 3 containers (cloud) or 5 (local GPU)
+curl http://localhost:8080/health      # FormicOS
+curl http://localhost:6333/collections # Qdrant
+# Local GPU only:
+# curl http://localhost:8008/health    # LLM
+# curl http://localhost:8200/health    # Embedding sidecar
 ```
 
 ## Architecture
@@ -91,19 +128,19 @@ Four layers with strict inward dependency, enforced by CI:
 ```
 
 - **Core** -- closed 69-event Pydantic union, shared types, CRDTs, ports, and knowledge/federation contracts
-- **Engine** -- colony execution, context assembly, tool loop, stigmergic + sequential strategies, optimistic file locking
-- **Adapters** -- SQLite event store, Qdrant-backed knowledge search, knowledge graph adapter, federation transport, sandbox, multi-provider LLM bindings (OpenAI-compatible, Anthropic, Gemini) with per-endpoint concurrency
-- **Surface** -- Starlette app, MCP/HTTP/WS/AG-UI/A2A surfaces, Queen runtime with 43 tools, projections, maintenance services, addon loader, trigger dispatch, operational state (journal, procedures, action queue), and operator wiring
+- **Engine** -- colony execution, context assembly, tool loop, stigmergic + sequential strategies, optimistic file locking, task-aware tool pruning
+- **Adapters** -- SQLite event store, Qdrant-backed knowledge search, knowledge graph adapter, federation transport, sandbox, multi-provider LLM bindings (OpenAI-compatible, Anthropic, Gemini) with per-endpoint concurrency and provider-aware schema sanitization
+- **Surface** -- Starlette app, MCP/HTTP/WS/AG-UI/A2A surfaces, Queen runtime with ~45 tools (dynamic toolset loading), projections, maintenance services, addon loader, trigger dispatch, operational state (journal, procedures, action queue), planning workbench (reviewed-plan validation, saved patterns, DAG editing), and operator wiring
 
-The frontend is a Lit component shell with 8 tabs (Queen, Knowledge, Workspace, Operations, Addons, Playbook, Models, Settings) driven by WebSocket state snapshots and replay-safe projections.
+The frontend is a Lit component shell with 8 tabs (Queen, Knowledge, Workspace, Operations, Addons, Playbook, Models, Settings) driven by WebSocket state snapshots and replay-safe projections. The Queen chat includes inline colony previews with a planning workbench overlay for DAG editing and validation before dispatch.
 
 ### MCP developer bridge
 
 FormicOS is a FastMCP 3.0 server at `/mcp` with:
 
-- **27 MCP tools** -- colony management, knowledge search, addon control, approvals, service queries, configuration, and developer workflows (log_finding, handoff_to_formicos)
-- **9 MCP resources** -- knowledge catalog, thread/colony detail, project plan, operating procedures, journal, briefing
-- **6 MCP prompts** -- morning-status, delegate-task, review-overnight-work, knowledge-for-context, plus colony-task and review-knowledge
+- **29 MCP tools** -- colony management, knowledge search, addon control, approvals, service queries, configuration, and developer workflows (log_finding, handoff_to_formicos)
+- **12 MCP resources** -- knowledge catalog, thread/colony detail, project plan, operating procedures, journal, briefing
+- **8 MCP prompts** -- morning-status, delegate-task, review-overnight-work, knowledge-for-context, knowledge-query, plan-task, economic-status, review-task-receipt
 - **PromptsAsTools + ResourcesAsTools transforms** -- every prompt and resource is also callable as a tool
 
 ### Persistence
@@ -116,7 +153,7 @@ Operational state (journal, procedures, action queue) is file-backed under `.for
 
 **Workspaces, Threads, Colonies, Rounds** -- the data model is a tree. A workspace contains threads. A thread contains colonies. A colony runs rounds. Each round executes the 5-phase loop across all agents.
 
-**The Queen** -- the operator-facing LLM agent with 43 tools. The operator chats with the Queen, who decomposes goals and spawns colonies. Each thread has its own Queen conversation. The Queen maintains a journal, follows operating procedures, checks blast radius before autonomous dispatch, and earns trust through a graduated autonomy score.
+**The Queen** -- the operator-facing LLM agent with ~45 tools (dynamic toolset loading). The operator chats with the Queen, who decomposes goals and spawns colonies. Each thread has its own Queen conversation. The Queen maintains a journal, follows operating procedures, checks blast radius before autonomous dispatch, and earns trust through a graduated autonomy score.
 
 **Stigmergic Routing** -- in stigmergic mode, agents are connected by a weighted topology graph. Pheromone weights evolve each round based on output quality (cosine similarity). High-performing paths get reinforced; low-performing paths decay. The `sequential` strategy is a simpler fallback.
 
@@ -130,26 +167,27 @@ Operational state (journal, procedures, action queue) is file-backed under `.for
 
 ## Project Status
 
-FormicOS currently ships with:
+### Core (production-ready)
 
-- [x] Event-sourced persistence with replay-safe projections and a closed 69-event contract
-- [x] Unified knowledge system with Bayesian confidence, gamma decay, co-occurrence, hierarchical domains, provenance chains, PPR retrieval, outcome-weighted reinforcement, admission scoring, and knowledge review governance
-- [x] Proactive intelligence (17 deterministic rules), maintenance policies, blast radius estimation, graduated autonomy scoring, and self-maintenance dispatch with daily budget caps
-- [x] Queen parallel planning via `spawn_parallel`, workflow threads/steps, project-level milestones, operator directives, and colony audit surfaces
-- [x] Queen autonomous agency: 43 built-in tools including batch_command, summarize_thread, draft_document, retry_colony, project milestone management, autonomy budget checking, and MCP-aware chaining guidance
-- [x] Operational coherence: Queen journal, operating procedures, durable action queue (JSONL), 30-minute operational sweeps, operations coordinator with continuation candidates, and a dedicated Operations tab with inbox/journal/procedures/summary
-- [x] Knowledge governance: review scanning (outcome-correlated, contradictions, stale authority, unconfirmed entries), operator confirm/edit/invalidate flow, knowledge health dashboard
-- [x] Autonomous continuation: cross-session warm start proposals, idle-time execution with 5 guard rails, workflow pattern recognition, operating procedure auto-suggestions
-- [x] MCP developer bridge: 27 tools, 9 resources, 6 prompts, `init-mcp` CLI for Claude Code integration, prose-formatted resources for context injection
-- [x] Addon system: YAML manifest discovery, tool/handler/trigger registration, config editing, enable/disable toggle, 6 built-in addons (codebase-index, docs-index, git-control, mcp-bridge, proactive-intelligence, hello-world)
-- [x] Multi-provider parallel execution: per-endpoint adapter factory, per-model concurrency control, heuristic cloud routing, optimistic file locking for concurrent agents
-- [x] Reasoning and cache token accounting through the full pipeline (adapters to dashboard)
-- [x] Federated knowledge exchange via Computational CRDTs, Bayesian peer trust hardening, and truthful A2A / Agent Card protocol surfaces
-- [x] Local-first inference plus cloud fallback, sandboxed code execution, and operator steering
-- [x] Unified operator surfaces: Queen overview, Knowledge browser with search and health, Workspace browser, Operations inbox with approve/reject, Addons with interactive config/trigger/toggle, Playbook with templates, Models admin with add/hide, Settings with writable governance controls
-- [x] Colony outcome metrics, escalation reporting, validator-aware completion states, and replay-derived history views
-- [x] Sequential task runner with locked experiment conditions for compounding measurement
-- [x] Adaptive evaporation, web foraging with egress control, and contradiction resolution
+- **Event-sourced persistence** -- closed 69-event Pydantic union, replay-safe projections, crash-recoverable by design
+- **Bayesian knowledge system** -- Beta posteriors, Thompson Sampling retrieval, 7-signal composite scoring, gamma decay, co-occurrence, hierarchical domains, provenance chains, PPR retrieval, outcome-weighted reinforcement, admission scoring, knowledge review governance
+- **Queen parallel planning** -- DAG decomposition via `spawn_parallel`, workflow threads/steps, project milestones, 42 built-in tools, MCP-aware chaining
+- **Operational loop** -- 30-minute sweeps, durable action queue, journal, procedures, continuation proposals, blast radius estimation, graduated autonomy scoring with daily budget caps
+- **MCP developer bridge** -- 29 tools, 12 resources, 8 prompts, `init-mcp` CLI for Claude Code and Claude Desktop integration
+
+### Shipped (functional, evolving)
+
+- **Autonomous agency** -- proactive intelligence (17 deterministic rules), self-maintenance dispatch, idle-time execution with 5 guard rails, workflow pattern recognition, operating procedure auto-suggestions
+- **Addon system** -- YAML manifest discovery, tool/handler/trigger registration, 6 built-in addons (codebase-index, docs-index, git-control, mcp-bridge, proactive-intelligence, hello-world)
+- **Multi-provider execution** -- per-endpoint adapter factory, per-model concurrency control, local-first inference plus cloud fallback, reasoning and cache token accounting
+- **Federation** -- knowledge exchange via Computational CRDTs, Bayesian peer trust hardening, truthful A2A / Agent Card protocol surfaces
+- **Economic accountability** -- token metering with chain-hash integrity, tiered fee computation, `billing` CLI, A2A task receipts, revenue-share attribution
+- **Operator surfaces** -- 8-tab frontend (Queen, Knowledge, Workspace, Operations, Addons, Playbook, Models, Settings), sandboxed code execution, colony outcome metrics
+
+### Planned (ADR-approved)
+
+- **Cloud-first default deployment** (Wave 77 Track A) -- 3-container stack with cloud API inference, no GPU required, Docker Compose profiles for opt-in local GPU
+- **AI Filesystem with amnesiac forking** (Wave 77 Track B, [ADR-052](docs/decisions/052-ai-filesystem.md)) -- state/artifact separation, file-backed working memory, reflection files for failed colony retries, 47.2% vs 30.4% task success improvement (Pan et al. 2026)
 
 ## Development
 
@@ -175,6 +213,8 @@ cd frontend && npm run build
 
 # Connect Claude Code
 python -m formicos init-mcp           # generates .mcp.json
+python -m formicos init-mcp --desktop # prints Claude Desktop config snippet
+python -m formicos billing status     # current-period token usage and fees
 ```
 
 ## Documentation
@@ -197,10 +237,10 @@ python -m formicos init-mcp           # generates .mcp.json
 | [docs/LOCAL_FIRST_QUICKSTART.md](docs/LOCAL_FIRST_QUICKSTART.md) | Detailed local setup and first interaction walkthrough |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Developer guide: setup, testing, adding features |
 | [docs/KNOWLEDGE_LIFECYCLE.md](docs/KNOWLEDGE_LIFECYCLE.md) | Knowledge system operator runbook |
-| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-051) |
+| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-052) |
 | [docs/contracts/](docs/contracts/) | Frozen interface definitions (events, ports, types) |
 | [docs/specs/](docs/specs/) | Executable specifications and regression scenarios |
-| [docs/waves/PROGRESS.md](docs/waves/PROGRESS.md) | Development progress log (Waves 1-73) |
+| [docs/waves/PROGRESS.md](docs/waves/PROGRESS.md) | Development progress log (Waves 1-76) |
 | [addons/README.md](addons/README.md) | Addon development guide |
 | [FINDINGS.md](FINDINGS.md) | What 59 waves of measurement proved |
 | [METERING.md](METERING.md) | Token metering system specification |

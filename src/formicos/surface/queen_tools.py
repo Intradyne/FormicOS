@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import inspect
+import json
 import os
 import re as _re
 import shlex
@@ -34,6 +36,7 @@ from formicos.surface.queen_shared import (
     _is_experimentable,  # pyright: ignore[reportPrivateUsage]
     _now,  # pyright: ignore[reportPrivateUsage]
 )
+from formicos.surface.registry import QueenToolEntry
 from formicos.surface.template_manager import load_all_templates
 
 if TYPE_CHECKING:
@@ -102,8 +105,56 @@ def build_colony_preview(
     }
 
 
+def _task_text_to_lower(task: Any) -> str:
+    expected = " ".join(getattr(task, "expected_outputs", []) or [])
+    return f"{getattr(task, 'task', '')} {expected}".lower()
+
+
+def _file_matches_task_text(path: str, task_text: str) -> bool:
+    path_lower = path.lower()
+    stem = Path(path).stem.lower()
+    module = path_lower.replace("/", ".").replace("\\", ".")
+    if module.endswith(".py"):
+        module = module[:-3]
+    return (
+        path_lower in task_text
+        or (len(stem) >= 3 and stem in task_text)
+        or module in task_text
+    )
+
+
 # Sentinel returned for tools that must be handled by the thread manager.
 DELEGATE_THREAD = ("__delegate__", None)
+
+# Wave 78 Track 1: file-mutating tools that trigger automatic checkpoints.
+_FILE_MUTATION_TOOLS = frozenset({
+    "edit_file", "write_workspace_file", "delete_file",
+})
+
+_DESTRUCTIVE_PATTERNS = [
+    _re.compile(r"rm\s+(-\w*r|-\w*f)"),
+    _re.compile(r"git\s+reset\s+--hard"),
+    _re.compile(r"git\s+clean\s+-\w*f"),
+    _re.compile(r"DROP\s+TABLE", _re.IGNORECASE),
+    _re.compile(r"TRUNCATE\s+TABLE", _re.IGNORECASE),
+]
+_FILE_TOKEN_RE = _re.compile(r"(?<![\w./-])([A-Za-z0-9_./-]+\.[A-Za-z0-9_]+)")
+_GROUP_TOKEN_RE = _re.compile(r"\bgroup\s+(\d+)\b", _re.IGNORECASE)
+
+
+def _is_destructive_command(cmd: str) -> bool:
+    """Check if a command matches known destructive patterns."""
+    return any(p.search(cmd) for p in _DESTRUCTIVE_PATTERNS)
+
+
+def _summarize_inputs(inputs: dict[str, Any]) -> str:
+    """Short summary of tool inputs for checkpoint messages."""
+    parts: list[str] = []
+    for key in ("path", "filename", "command"):
+        val = inputs.get(key)
+        if val:
+            parts.append(f"{key}={str(val)[:60]}")
+    return ", ".join(parts) if parts else "no details"
 
 
 def _parse_caste_slots(raw_castes: list[Any]) -> list[CasteSlot]:
@@ -115,8 +166,18 @@ def _parse_caste_slots(raw_castes: list[Any]) -> list[CasteSlot]:
     caste_slots: list[CasteSlot] = []
     for entry in raw_castes:
         if isinstance(entry, str):
-            caste_slots.append(CasteSlot(caste=entry))
-        elif isinstance(entry, dict):
+            # Wave 78.5: try JSON parse first (sanitized schemas produce JSON strings)
+            try:
+                parsed = json.loads(entry)
+                if isinstance(parsed, dict):
+                    entry = parsed  # fall through to dict branch
+                else:
+                    caste_slots.append(CasteSlot(caste=entry))
+                    continue
+            except (json.JSONDecodeError, ValueError):
+                caste_slots.append(CasteSlot(caste=entry))
+                continue
+        if isinstance(entry, dict):
             d: dict[str, Any] = entry
             tier_str = str(d.get("tier", "standard"))
             try:
@@ -147,6 +208,78 @@ class QueenToolDispatcher:
     _MAX_NOTE_CHARS = 500
     _INJECT_NOTES = 10
 
+    # ------------------------------------------------------------------
+    # Wave 78 Track 2: Self-describing tool registry.
+    # Single source of truth for tool→handler + toolset grouping.
+    #
+    # Format: (tool_name, toolset, handler_spec, mutates_workspace, checkpoint_mode)
+    #
+    # handler_spec is either:
+    #   "method_name"     — method accepts (inputs, workspace_id, thread_id)
+    #   "method_name:iw"  — method accepts (inputs, workspace_id)
+    #   "method_name:iwt" — method accepts (inputs, workspace_id, thread_id)
+    #   "method_name:it"  — method accepts (inputs, thread_id)
+    #   "method_name:i"   — method accepts (inputs,)
+    #   "method_name:"    — method accepts ()
+    # ------------------------------------------------------------------
+    _TOOL_META: list[tuple[str, str, str, bool, str]] = [
+        # ── Colony ──
+        ("spawn_colony", "colony", "_spawn_colony", False, "none"),
+        ("spawn_parallel", "colony", "_spawn_parallel", False, "none"),
+        ("kill_colony", "colony", "_handle_kill_colony", False, "none"),
+        ("inspect_colony", "colony", "_inspect_colony:i", False, "none"),
+        ("read_colony_output", "colony", "_read_colony_output:i", False, "none"),
+        ("redirect_colony", "colony", "_redirect_colony", False, "none"),
+        ("escalate_colony", "colony", "_escalate_colony:i", False, "none"),
+        ("retry_colony", "colony", "_retry_colony", False, "none"),
+        # ── Knowledge ──
+        ("memory_search", "knowledge", "_memory_search", False, "none"),
+        ("queen_note", "knowledge", "_queen_note", False, "none"),
+        ("query_service", "knowledge", "_handle_query_service", False, "none"),
+        ("query_briefing", "knowledge", "_query_briefing:iw", False, "none"),
+        ("search_codebase", "knowledge", "_search_codebase:iw", False, "none"),
+        # ── Workspace ──
+        ("read_workspace_files", "workspace", "_read_workspace_files:iw", False, "none"),
+        ("write_workspace_file", "workspace", "_write_workspace_file:iw", True, "always"),
+        ("edit_file", "workspace", "_edit_file:iw", True, "always"),
+        ("delete_file", "workspace", "_delete_file:iw", True, "always"),
+        ("run_command", "workspace", "_run_command:iw", False, "destructive_only"),
+        ("run_tests", "workspace", "_run_tests:iw", False, "none"),
+        ("batch_command", "workspace", "_batch_command:iw", False, "destructive_only"),
+        # ── Planning ──
+        ("propose_plan", "planning", "_propose_plan:iwt", False, "none"),
+        ("mark_plan_step", "planning", "_mark_plan_step", False, "none"),
+        ("set_thread_goal", "planning", "_handle_set_thread_goal", False, "none"),
+        ("complete_thread", "planning", "_handle_complete_thread", False, "none"),
+        ("propose_project_milestone", "planning", "_propose_project_milestone", False, "none"),
+        ("complete_project_milestone", "planning", "_complete_project_milestone", False, "none"),
+        # ── Operations ──
+        ("get_status", "operations", "_get_status:iw", False, "none"),
+        ("suggest_config_change", "operations", "_suggest_config_change:it", False, "none"),
+        ("approve_config_change", "operations", "_approve_config_change", False, "none"),
+        ("list_templates", "operations", "_list_templates:", False, "none"),
+        ("inspect_template", "operations", "_inspect_template:i", False, "none"),
+        ("list_addons", "operations", "_list_addons:", False, "none"),
+        ("trigger_addon", "operations", "_trigger_addon:i", False, "none"),
+        ("set_workspace_tags", "operations", "_set_workspace_tags", False, "none"),
+        ("check_autonomy_budget", "operations", "_check_autonomy_budget", False, "none"),
+        ("post_observation", "operations", "_post_observation", False, "none"),
+        # ── Documents ──
+        ("draft_document", "documents", "_draft_document:iw", False, "none"),
+        ("summarize_thread", "documents", "_summarize_thread:iwt", False, "none"),
+        # ── Working Memory ──
+        ("write_working_note", "working_memory", "_write_working_note", False, "none"),
+        ("promote_to_artifact", "working_memory", "_promote_to_artifact", False, "none"),
+        # ── Analysis ──
+        ("query_outcomes", "analysis", "_query_outcomes:iw", False, "none"),
+        ("analyze_colony", "analysis", "_analyze_colony:i", False, "none"),
+        # ── Safety ──
+        ("rollback_file", "safety", "_rollback_file", False, "none"),
+        # ── Hosting ──
+        ("deploy_addon", "operations", "_deploy_addon", False, "none"),
+        ("check_hosted_capabilities", "operations", "_check_hosted_capabilities", False, "none"),
+    ]
+
     def __init__(
         self,
         runtime: Runtime,
@@ -162,59 +295,76 @@ class QueenToolDispatcher:
         )
         # Wave 64 Track 6a: addon-registered tool specs (appended to Queen tool list)
         self._addon_tool_specs: list[dict[str, Any]] = []
-        # Wave 62 Track 6: dict-based dispatch registry
-        # Each handler is wrapped to accept (inputs, workspace_id, thread_id).
-        self._handlers: dict[str, Callable[..., Any]] = {
-            "spawn_colony": self._spawn_colony,
-            "spawn_parallel": self._spawn_parallel,
-            "kill_colony": self._handle_kill_colony,
-            "get_status": lambda i, w, t: self._get_status(i, w),
-            "list_templates": lambda i, w, t: self._list_templates(),
-            "inspect_template": lambda i, w, t: self._inspect_template(i),
-            "inspect_colony": lambda i, w, t: self._inspect_colony(i),
-            "read_workspace_files": lambda i, w, t: self._read_workspace_files(i, w),
-            "suggest_config_change": lambda i, w, t: self._suggest_config_change(i, t),
-            "approve_config_change": self._approve_config_change,
-            "redirect_colony": self._redirect_colony,
-            "escalate_colony": lambda i, w, t: self._escalate_colony(i),
-            "read_colony_output": lambda i, w, t: self._read_colony_output(i),
-            "memory_search": self._memory_search,
-            "write_workspace_file": lambda i, w, t: self._write_workspace_file(i, w),
-            "queen_note": self._queen_note,
-            "set_thread_goal": self._handle_set_thread_goal,
-            "complete_thread": self._handle_complete_thread,
-            "query_service": self._handle_query_service,
-            "propose_plan": lambda i, w, t: self._propose_plan(i, w, t),
-            "query_outcomes": lambda i, w, t: self._query_outcomes(i, w),
-            "analyze_colony": lambda i, w, t: self._analyze_colony(i),
-            "query_briefing": lambda i, w, t: self._query_briefing(i, w),
-            "search_codebase": lambda i, w, t: self._search_codebase(i, w),
-            "run_command": lambda i, w, t: self._run_command(i, w),
-            # Wave 63 Track 3: write tools
-            "edit_file": lambda i, w, t: self._edit_file(i, w),
-            "run_tests": lambda i, w, t: self._run_tests(i, w),
-            "delete_file": lambda i, w, t: self._delete_file(i, w),
-            # Wave 68: plan step tracking
-            "mark_plan_step": self._mark_plan_step,
-            # Wave 64 Track 3: retry failed colony
-            "retry_colony": self._retry_colony,
-            # Wave 65 Track 5: autonomous agency tools
-            "batch_command": lambda i, w, t: self._batch_command(i, w),
-            "summarize_thread": lambda i, w, t: self._summarize_thread(i, w, t),
-            "draft_document": lambda i, w, t: self._draft_document(i, w),
-            "list_addons": lambda i, w, t: self._list_addons(),
-            # Wave 65 Track 4: manual addon trigger
-            "trigger_addon": lambda i, w, t: self._trigger_addon(i),
-            # Wave 68 Track 6: workspace taxonomy
-            "set_workspace_tags": self._set_workspace_tags,
-            # Wave 70.0 Track 5: project-level milestone tools
-            "propose_project_milestone": self._propose_project_milestone,
-            "complete_project_milestone": self._complete_project_milestone,
-            # Wave 70.0 Track 7: autonomy budget visibility
-            "check_autonomy_budget": self._check_autonomy_budget,
-            # Wave 74 Track 3: display board posting
-            "post_observation": self._post_observation,
-        }
+        # Wave 78 Track 1: shadow checkpoint manager for file safety
+        from formicos.surface.checkpoint import CheckpointManager  # noqa: PLC0415
+
+        self._checkpoint_mgr = CheckpointManager(
+            runtime.settings.system.data_dir,
+        )
+        # Wave 78 Track 2: Build dispatch + registry from _TOOL_META
+        self._tool_entries: list[QueenToolEntry] = []
+        self._handlers: dict[str, Callable[..., Any]] = {}
+        self._build_handlers()
+
+    def _build_handlers(self) -> None:
+        """Wave 78 Track 2: Build dispatch dict + tool entries from _TOOL_META.
+
+        The handler_spec suffix encodes which arguments the underlying
+        method accepts, so dispatch always calls handler(i, w, t) uniformly:
+          no suffix → method(inputs, workspace_id, thread_id)
+          :iw       → method(inputs, workspace_id)
+          :iwt      → method(inputs, workspace_id, thread_id)
+          :it       → method(inputs, thread_id)
+          :i        → method(inputs)
+          :         → method()
+        """
+        for name, toolset, handler_spec, mutates, ckpt in self._TOOL_META:
+            if ":" in handler_spec:
+                method_name, sig = handler_spec.split(":", 1)
+            else:
+                method_name, sig = handler_spec, "iwt"
+
+            method = getattr(self, method_name, None)
+            if method is None:
+                log.warning("queen.tool_meta.missing_handler", tool=name, handler=method_name)
+                continue
+
+            # Build uniform (inputs, workspace_id, thread_id) → result wrapper
+            if sig == "iwt":
+                handler = method
+            elif sig == "iw":
+                handler = lambda i, w, t, _m=method: _m(i, w)  # noqa: E731
+            elif sig == "it":
+                handler = lambda i, w, t, _m=method: _m(i, t)  # noqa: E731
+            elif sig == "i":
+                handler = lambda i, w, t, _m=method: _m(i)  # noqa: E731
+            elif sig == "":
+                handler = lambda i, w, t, _m=method: _m()  # noqa: E731
+            else:
+                handler = method
+
+            self._handlers[name] = handler
+            self._tool_entries.append(QueenToolEntry(
+                name=name,
+                toolset=toolset,
+                schema={},  # schemas still live in tool_specs(); merged at query time
+                handler_name=method_name,
+                is_async=inspect.iscoroutinefunction(method),
+                mutates_workspace=mutates,
+                checkpoint_mode=ckpt,
+            ))
+
+    def get_tool_entry(self, name: str) -> QueenToolEntry | None:
+        """Look up a tool entry by name. Used by dispatch for checkpoint decisions."""
+        for entry in self._tool_entries:
+            if entry.name == name:
+                return entry
+        return None
+
+    @property
+    def tool_entries(self) -> list[QueenToolEntry]:
+        """All registered tool entries (Wave 78 Track 2)."""
+        return list(self._tool_entries)
 
     def _find_colony(self, colony_id: str) -> Any:
         """Look up a colony by ID, falling back to display_name substring match."""
@@ -226,13 +376,32 @@ class QueenToolDispatcher:
                     return c
         return colony
 
+    def tool_specs_for_toolsets(
+        self, toolsets: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return tool specs filtered to the given toolsets (Wave 79 Track 1).
+
+        When *toolsets* is None, returns the full Queen tool surface.
+        """
+        if not toolsets:
+            return self.tool_specs()
+
+        allowed = {
+            entry.name for entry in self._tool_entries if entry.toolset in toolsets
+        }
+        # Delegated thread tools live outside _TOOL_META but belong to planning.
+        if "planning" in toolsets:
+            allowed.update({"archive_thread", "define_workflow_steps"})
+
+        return [spec for spec in self.tool_specs() if spec["name"] in allowed]
+
     # ------------------------------------------------------------------ #
     # Tool specs                                                          #
     # ------------------------------------------------------------------ #
 
     def tool_specs(self) -> list[dict[str, Any]]:
         """Define the tools available to the Queen (ADR-030)."""
-        return [
+        specs = [
             {
                 "name": "spawn_colony",
                 "description": "Spawn a new worker colony to execute a task.",
@@ -356,7 +525,9 @@ class QueenToolDispatcher:
                 "description": (
                     "Spawn multiple colonies organized as a parallel execution plan. "
                     "Tasks are grouped into parallel execution groups. Groups run "
-                    "sequentially; tasks within each group run concurrently."
+                    "sequentially; tasks within each group run concurrently. "
+                    "When the operator names concrete files, deliverables, or "
+                    "groups, the plan must cover all of them."
                 ),
                 "parameters": {
                     "type": "object",
@@ -415,10 +586,33 @@ class QueenToolDispatcher:
                                             "Task IDs whose colony output feeds this task."
                                         ),
                                     },
+                                    "target_files": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": (
+                                            "Files this colony should focus on. "
+                                            "Auto-filled from upstream expected_outputs "
+                                            "when depends_on is set and target_files is empty."
+                                        ),
+                                    },
+                                    "expected_outputs": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": (
+                                            "Files this colony is expected to produce. "
+                                            "Downstream tasks that depend on this task "
+                                            "will auto-receive these as target_files. "
+                                            "Use this to make deliverable coverage explicit."
+                                        ),
+                                    },
                                 },
                                 "required": ["task_id", "task", "caste"],
                             },
-                            "description": "List of colony tasks to execute.",
+                            "description": (
+                                "List of colony tasks to execute. Together these "
+                                "tasks must cover every explicitly requested "
+                                "deliverable."
+                            ),
                         },
                         "parallel_groups": {
                             "type": "array",
@@ -1519,9 +1713,138 @@ class QueenToolDispatcher:
                     "required": ["type", "title", "content"],
                 },
             },
+            # Wave 77 Track B: AI Filesystem working memory tools (ADR-052)
+            {
+                "name": "write_working_note",
+                "description": (
+                    "Write or append to a working memory note in the Queen's "
+                    "runtime scratchpad. Use for multi-step reasoning, decision "
+                    "logs, and coordination state that should persist across "
+                    "turns. Content is automatically visible in your context."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {
+                            "type": "string",
+                            "description": (
+                                "Note filename (e.g. 'plan.md', 'decisions.md'). "
+                                "No directory paths — just a filename."
+                            ),
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Text to write or append.",
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["append", "overwrite"],
+                            "description": (
+                                "append (default): add to end of file. "
+                                "overwrite: replace entire file."
+                            ),
+                        },
+                    },
+                    "required": ["filename", "content"],
+                },
+            },
+            {
+                "name": "promote_to_artifact",
+                "description": (
+                    "Move a working memory file to stable artifacts. "
+                    "Promoted files are eligible for knowledge extraction. "
+                    "Use when a working note becomes a final deliverable."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {
+                            "type": "string",
+                            "description": "Name of the runtime file to promote.",
+                        },
+                        "target_subdir": {
+                            "type": "string",
+                            "description": (
+                                "Subdirectory under artifacts/ "
+                                "(default: 'deliverables')."
+                            ),
+                        },
+                    },
+                    "required": ["filename"],
+                },
+            },
+            # Wave 78 Track 1: file safety rollback tool
+            {
+                "name": "rollback_file",
+                "description": (
+                    "Rollback workspace files to a previous checkpoint. "
+                    "Checkpoints are created automatically before file "
+                    "mutations. Pass list=true to see available checkpoints."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "checkpoint_id": {
+                            "type": "string",
+                            "description": (
+                                "The checkpoint hash to rollback to. "
+                                "If omitted, rolls back to the previous state."
+                            ),
+                        },
+                        "list": {
+                            "type": "boolean",
+                            "description": (
+                                "If true, list available checkpoints "
+                                "instead of rolling back."
+                            ),
+                        },
+                    },
+                },
+            },
+            # Wave 89 Track C: report hosted capability status
+            {
+                "name": "check_hosted_capabilities",
+                "description": (
+                    "Report currently mounted hosted capabilities: "
+                    "addon panels, refresh intervals, registration health, "
+                    "triggers, and last errors. Answers the current snapshot."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            # Wave 89 Track A: deploy a colony-authored addon at runtime
+            {
+                "name": "deploy_addon",
+                "description": (
+                    "Deploy a brand-new addon package into the running system. "
+                    "Validates manifest, handlers, and uniqueness before loading. "
+                    "Returns structured success or failure."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "addon_name": {
+                            "type": "string",
+                            "description": "Name of the addon package to deploy.",
+                        },
+                    },
+                    "required": ["addon_name"],
+                },
+            },
             # Wave 64 Track 6a: addon-registered tools appended dynamically
             *self._addon_tool_specs,
         ]
+        # Deduplicate by name (built-in specs win over addon specs)
+        seen_names: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for spec in specs:
+            name = spec.get("name", "")
+            if name not in seen_names:
+                seen_names.add(name)
+                deduped.append(spec)
+        return deduped
 
     # ------------------------------------------------------------------ #
     # Dispatch                                                            #
@@ -1551,6 +1874,22 @@ class QueenToolDispatcher:
             handler = self._handlers.get(name)
             if handler is None:
                 return (f"Unknown tool: {name}", None)
+
+            # Wave 78 Track 2: registry-driven pre-mutation checkpoint
+            entry = self.get_tool_entry(name)
+            if entry is not None:
+                should_checkpoint = (
+                    entry.checkpoint_mode == "always"
+                    or (
+                        entry.checkpoint_mode == "destructive_only"
+                        and _is_destructive_command(inputs.get("command", ""))
+                    )
+                )
+                if should_checkpoint:
+                    await self._pre_mutation_checkpoint(
+                        name, inputs, workspace_id,
+                    )
+
             result = handler(inputs, workspace_id, thread_id)
             if hasattr(result, "__await__"):
                 return await result
@@ -1558,6 +1897,200 @@ class QueenToolDispatcher:
         except Exception as exc:
             log.exception("queen.tool_error", tool=name)
             return (f"Tool {name} failed: {exc}", None)
+
+    # ------------------------------------------------------------------ #
+    # Wave 78 Track 1: checkpoint helpers                                 #
+    # ------------------------------------------------------------------ #
+
+    async def _pre_mutation_checkpoint(
+        self,
+        tool_name: str,
+        inputs: dict[str, Any],
+        workspace_id: str,
+    ) -> None:
+        """Create a shadow checkpoint before a file-mutating tool executes."""
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        ws_dir = None
+        if ws is not None:
+            ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+        if not ws_dir or not Path(str(ws_dir)).is_dir():
+            return
+        try:
+            reason = f"pre-{tool_name}: {_summarize_inputs(inputs)}"
+            await self._checkpoint_mgr.create_checkpoint(str(ws_dir), reason)
+        except Exception:  # noqa: BLE001
+            log.debug("checkpoint.pre_mutation_failed", tool=tool_name)
+
+    async def _rollback_file(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        _thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Rollback workspace files to a previous checkpoint."""
+        checkpoint_id = inputs.get("checkpoint_id")
+
+        ws = self._runtime.projections.workspaces.get(workspace_id)
+        ws_dir = None
+        if ws is not None:
+            ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
+        if not ws_dir or not Path(str(ws_dir)).is_dir():
+            return ("Error: workspace directory not found.", None)
+
+        if inputs.get("list"):
+            checkpoints = self._checkpoint_mgr.list_checkpoints(str(ws_dir))
+            if not checkpoints:
+                return ("No checkpoints found for this workspace.", None)
+            lines = [
+                f"- `{cp.hash[:8]}` {cp.message} ({cp.timestamp})"
+                for cp in checkpoints[:15]
+            ]
+            return (
+                f"**{len(checkpoints)} checkpoint(s):**\n" + "\n".join(lines),
+                None,
+            )
+
+        result = await self._checkpoint_mgr.rollback_to(
+            str(ws_dir), checkpoint_id,
+        )
+        return (
+            result,
+            {"tool": "rollback_file", "checkpoint_id": checkpoint_id},
+        )
+
+    async def _deploy_addon(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        _thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Deploy a brand-new addon into the running system (Wave 89)."""
+        addon_name = inputs.get("addon_name", "").strip()
+        if not addon_name:
+            return ("Error: addon_name is required.", None)
+
+        try:
+            from formicos.surface.addon_loader import (  # noqa: PLC0415
+                discover_addons,
+                load_new_addon,
+            )
+
+            # Discover the new addon manifest from the project root
+            from formicos.surface.workspace_roots import workspace_project_root  # noqa: PLC0415
+
+            _proj = workspace_project_root(workspace_id)
+            _addons_path = Path(str(_proj)) / "addons" if _proj else Path("addons")
+            manifests = discover_addons(_addons_path)
+            manifest = next(
+                (m for m in manifests if m.name == addon_name), None,
+            )
+            if manifest is None:
+                return (
+                    f"Error: addon '{addon_name}' not found in {_addons_path}/.",
+                    None,
+                )
+
+            # Get app state from runtime
+            app_state = getattr(self._runtime, "_app_state", None)
+            if app_state is None:
+                return ("Error: app state not available for runtime addon loading.", None)
+
+            base_ctx = getattr(self, "_addon_runtime_context", {})
+
+            reg, errors = await load_new_addon(
+                manifest,
+                app_state=app_state,
+                runtime=self._runtime,
+                base_runtime_context=base_ctx,
+                queen_dispatcher=self,
+                service_router=None,
+            )
+
+            if errors:
+                return (
+                    f"Addon '{addon_name}' deployment failed:\n"
+                    + "\n".join(f"- {e}" for e in errors),
+                    None,
+                )
+
+            tools = reg.registered_tools if reg else []
+            panels = len(manifest.panels)
+            return (
+                f"Addon '{addon_name}' deployed successfully "
+                f"({len(tools)} tools, {panels} panels).",
+                {"tool": "deploy_addon", "addon_name": addon_name},
+            )
+
+        except Exception as exc:
+            return (f"Addon deployment failed: {exc}", None)
+
+    async def _check_hosted_capabilities(
+        self,
+        _inputs: dict[str, Any],
+        _workspace_id: str,
+        _thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Report currently mounted hosted capabilities (Wave 89 Track C)."""
+        registrations = getattr(self._runtime, "addon_registrations", [])
+        if not registrations:
+            return ("No hosted capabilities are currently mounted.", None)
+
+        lines: list[str] = [f"**Hosted capabilities:** {len(registrations)} addon(s)\n"]
+        capability_list: list[dict[str, Any]] = []
+
+        for reg in registrations:
+            manifest = reg.manifest
+            if getattr(manifest, "hidden", False):
+                continue
+            entry: dict[str, Any] = {
+                "addon": manifest.name,
+                "version": manifest.version,
+                "status": reg.health_status,
+                "disabled": getattr(reg, "disabled", False),
+                "last_error": reg.last_error or "",
+                "panels": [],
+                "triggers": [],
+            }
+
+            lines.append(f"### {manifest.name} v{manifest.version}")
+            lines.append(f"  Status: {reg.health_status}")
+            if getattr(reg, "disabled", False):
+                lines.append("  **DISABLED**")
+            if reg.last_error:
+                lines.append(f"  Last error: {reg.last_error}")
+
+            for p in reg.registered_panels:
+                panel_info = {
+                    "target": p.get("target", ""),
+                    "path": p.get("path", ""),
+                    "display_type": p.get("display_type", "status_card"),
+                    "refresh_interval_s": p.get("refresh_interval_s", 0),
+                }
+                entry["panels"].append(panel_info)
+                refresh = panel_info["refresh_interval_s"]
+                lines.append(
+                    f"  Panel: {panel_info['target']} {panel_info['path']} "
+                    f"({panel_info['display_type']}"
+                    f"{f', refresh {refresh}s' if refresh else ''})"
+                )
+
+            for t in manifest.triggers:
+                trigger_info = {
+                    "type": t.type,
+                    "schedule": t.schedule,
+                    "handler": t.handler,
+                    "last_fired": reg.trigger_fire_times.get(t.handler),
+                }
+                entry["triggers"].append(trigger_info)
+                lines.append(f"  Trigger: {t.type} {t.schedule or ''} -> {t.handler}")
+
+            capability_list.append(entry)
+            lines.append("")
+
+        return (
+            "\n".join(lines),
+            {"tool": "check_hosted_capabilities", "capabilities": capability_list},
+        )
 
     # ------------------------------------------------------------------ #
     # Tool handlers                                                       #
@@ -1888,6 +2421,9 @@ class QueenToolDispatcher:
 
         # ── Build and validate DelegationPlan ──
         try:
+            from formicos.engine.schema_sanitize import coerce_array_items  # noqa: PLC0415
+
+            raw_tasks = coerce_array_items(raw_tasks)
             tasks = [ColonyTask(**t) for t in raw_tasks]
         except Exception as exc:
             log.warning("queen.parallel_plan_invalid_tasks", error=str(exc))
@@ -1939,6 +2475,40 @@ class QueenToolDispatcher:
                 None,
             )
 
+        scope_error = self._validate_operator_scoped_coverage(
+            workspace_id, thread_id, plan,
+        )
+        if scope_error:
+            return (scope_error, None)
+
+        # Wave 80: auto-wire target_files from upstream expected_outputs.
+        # When a task depends on upstream tasks that declared expected_outputs,
+        # and the downstream task has no explicit target_files, fill them in.
+        output_map: dict[str, list[str]] = {
+            t.task_id: list(t.expected_outputs) for t in plan.tasks if t.expected_outputs
+        }
+        if output_map:
+            updated_tasks: list[ColonyTask] = []
+            for t in plan.tasks:
+                if t.depends_on and not t.target_files:
+                    upstream_files: list[str] = []
+                    seen: set[str] = set()
+                    for dep_id in t.depends_on:
+                        for f in output_map.get(dep_id, []):
+                            if f not in seen:
+                                upstream_files.append(f)
+                                seen.add(f)
+                    if upstream_files:
+                        t = t.model_copy(update={"target_files": upstream_files})
+                updated_tasks.append(t)
+            plan = plan.model_copy(update={"tasks": updated_tasks})
+
+        plan = self._apply_structural_target_hints(
+            plan,
+            workspace_id,
+            thread_id,
+        )
+
         # Wave 47: preview mode — return validated plan summary without dispatch
         if bool(inputs.get("preview", False)):
             lines = [
@@ -1948,16 +2518,22 @@ class QueenToolDispatcher:
                 f"Reasoning: {plan.reasoning[:200]}",
                 f"Estimated cost: ${plan.estimated_total_cost:.2f}",
             ]
+            task_lookup = {t.task_id: t for t in plan.tasks}
             for gi, group in enumerate(plan.parallel_groups):
                 task_descs = []
                 for tid in group:
-                    ct = {t.task_id: t for t in plan.tasks}.get(tid)
+                    ct = task_lookup.get(tid)
                     if ct:
-                        task_descs.append(f"{ct.task_id} ({ct.caste})")
+                        desc = f"{ct.task_id} ({ct.caste})"
+                        if ct.expected_outputs:
+                            desc += f" -> [{', '.join(ct.expected_outputs)}]"
+                        if ct.target_files:
+                            desc += f" reads [{', '.join(ct.target_files)}]"
+                        task_descs.append(desc)
                 lines.append(f"  Group {gi + 1}: {', '.join(task_descs)}")
             if plan.knowledge_gaps:
                 lines.append(f"Knowledge gaps: {', '.join(plan.knowledge_gaps)}")
-            # Wave 48: structured preview metadata for frontend Review step
+            # Wave 48/80: structured preview metadata for frontend Review step
             preview_meta: dict[str, Any] = {
                 "tool": "spawn_parallel",
                 "preview": True,
@@ -1967,6 +2543,16 @@ class QueenToolDispatcher:
                 "groups": [
                     [tid for tid in group]
                     for group in plan.parallel_groups
+                ],
+                "tasks": [
+                    {
+                        "task_id": t.task_id,
+                        "caste": t.caste,
+                        "target_files": t.target_files,
+                        "expected_outputs": t.expected_outputs,
+                        "depends_on": t.depends_on,
+                    }
+                    for t in plan.tasks
                 ],
             }
             if plan.knowledge_gaps:
@@ -1990,10 +2576,56 @@ class QueenToolDispatcher:
             estimated_cost=plan.estimated_total_cost,
         ))
 
-        # ── Dispatch groups sequentially, tasks within each group concurrently ──
+        # ── Wave 81: Pre-allocate colony IDs for all tasks ──
+        import uuid  # noqa: PLC0415
+
+        from formicos.surface.parallel_plans import (  # noqa: PLC0415
+            ParallelPlanTracker,
+            PlannedTask,
+            TaskState,
+        )
+
         task_map = {t.task_id: t for t in plan.tasks}
-        # Maps task_id -> colony_id (populated as colonies are spawned)
+        # Build group index for each task
+        task_group_idx: dict[str, int] = {}
+        for g_idx, g_tids in enumerate(plan.parallel_groups):
+            for tid in g_tids:
+                task_group_idx[tid] = g_idx
+
+        # Pre-allocate a colony ID for every planned task
         colony_map: dict[str, str] = {}
+        for t in plan.tasks:
+            pre_id = f"colony-{uuid.uuid4().hex[:12]}"
+            colony_map[t.task_id] = pre_id
+
+        plan_id = f"plan-{workspace_id[:8]}-{thread_id[:8]}-{uuid.uuid4().hex[:8]}"
+
+        # Build tracker entries
+        planned_tasks = [
+            PlannedTask(
+                task_id=t.task_id,
+                colony_id=colony_map[t.task_id],
+                group_idx=task_group_idx.get(t.task_id, 0),
+            )
+            for t in plan.tasks
+        ]
+
+        # Register with plan tracker (attached to queen or standalone)
+        queen = getattr(self._runtime, "queen", None)
+        tracker: ParallelPlanTracker | None = None
+        if queen is not None:
+            if not hasattr(queen, "_plan_tracker"):
+                queen._plan_tracker = ParallelPlanTracker()
+            tracker = queen._plan_tracker
+            tracker.register_plan(
+                plan_id, workspace_id, thread_id,
+                planned_tasks, len(plan.parallel_groups),
+            )
+            # Also register with legacy aggregation (colony_ids for all tasks)
+            all_colony_ids_planned = [colony_map[t.task_id] for t in plan.tasks]
+            queen.register_parallel_plan(plan_id, all_colony_ids_planned)
+
+        # ── Dispatch only the first runnable group; defer later groups ──
         all_colony_ids: list[str] = []
         result_lines = [
             f"Parallel plan created: {len(plan.tasks)} tasks in "
@@ -2001,90 +2633,216 @@ class QueenToolDispatcher:
             f"Reasoning: {plan.reasoning[:200]}",
         ]
 
-        for group_idx, group in enumerate(plan.parallel_groups):
-            group_tasks = [task_map[tid] for tid in group]
+        first_group_idx = 0
+        first_group = plan.parallel_groups[first_group_idx] if plan.parallel_groups else []
+        group_tasks = [task_map[tid] for tid in first_group]
 
-            async def _spawn_one(ct: ColonyTask) -> tuple[str, str]:
-                """Spawn a single colony for a ColonyTask, return (task_id, colony_id)."""
-                caste_slots = [CasteSlot(caste=ct.caste)]
-                valid = ("sequential", "stigmergic")
-                strategy = ct.strategy if ct.strategy in valid else "stigmergic"
-                max_rounds = max(1, min(ct.max_rounds, 50))
-                budget = max(0.01, min(ct.budget_limit, 50.0))
+        async def _spawn_one(ct: ColonyTask) -> tuple[str, str]:
+            """Spawn a single colony for a ColonyTask, return (task_id, colony_id)."""
+            caste_slots = [CasteSlot(caste=ct.caste)]
+            valid = ("sequential", "stigmergic")
+            strategy = ct.strategy if ct.strategy in valid else "stigmergic"
+            max_rounds = max(1, min(ct.max_rounds, 50))
+            budget = max(0.01, min(ct.budget_limit, 50.0))
 
-                # Chain input from completed tasks if specified
-                input_sources: list[InputSource] | None = None
-                if ct.input_from:
-                    sources: list[InputSource] = []
-                    for src_tid in ct.input_from:
-                        src_cid = colony_map.get(src_tid, "")
-                        if src_cid:
-                            sources.append(InputSource(type="colony", colony_id=src_cid))
-                    if sources:
-                        input_sources = sources
+            # Chain input from completed tasks if specified
+            input_sources: list[InputSource] | None = None
+            if ct.input_from:
+                sources: list[InputSource] = []
+                for src_tid in ct.input_from:
+                    src_cid = colony_map.get(src_tid, "")
+                    if src_cid:
+                        sources.append(InputSource(type="colony", colony_id=src_cid))
+                if sources:
+                    input_sources = sources
 
-                colony_id = await self._runtime.spawn_colony(
-                    workspace_id, thread_id, ct.task, caste_slots,
-                    strategy=strategy,
-                    max_rounds=max_rounds,
-                    budget_limit=budget,
-                    input_sources=input_sources,
-                    target_files=ct.target_files if ct.target_files else None,
-                    spawn_source="queen",
-                )
-                # Start the colony
-                if self._runtime.colony_manager is not None:
-                    start_task = asyncio.create_task(
-                        self._runtime.colony_manager.start_colony(colony_id),
-                    )
-                    start_task.add_done_callback(_log_task_exception)
-                return (ct.task_id, colony_id)
+            colony_id = await self._runtime.spawn_colony(
+                workspace_id, thread_id, ct.task, caste_slots,
+                strategy=strategy,
+                max_rounds=max_rounds,
+                budget_limit=budget,
+                input_sources=input_sources,
+                target_files=ct.target_files if ct.target_files else None,
+                spawn_source="queen",
+            )
+            # Update colony_map with actual ID (may differ from pre-allocated)
+            colony_map[ct.task_id] = colony_id
+            return (ct.task_id, colony_id)
 
-            # Spawn all tasks in this group concurrently
-            try:
-                spawn_results = await asyncio.gather(
-                    *[_spawn_one(ct) for ct in group_tasks],
-                    return_exceptions=True,
-                )
-            except Exception as exc:
-                log.exception("queen.parallel_group_spawn_failed", group_idx=group_idx)
-                result_lines.append(f"Group {group_idx + 1}: spawn failed — {exc}")
-                continue
-
-            group_colonies: list[str] = []
-            for res in spawn_results:
-                if isinstance(res, BaseException):
-                    log.error("queen.parallel_task_spawn_failed", error=str(res))
-                    result_lines.append(f"  Task spawn failed: {res}")
-                else:
-                    pair: tuple[str, str] = res  # pyright: ignore[reportAssignmentType]
-                    colony_map[pair[0]] = pair[1]
-                    all_colony_ids.append(pair[1])
-                    group_colonies.append(f"{pair[0]}={pair[1]}")
-
-            result_lines.append(
-                f"Group {group_idx + 1}/{len(plan.parallel_groups)}: "
-                f"spawned {', '.join(group_colonies)}"
+        # Phase 1: Spawn first group concurrently
+        try:
+            spawn_results = await asyncio.gather(
+                *[_spawn_one(ct) for ct in group_tasks],
+                return_exceptions=True,
             )
 
-        # Wave 63 Track 2: register colonies for parallel aggregation
-        if all_colony_ids:
-            queen = getattr(self._runtime, "queen", None)
-            if queen is not None:
-                import uuid  # noqa: PLC0415
+            # Phase 2: Start colonies with stagger to prevent VRAM spike
+            for start_idx, res in enumerate(spawn_results):
+                if isinstance(res, BaseException):
+                    continue
+                pair: tuple[str, str] = res  # type: ignore[assignment]
+                cid = pair[1]
+                if self._runtime.colony_manager is not None:
+                    if start_idx > 0:
+                        await asyncio.sleep(0.2)
+                    start_task = asyncio.create_task(
+                        self._runtime.colony_manager.start_colony(cid),
+                    )
+                    start_task.add_done_callback(_log_task_exception)
+        except Exception as exc:
+            log.exception("queen.parallel_group_spawn_failed", group_idx=first_group_idx)
+            result_lines.append(f"Group 1: spawn failed — {exc}")
 
-                plan_id = f"plan-{workspace_id[:8]}-{thread_id[:8]}-{uuid.uuid4().hex[:8]}"
-                queen.register_parallel_plan(plan_id, all_colony_ids)
+        group_colonies: list[str] = []
+        for res in spawn_results:
+            if isinstance(res, BaseException):
+                log.error("queen.parallel_task_spawn_failed", error=repr(res))
+                result_lines.append(f"  Task spawn failed: {res}")
+            else:
+                pair: tuple[str, str] = res  # pyright: ignore[reportAssignmentType]
+                colony_map[pair[0]] = pair[1]
+                all_colony_ids.append(pair[1])
+                group_colonies.append(f"{pair[0]}={pair[1]}")
+                # Update tracker with actual colony ID
+                if tracker is not None:
+                    for pt in planned_tasks:
+                        if pt.task_id == pair[0]:
+                            pt.colony_id = pair[1]
+                            pt.state = TaskState.running
+
+        result_lines.append(
+            f"Group 1/{len(plan.parallel_groups)}: "
+            f"spawned {', '.join(group_colonies)}"
+        )
+
+        # Mark deferred groups as pending
+        deferred_count = sum(
+            len(g) for g in plan.parallel_groups[1:]
+        )
+        if deferred_count > 0:
+            result_lines.append(
+                f"{deferred_count} tasks in {len(plan.parallel_groups) - 1} "
+                f"later group(s) deferred until Group 1 completes."
+            )
+
+        if tracker is not None:
+            tracker.mark_group_dispatched(plan_id, first_group_idx)
 
         result_msg = "\n".join(result_lines)
         return (
             result_msg,
             {
                 "tool": "spawn_parallel",
+                "plan_id": plan_id,
                 "colony_ids": all_colony_ids,
+                "all_planned_colony_ids": [colony_map[t.task_id] for t in plan.tasks],
                 "parallel_groups": plan.parallel_groups,
+                "deferred_groups": len(plan.parallel_groups) - 1,
             },
         )
+
+    def _apply_structural_target_hints(
+        self,
+        plan: Any,
+        workspace_id: str,
+        thread_id: str,
+    ) -> Any:
+        """Backfill task target_files from structural planner hints when useful."""
+        if len(getattr(plan, "tasks", [])) < 2:
+            return plan
+
+        projections = getattr(self._runtime, "projections", None)
+        if projections is None or not hasattr(projections, "get_thread"):
+            return plan
+        thread = projections.get_thread(workspace_id, thread_id)
+        if thread is None:
+            return plan
+
+        operator_message = ""
+        for msg in reversed(getattr(thread, "queen_messages", []) or []):
+            if getattr(msg, "role", "") == "operator":
+                operator_message = getattr(msg, "content", "") or ""
+                break
+        if not operator_message:
+            return plan
+
+        try:
+            from formicos.surface.structural_planner import get_structural_hints  # noqa: PLC0415
+
+            hints = get_structural_hints(
+                self._runtime,
+                workspace_id,
+                operator_message,
+            )
+        except Exception:
+            log.debug(
+                "queen.parallel_structural_hints_failed",
+                workspace_id=workspace_id,
+                thread_id=thread_id,
+            )
+            return plan
+
+        matched_files = [
+            str(f) for f in hints.get("matched_files", []) if isinstance(f, str)
+        ]
+        suggested_groups = [
+            g for g in hints.get("suggested_groups", []) if isinstance(g, dict)
+        ]
+        if not matched_files and not suggested_groups:
+            return plan
+
+        task_group_idx: dict[str, int] = {}
+        for group_idx, group in enumerate(getattr(plan, "parallel_groups", []) or []):
+            for task_id in group:
+                task_group_idx[str(task_id)] = group_idx
+
+        updated_tasks: list[Any] = []
+        changed = False
+        for task in getattr(plan, "tasks", []) or []:
+            if getattr(task, "target_files", []):
+                updated_tasks.append(task)
+                continue
+
+            task_text = _task_text_to_lower(task)
+            selected = [
+                path for path in matched_files
+                if _file_matches_task_text(path, task_text)
+            ]
+
+            if not selected and suggested_groups:
+                group_idx = task_group_idx.get(getattr(task, "task_id", ""), -1)
+                if 0 <= group_idx < len(suggested_groups):
+                    selected = [
+                        str(f) for f in suggested_groups[group_idx].get("files", [])
+                        if isinstance(f, str)
+                    ]
+
+            if not selected and matched_files:
+                selected = matched_files[:3]
+
+            deduped: list[str] = []
+            seen: set[str] = set()
+            for path in selected[:6]:
+                if path and path not in seen:
+                    deduped.append(path)
+                    seen.add(path)
+
+            if deduped:
+                task = task.model_copy(update={"target_files": deduped})
+                changed = True
+            updated_tasks.append(task)
+
+        if not changed:
+            return plan
+
+        log.info(
+            "queen.parallel_structural_hints_applied",
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            matched_files=len(matched_files),
+            suggested_groups=len(suggested_groups),
+        )
+        return plan.model_copy(update={"tasks": updated_tasks})
 
     @staticmethod
     def _validate_dag(tasks: list[Any]) -> bool:
@@ -2110,6 +2868,112 @@ class QueenToolDispatcher:
                     queue.append(neighbor)
 
         return visited == len(task_ids)
+
+    def _validate_operator_scoped_coverage(
+        self,
+        workspace_id: str,
+        thread_id: str,
+        plan: Any,
+    ) -> str | None:
+        """Reject incomplete plans when the operator named concrete scope."""
+        operator_message = self._last_operator_message(workspace_id, thread_id)
+        if not operator_message:
+            return None
+
+        required_groups = self._required_group_count(operator_message)
+        if required_groups > 0 and len(plan.parallel_groups) < required_groups:
+            return (
+                "Invalid plan: operator requested "
+                f"Group 1..{required_groups}, but the plan defines only "
+                f"{len(plan.parallel_groups)} group(s). Cover every requested "
+                "group or make the consolidation explicit in the task list."
+            )
+
+        explicit = self._extract_explicit_deliverables(operator_message)
+        if not explicit:
+            return None
+
+        task_texts: list[str] = []
+        for task in plan.tasks:
+            task_texts.append(
+                " ".join(
+                    part for part in [
+                        getattr(task, "task", ""),
+                        " ".join(getattr(task, "target_files", []) or []),
+                        " ".join(getattr(task, "expected_outputs", []) or []),
+                    ]
+                    if part
+                ).lower()
+            )
+
+        missing = [
+            item for item in explicit
+            if not any(self._task_text_covers_deliverable(text, item) for text in task_texts)
+        ]
+        if not missing:
+            return None
+
+        preview = ", ".join(missing[:5])
+        if len(missing) > 5:
+            preview += f" (+{len(missing) - 5} more)"
+        return (
+            "Invalid plan: does not cover operator-scoped deliverables: "
+            f"{preview}. Revise the tasks so every explicitly requested file "
+            "or deliverable is covered in task text or expected_outputs."
+        )
+
+    def _last_operator_message(self, workspace_id: str, thread_id: str) -> str:
+        """Return the last operator message for a thread, if available."""
+        projections = getattr(self._runtime, "projections", None)
+        getter = getattr(projections, "get_thread", None)
+        if not callable(getter):
+            return ""
+        try:
+            thread = getter(workspace_id, thread_id)
+        except Exception:
+            return ""
+        messages = getattr(thread, "queen_messages", None)
+        if not isinstance(messages, list):
+            return ""
+        for qm in reversed(messages):
+            if getattr(qm, "role", "") == "operator":
+                content = getattr(qm, "content", "")
+                return content if isinstance(content, str) else ""
+        return ""
+
+    @staticmethod
+    def _required_group_count(text: str) -> int:
+        """Extract the highest explicit group number from operator text."""
+        groups = [
+            int(match.group(1))
+            for match in _GROUP_TOKEN_RE.finditer(text)
+            if match.group(1).isdigit()
+        ]
+        return max(groups) if groups else 0
+
+    @staticmethod
+    def _extract_explicit_deliverables(text: str) -> list[str]:
+        """Extract file-like deliverables from operator text."""
+        found: list[str] = []
+        seen: set[str] = set()
+        for match in _FILE_TOKEN_RE.finditer(text):
+            token = match.group(1).strip("`'\"()[]{}.,:;")
+            norm = Path(token).name.lower()
+            if norm and norm not in seen:
+                found.append(token)
+                seen.add(norm)
+        if found and _re.search(r"\btests?\b", text, _re.IGNORECASE) and "tests" not in seen:
+                found.append("tests")
+        return found
+
+    @staticmethod
+    def _task_text_covers_deliverable(task_text: str, deliverable: str) -> bool:
+        """Return True when a task text explicitly covers a deliverable."""
+        lowered = task_text.lower()
+        if deliverable == "tests":
+            return bool(_re.search(r"\btests?\b", lowered))
+        needle = Path(deliverable).name.lower()
+        return needle in lowered
 
     def _get_status(
         self,
@@ -2574,19 +3438,13 @@ class QueenToolDispatcher:
         original_strategy = (
             colony.strategy if hasattr(colony, "strategy") else "sequential"
         )
-        failure_reason = (
-            getattr(colony, "failure_reason", "")
-            or f"status={colony.status}"
-        )
-
-        # Compose retry context
-        context_parts = [
-            f"Previous attempt failed: {failure_reason}.",
-        ]
+        # Wave 77: amnesiac forking — prefix task with [retry_of:] for
+        # reflection injection in context assembly (ADR-052). The reflection
+        # file (written by _post_colony_hooks on failure) provides the
+        # structured failure analysis instead of inlining it here.
+        retry_task = f"[retry_of:{colony_id}] {original_task}"
         if additional_context:
-            context_parts.append(additional_context)
-        context_parts.append(f"\nOriginal task:\n{original_task}")
-        retry_task = "\n".join(context_parts)
+            retry_task += f"\n\nAdditional context: {additional_context}"
 
         strategy = strategy_override or original_strategy
 
@@ -2759,8 +3617,11 @@ class QueenToolDispatcher:
         if not filename or not content:
             return ("Error: filename and content are required.", None)
 
-        # Sanitize: strip path traversal, use only the basename
-        safe_name = Path(filename).name
+        # Wave 79 Track 1E: accept relative paths with subdirectories
+        rel = Path(filename)
+        if rel.is_absolute() or ".." in rel.parts:
+            return ("Error: path must be relative with no '..' components.", None)
+        safe_name = str(rel)
         if not safe_name:
             return ("Error: invalid filename.", None)
 
@@ -2780,11 +3641,13 @@ class QueenToolDispatcher:
                 None,
             )
 
+        from formicos.surface.workspace_roots import workspace_runtime_root  # noqa: PLC0415
+
         data_dir = self._runtime.settings.system.data_dir
-        ws_dir = Path(data_dir) / "workspaces" / workspace_id / "files"
-        ws_dir.mkdir(parents=True, exist_ok=True)
+        ws_dir = workspace_runtime_root(data_dir, workspace_id)
 
         path = ws_dir / safe_name
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content_bytes)
 
         log.info(
@@ -3251,7 +4114,9 @@ class QueenToolDispatcher:
         if not summary:
             return ("Error: summary is required for propose_plan", None)
 
-        options: list[dict[str, Any]] = inputs.get("options", [])
+        from formicos.engine.schema_sanitize import coerce_array_items  # noqa: PLC0415
+
+        options: list[dict[str, Any]] = coerce_array_items(inputs.get("options", []))
         questions: list[str] = inputs.get("questions", [])
         recommendation: str = inputs.get("recommendation", "")
 
@@ -3747,6 +4612,51 @@ class QueenToolDispatcher:
         return (f"Posted {obs_type}: {title}", None)
 
     # ------------------------------------------------------------------ #
+    # Wave 77 Track B: AI Filesystem tools (ADR-052)                      #
+    # ------------------------------------------------------------------ #
+
+    async def _write_working_note(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Write/append to a Queen working memory note."""
+        from formicos.surface.ai_filesystem import write_working_note  # noqa: PLC0415
+
+        filename = inputs.get("filename", "")
+        content = inputs.get("content", "")
+        mode = inputs.get("mode", "append")
+        if not filename or not content:
+            return ("Error: filename and content are required.", None)
+
+        data_dir = self._runtime.settings.system.data_dir
+        path = write_working_note(data_dir, workspace_id, filename, content, mode=mode)
+        if path.startswith("Error"):
+            return (path, None)
+        return (f"Written to {path} (mode={mode})", None)
+
+    async def _promote_to_artifact(
+        self,
+        inputs: dict[str, Any],
+        workspace_id: str,
+        thread_id: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Promote a runtime file to stable artifacts."""
+        from formicos.surface.ai_filesystem import promote_to_artifact  # noqa: PLC0415
+
+        filename = inputs.get("filename", "")
+        target_subdir = inputs.get("target_subdir", "deliverables")
+        if not filename:
+            return ("Error: filename is required.", None)
+
+        data_dir = self._runtime.settings.system.data_dir
+        result = promote_to_artifact(data_dir, workspace_id, filename, target_subdir)
+        if result.startswith("Error"):
+            return (result, None)
+        return (f"Promoted to {result}", None)
+
+    # ------------------------------------------------------------------ #
     # Wave 62 Track 2: Queen direct work tools                            #
     # ------------------------------------------------------------------ #
 
@@ -3977,8 +4887,10 @@ class QueenToolDispatcher:
         if ws is not None:
             ws_dir = getattr(ws, "directory", None) or getattr(ws, "repo_path", None)
         if not ws_dir:
+            from formicos.surface.workspace_roots import workspace_runtime_root  # noqa: PLC0415
+
             data_dir = self._runtime.settings.system.data_dir
-            ws_dir = str(Path(data_dir) / "workspaces" / workspace_id / "files")
+            ws_dir = str(workspace_runtime_root(data_dir, workspace_id))
 
         root = Path(str(ws_dir)).resolve()
         target = (root / rel_path).resolve()

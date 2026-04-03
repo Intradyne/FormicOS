@@ -1,0 +1,15 @@
+name: colony
+version: "1.0.0"
+description: "Build me a dashboard showing colony quality trends."
+author: "formicos-colony"
+
+panels:
+  - target: workspace
+    display_type: status_card
+    path: /overview
+    handler: status.py::get_overview
+    refresh_interval_s: 30
+
+routes:
+  - path: /overview
+    handler: status.py::get_overview

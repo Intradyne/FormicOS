@@ -19,6 +19,63 @@ if TYPE_CHECKING:
     from formicos.surface.runtime import Runtime
 
 
+def _build_economics_block(projections: Any) -> dict[str, Any]:
+    """Build the Agent Card economics block with live 30-day stats."""
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+    from statistics import median  # noqa: PLC0415
+
+    cutoff = datetime.now(tz=UTC) - timedelta(days=30)
+    cutoff_iso = cutoff.isoformat()
+
+    completed_30d = 0
+    succeeded_30d = 0
+    quality_scores: list[float] = []
+    costs: list[float] = []
+
+    for outcome in projections.colony_outcomes.values():
+        colony = projections.colonies.get(outcome.colony_id)
+        if colony is None:
+            continue
+        completed_at = getattr(colony, "completed_at", "")
+        if not completed_at or completed_at < cutoff_iso:
+            continue
+        completed_30d += 1
+        if outcome.succeeded:
+            succeeded_30d += 1
+        if outcome.quality_score > 0:
+            quality_scores.append(outcome.quality_score)
+        costs.append(outcome.total_cost)
+
+    acceptance_rate = (
+        round(succeeded_30d / completed_30d, 3) if completed_30d > 0 else 0.0
+    )
+    median_quality = round(median(quality_scores), 3) if quality_scores else 0.0
+    median_cost = round(median(costs), 4) if costs else 0.0
+
+    return {
+        "contract_schema": "formicos/contribution-contract@1",
+        "receipt_schema": "formicos/contribution-receipt@1",
+        "compensation_model": "revenue_share_pool",
+        "compensation_summary": (
+            "Contributors earn proportional share of quarterly revenue pool "
+            "based on surviving git-blame lines. Maintainer floor 50%. "
+            "Minimum payout $25. See CLA.md for binding terms."
+        ),
+        "sponsorship_required": True,
+        "accepted_cla_versions": ["1.0"],
+        "licensing": {
+            "code": "AGPL-3.0-only",
+            "contributions": "CLA required — grants perpetual license to project",
+        },
+        "historical_stats": {
+            "tasks_completed_30d": completed_30d,
+            "acceptance_rate_30d": acceptance_rate,
+            "median_quality_score_30d": median_quality,
+            "median_cost_usd_30d": median_cost,
+        },
+    }
+
+
 def _compute_domain_stats(
     memory_entries: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -107,6 +164,9 @@ def routes(
                             "status": "active",
                         })
 
+        # Wave 75 B2: economics block with historical stats
+        economics = _build_economics_block(projections)
+
         card: dict[str, Any] = {
             "name": "FormicOS",
             "description": (
@@ -164,6 +224,7 @@ def routes(
             "hardware": {
                 "gpu_available": _check_gpu(),
             },
+            "economics": economics,
         }
         return JSONResponse(card)
 

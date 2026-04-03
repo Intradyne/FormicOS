@@ -4,7 +4,7 @@
  * Renders results grouped by source with distinct card styling per source type.
  */
 import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { voidTokens, sharedStyles } from '../styles/shared.js';
 import type { UnifiedSearchResult } from '../types.js';
 import './atoms.js';
@@ -70,10 +70,37 @@ export class FcKnowledgeSearchResults extends LitElement {
       padding: 24px; text-align: center; color: var(--v-fg-muted);
       font-size: 12px; font-family: var(--f-body);
     }
+    .scoring-toggle {
+      font-size: 9px; font-family: var(--f-mono); padding: 2px 8px;
+      border-radius: 8px; cursor: pointer; border: 1px solid var(--v-border);
+      background: transparent; color: var(--v-fg-dim); transition: all 0.15s;
+    }
+    .scoring-toggle.active {
+      background: rgba(232,88,26,0.08); border-color: rgba(232,88,26,0.2);
+      color: var(--v-accent);
+    }
+    .score-pills {
+      display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+    }
+    .score-pill {
+      font-size: 8px; font-family: var(--f-mono); padding: 1px 5px;
+      border-radius: 4px; border: 1px solid var(--v-border);
+      background: rgba(255,255,255,0.03);
+    }
+    .score-pill.semantic { color: #5B9CF5; border-color: rgba(91,156,245,0.3); }
+    .score-pill.thompson { color: #A78BFA; border-color: rgba(167,139,250,0.3); }
+    .score-pill.freshness { color: #2DD4A8; border-color: rgba(45,212,168,0.3); }
+    .score-pill.status { color: #F5B731; border-color: rgba(245,183,49,0.3); }
+    .score-pill.thread { color: #67E8F9; border-color: rgba(103,232,249,0.3); }
+    .score-pill.cooccurrence { color: #E85D1A; border-color: rgba(232,93,26,0.3); }
+    .score-pill.graph_proximity { color: #34D399; border-color: rgba(52,211,153,0.3); }
   `];
 
   @property({ type: Array }) results: UnifiedSearchResult[] = [];
   @property() activeWorkspaceId = '';
+
+  /** Wave 77.5 B2: Toggle score breakdown pills on search results. */
+  @state() private _showScoring = false;
 
   private _groupResults(): Map<string, UnifiedSearchResult[]> {
     const groups = new Map<string, UnifiedSearchResult[]>();
@@ -133,6 +160,22 @@ export class FcKnowledgeSearchResults extends LitElement {
           ${status ? html`<span class="status-badge status-${status}">${status}</span>` : nothing}
           ${domains.slice(0, 3).map(d => html`<span class="domain-tag">${d}</span>`)}
         </div>
+        ${this._showScoring ? this._renderScoreBreakdown(r) : nothing}
+      </div>
+    `;
+  }
+
+  /** Wave 77.5 B2: Render per-signal score pills for a search result. */
+  private _renderScoreBreakdown(r: UnifiedSearchResult) {
+    const md = r.metadata ?? {};
+    const sb = (md.score_breakdown ?? md._score_breakdown) as Record<string, number> | undefined;
+    if (!sb) return nothing;
+    const signals = ['semantic', 'thompson', 'freshness', 'status', 'thread', 'cooccurrence', 'graph_proximity'] as const;
+    return html`
+      <div class="score-pills">
+        ${signals.filter(s => sb[s] != null).map(s => html`
+          <span class="score-pill ${s}">${s}: ${(sb[s] ?? 0).toFixed(2)}</span>
+        `)}
       </div>
     `;
   }
@@ -166,6 +209,12 @@ export class FcKnowledgeSearchResults extends LitElement {
     }
     const groups = this._groupResults();
     return html`
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+        <button class="scoring-toggle ${this._showScoring ? 'active' : ''}"
+          @click=${() => { this._showScoring = !this._showScoring; }}>
+          ${this._showScoring ? '\u25C6 Scoring' : '\u25C7 Scoring'}
+        </button>
+      </div>
       ${Array.from(groups.entries()).map(([source, items]) => {
         const label = items[0]?.source_label || source;
         return html`

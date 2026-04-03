@@ -59,3 +59,4 @@
 | [049](049-knowledge-hierarchy.md) | Knowledge Hierarchy — Materialized Paths on Projections | Proposed |
 | [050](050-two-pass-retrieval.md) | Two-Pass Retrieval — Personalized PageRank for Graph Proximity | Proposed |
 | [051](051-dynamic-context-caps.md) | Dynamic Queen Context Caps — Proportional Budget Allocation | Proposed |
+| [052](052-ai-filesystem.md) | AI Filesystem — State/Artifact Separation + Amnesiac Forking | Proposed |

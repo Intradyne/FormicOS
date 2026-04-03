@@ -19,7 +19,8 @@ worked and what didn't.
    ```bash
    python -m formicos init-mcp
    ```
-   This creates `.formicos/mcp.json` with the connection config.
+   This creates `.mcp.json` (project-scoped MCP config) and
+   `.formicos/DEVELOPER_QUICKSTART.md` with usage reference.
 
 3. **Restart Claude Code** so it picks up the new MCP server.
 
@@ -65,6 +66,8 @@ it dispatched, what it learned, and what needs your review.
 | `delegate-task` | Plan and spawn a background colony for a task |
 | `review-overnight-work` | Review autonomous actions and outcomes |
 | `knowledge-for-context` | Retrieve relevant knowledge for current work |
+| `economic-status` | Economic overview: billing, receipts, revenue share |
+| `review-task-receipt` | Review the economic receipt for a completed task |
 
 ## Key MCP Tools
 
@@ -77,6 +80,7 @@ it dispatched, what it learned, and what needs your review.
 
 ### Knowledge
 - `log_finding` — record a finding in institutional memory
+- `search_knowledge` — search institutional memory using full retrieval pipeline
 - `query_service` — query knowledge entries
 
 ### Approvals & Operations
@@ -91,6 +95,9 @@ it dispatched, what it learned, and what needs your review.
 ### Handoff
 - `handoff_to_formicos` — transfer work context to a background colony
 
+### Economic
+- `get_task_receipt` — get a deterministic receipt for completed A2A work
+
 ## Available MCP Resources
 
 | URI | Returns |
@@ -104,6 +111,8 @@ it dispatched, what it learned, and what needs your review.
 | `formicos://plan` | Project plan milestones (global) |
 | `formicos://procedures/{workspace_id}` | Operating procedures |
 | `formicos://journal/{workspace_id}` | Queen journal entries |
+| `formicos://billing` | Current-period billing status |
+| `formicos://receipt/{task_id}` | Deterministic receipt for a completed task |
 
 ## Shared Files
 
@@ -129,6 +138,101 @@ the Queen agent's behavior:
 Behavioral overrides are workspace-scoped and stored as config fields. They
 nudge the Queen's behavior without hard enforcement — the Queen sees them as
 guidance in its context window.
+
+## Economic Participation
+
+FormicOS tracks the economics of agent work through A2A task contracts and
+receipts:
+
+- **Task contracts** — when submitting work via A2A, include an optional
+  `contract` describing acceptance criteria and sponsorship
+- **Task receipts** — completed tasks produce deterministic receipts with
+  cost, token totals, quality scores, and transcript hashes
+- **Revenue share** — receipts include eligibility status based on sponsor
+  verification in `.formicos/sponsors.json`
+
+From Claude Code, use `get_task_receipt` to inspect receipts for completed
+work. See `docs/A2A_ECONOMICS.md` for the full protocol specification.
+
+## Claude Desktop Setup
+
+FormicOS supports multiple MCP clients simultaneously. Both Claude Code and
+Claude Desktop can connect to the same running FormicOS server at the same
+time -- they share the same workspaces, knowledge, and Queen.
+
+### Claude Code
+
+```bash
+python -m formicos init-mcp
+# Creates .mcp.json and .formicos/DEVELOPER_QUICKSTART.md
+# Restart Claude Code to connect
+```
+
+### Claude Desktop
+
+Claude Desktop connects to local MCP servers via `claude_desktop_config.json`.
+FormicOS is an HTTP MCP server, so it needs the `mcp-remote` bridge (a
+lightweight npm package that translates between Claude Desktop's stdio
+transport and FormicOS's HTTP transport).
+
+**Prerequisites:** [Node.js](https://nodejs.org/) (for `npx`).
+
+1. Open Claude Desktop > Settings > Developer > Edit Config
+   (or manually edit the config file):
+   - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+   - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+2. Add FormicOS:
+
+```json
+{
+  "mcpServers": {
+    "formicOSa": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8080/mcp"]
+    }
+  }
+}
+```
+
+Or generate the snippet from the CLI:
+
+```bash
+python -m formicos init-mcp --desktop
+```
+
+3. Restart Claude Desktop. Look for the hammer icon in the chat input --
+   that confirms the MCP tools are loaded.
+
+4. Test: Ask Claude to call `get_status` or try the `morning-status` prompt.
+
+Both Claude Code and Claude Desktop connect to the same FormicOS instance
+and share the same workspaces, knowledge, and Queen.
+
+## Populating Institutional Memory from Claude Desktop
+
+Use `log_finding` from Claude Desktop to record discoveries in institutional
+memory. This is the primary ingestion path for developer-sourced knowledge.
+
+**Tool signature:**
+```
+log_finding(title, content, domains, workspace_id)
+```
+
+- `title` -- short descriptive name for the finding
+- `content` -- the full text of the finding
+- `domains` -- comma-separated domain tags (e.g., `"auth,security"`)
+- `workspace_id` -- target workspace; defaults to the first workspace if omitted.
+  Specify explicitly for bulk operations to avoid ambiguity.
+
+Entries are created at `candidate` status with `decay_class="stable"` and
+balanced priors (`Beta(5, 5)`). They require operator confirmation via the
+Operations inbox to become `verified`. Until confirmed, entries participate
+in retrieval but with a status penalty in the scoring formula.
+
+Use `search_knowledge` to retrieve entries after population. It uses the
+full 7-signal retrieval pipeline (semantic, Thompson sampling, freshness,
+status, co-occurrence, graph proximity, thread bonus).
 
 ## Architecture (for the curious)
 

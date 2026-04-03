@@ -176,7 +176,7 @@ class TestRetryColony:
 
     @pytest.mark.anyio()
     async def test_retry_colony_includes_failure_context(self) -> None:
-        """Retry task text includes previous failure reason."""
+        """Retry task uses [retry_of:] prefix (Wave 77 amnesiac forking)."""
         runtime = _make_runtime()
         colony = _make_colony_proj(failure_reason="Timeout after 20 rounds")
         runtime.projections.colonies = {colony.id: colony}
@@ -196,8 +196,8 @@ class TestRetryColony:
         call_args = dispatcher._spawn_colony.call_args  # pyright: ignore[reportPrivateUsage]
         spawn_inputs = call_args[0][0]
         task_text = spawn_inputs["task"]
-        assert "Timeout after 20 rounds" in task_text
-        assert "Previous attempt failed" in task_text
+        assert task_text.startswith("[retry_of:c-fail-1]")
+        assert "Implement CSV parser" in task_text
 
     @pytest.mark.anyio()
     async def test_retry_colony_rejects_running(self) -> None:

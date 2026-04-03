@@ -115,7 +115,7 @@ class ToolCallTrackingLLM:
     async def complete(
         self, model: str, messages: Any, tools: Any = None,
         temperature: float = 0.0, max_tokens: int = 4096,
-        tool_choice: object | None = None,
+        tool_choice: object | None = None, extra_body: dict[str, object] | None = None,
     ) -> LLMResponse:
         self.call_count += 1
         self.messages_seen.append(list(messages))
@@ -303,6 +303,44 @@ async def test_tool_call_loop_max_iterations() -> None:
     assert llm.call_count == MAX_TOOL_ITERATIONS + 1
     # Last call should have tools=None to force text
     assert llm.tools_seen[-1] is None
+
+
+@pytest.mark.asyncio
+async def test_forced_tool_escalation_uses_iteration_cap_when_abandonment_disabled() -> None:
+    """Forced tool escalation should rely on max_iterations when abandonment is off."""
+    store = MockEventStore()
+    vp = MockVectorPort(search_results=[])
+    llm = ToolCallTrackingLLM(
+        tool_call_rounds=100,
+        tool_calls=[{"name": "memory_search", "input": {"query": "test"}}],
+        final_content="forced text",
+    )
+    agent = _agent(
+        tools=["memory_search", "write_workspace_file"],
+        caste="coder",
+    )
+    agent.recipe.max_iterations = 15
+    runner = RoundRunner(RunnerCallbacks(emit=store.append))
+
+    result = await runner.run_round(
+        colony_context=_colony_ctx(),
+        agents=[agent],
+        strategy=SequentialStrategy(),
+        llm_port=llm,  # type: ignore[arg-type]
+        vector_port=vp,  # type: ignore[arg-type]
+        event_store_address="ws-1/th-1/col-1",
+    )
+
+    assert llm.call_count == 16
+    assert result.outputs["a1"] == "(tool call)"
+    iteration_limit_events = [
+        event for event in store.events
+        if getattr(event, "event_kind", "") == "iteration_limit"
+    ]
+    assert len(iteration_limit_events) == 1
+    assert "Iteration cap (15) reached" in (
+        iteration_limit_events[0].content
+    )
 
 
 @pytest.mark.asyncio

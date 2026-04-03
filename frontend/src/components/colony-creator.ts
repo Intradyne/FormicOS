@@ -146,6 +146,9 @@ export class FcColonyCreator extends LitElement {
   /** Available service colonies for attachment. */
   @property({ type: Array }) availableServices: Colony[] = [];
   @property({ type: Object }) governance: { defaultBudgetPerColony: number; maxRoundsPerColony: number } | null = null;
+  /** Wave 79.5 B3: seed colony with output from a prior colony. */
+  @property({ type: String }) initialInputFrom = '';
+  @property({ type: Array }) initialTargetFiles: string[] = [];
 
   @state() private step: 1 | 2 | 3 | 4 = 1;
   @state() private objective = '';
@@ -162,6 +165,8 @@ export class FcColonyCreator extends LitElement {
   @state() private strategy: 'stigmergic' | 'sequential' = 'stigmergic';
   @state() private loadingSuggestions = false;
   @state() private launching = false;
+  // Wave 79.5 A1: selected target files
+  @state() private _selectedTargetFiles: string[] = [];
   @state() private previewData: PreviewResult | null = null;
   @state() private previewLoading = false;
   private _initialized = false;
@@ -184,6 +189,7 @@ export class FcColonyCreator extends LitElement {
   updated(changed: Map<string, unknown>) {
     if (!this._initialized) {
       if (this.initialObjective) this.objective = this.initialObjective;
+      if (this.initialTargetFiles.length) this._selectedTargetFiles = [...this.initialTargetFiles];
       this._initialized = true;
     }
     if (changed.has('governance') && this.governance) {
@@ -221,6 +227,18 @@ export class FcColonyCreator extends LitElement {
         @input=${(e: Event) => { this.objective = (e.target as HTMLTextAreaElement).value; }}
         @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey && this.objective.trim()) { e.preventDefault(); this._suggestTeam(); } }}
       ></textarea>
+
+      ${this._selectedTargetFiles.length > 0 ? html`
+        <div class="s-label section-label">Target Files</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+          ${this._selectedTargetFiles.map((f, i) => html`
+            <span style="font-size:9px;font-family:var(--f-mono);padding:2px 8px;border-radius:4px;background:rgba(232,88,26,0.08);color:var(--v-accent);display:inline-flex;align-items:center;gap:4px">
+              ${f.split('/').pop()}
+              <span style="cursor:pointer;opacity:0.6" @click=${() => { this._selectedTargetFiles = this._selectedTargetFiles.filter((_, j) => j !== i); }}>\u00d7</span>
+            </span>
+          `)}
+        </div>
+      ` : nothing}
 
       ${this.templates.length > 0 ? html`
         <div class="s-label section-label">Or start from template</div>
@@ -502,6 +520,7 @@ export class FcColonyCreator extends LitElement {
           strategy: this.strategy,
           max_rounds: this.maxRounds,
           budget_limit: this.budget,
+          target_files: this._selectedTargetFiles,
         }),
       });
       if (res.ok) {
@@ -636,6 +655,13 @@ export class FcColonyCreator extends LitElement {
     };
     if (this.selectedTemplate) {
       detail.templateId = this.selectedTemplate.id;
+    }
+    // Wave 79.5 B3: include file handoff context
+    if (this.initialInputFrom) {
+      detail.inputFrom = this.initialInputFrom;
+    }
+    if (this._selectedTargetFiles.length > 0) {
+      detail.targetFiles = this._selectedTargetFiles;
     }
     this.fire('spawn-colony', detail);
   }

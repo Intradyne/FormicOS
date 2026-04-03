@@ -10,6 +10,7 @@ Do not route through ``memory_entries``.
 
 from __future__ import annotations
 
+import contextlib as _contextlib
 import json as _json
 import re
 from datetime import UTC, datetime
@@ -225,10 +226,8 @@ def parse_journal_entries(text: str) -> list[dict[str, Any]]:
         if i + 1 < len(lines):
             mm = _METADATA_COMMENT_RE.match(lines[i + 1])
             if mm:
-                try:
+                with _contextlib.suppress(ValueError, TypeError):
                     meta = _json.loads(mm.group(1))
-                except (ValueError, TypeError):
-                    pass
         entry["metadata"] = meta
         entries.append(entry)
     return entries

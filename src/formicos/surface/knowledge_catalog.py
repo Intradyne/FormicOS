@@ -370,7 +370,11 @@ class KnowledgeCatalog:
         query: str,
         workspace_id: str,
     ) -> dict[str, float]:
-        """Standard-path graph scoring: embed query -> match entities -> PPR."""
+        """Standard-path graph scoring: embed query -> match entities -> PPR.
+
+        Wave 86: also seeds MODULE nodes when the query references
+        files or module paths.
+        """
         if self._kg_adapter is None:
             return {}
 
@@ -383,7 +387,47 @@ class KnowledgeCatalog:
             return {}
 
         seed_ids = [m["id"] for m in matched if m.get("id")]
+
+        # Wave 86: augment seeds with MODULE nodes from file/module refs
+        module_seeds = await self._resolve_module_seeds(query, workspace_id)
+        if module_seeds:
+            seed_ids.extend(module_seeds)
+
         return await self._enrich_with_graph_scores(seed_ids, workspace_id)
+
+    async def _resolve_module_seeds(
+        self,
+        query: str,
+        workspace_id: str,
+    ) -> list[str]:
+        """Wave 86: Resolve file/module references in query to MODULE KG nodes.
+
+        Returns entity IDs for MODULE nodes that match referenced files.
+        Best-effort; returns empty list on failure.
+        """
+        if self._kg_adapter is None:
+            return []
+
+        import re  # noqa: PLC0415
+
+        _FILE_REF = re.compile(r"[A-Za-z0-9_/.-]+\.[A-Za-z0-9_]+")
+        refs = _FILE_REF.findall(query)
+        if not refs:
+            return []
+
+        module_ids: list[str] = []
+        for ref in refs[:5]:  # cap
+            try:
+                mid = await self._kg_adapter.resolve_entity(
+                    name=ref,
+                    entity_type="MODULE",
+                    workspace_id=workspace_id,
+                )
+                if mid:
+                    module_ids.append(mid)
+            except Exception:  # noqa: BLE001
+                continue
+        return module_ids
 
     async def search(
         self,

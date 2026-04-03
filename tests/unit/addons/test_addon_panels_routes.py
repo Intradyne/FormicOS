@@ -76,7 +76,7 @@ class TestAddonStatusEndpoints:
 
         result = await get_status({}, "ws-1", "t-1", runtime_context={})
         assert result["display_type"] == "status_card"
-        assert any(i["label"] == "Status" for i in result["items"])
+        assert any(i["label"] == "Vector store" for i in result["items"])
 
     @pytest.mark.asyncio
     async def test_codebase_index_status_with_vector(self) -> None:

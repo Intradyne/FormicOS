@@ -1,0 +1,70 @@
+{
+  "_doc": "Worker model capability profiles for Queen planning briefs. Shipped defaults — override at <data_dir>/.formicos/runtime/capability_profiles.json.",
+  "profiles": {
+    "qwen3.5-4b-swarm": {
+      "label": "qwen3.5-4b",
+      "observations": 24,
+      "optimal_files": "3-4",
+      "single_file_penalty": -0.16,
+      "focused_quality": 0.738,
+      "notes": "Strong tool calling; degrades on multi-file edits",
+      "behavior": {
+        "needs_tool_narrowing": true,
+        "respects_tool_choice": false,
+        "benefits_from_fast_path": true
+      }
+    },
+    "qwen3.5-35b": {
+      "label": "qwen3.5-35b",
+      "observations": 12,
+      "optimal_files": "5-8",
+      "single_file_penalty": -0.05,
+      "focused_quality": 0.82,
+      "notes": "Good multi-file; benefits from stigmergic",
+      "behavior": {
+        "needs_tool_narrowing": true,
+        "respects_tool_choice": false,
+        "benefits_from_fast_path": true
+      }
+    },
+    "devstral-small-2-24b": {
+      "label": "devstral-24b",
+      "observations": 4,
+      "optimal_files": "3-6",
+      "single_file_penalty": -0.03,
+      "focused_quality": 0.75,
+      "notes": "Dense model; slower iteration; good instruction following",
+      "behavior": {
+        "needs_tool_narrowing": false,
+        "respects_tool_choice": true,
+        "benefits_from_fast_path": false
+      }
+    },
+    "claude-sonnet-4-6": {
+      "label": "sonnet-4.6",
+      "observations": 8,
+      "optimal_files": "5-10",
+      "single_file_penalty": 0.0,
+      "focused_quality": 0.91,
+      "notes": "Strong generalist; any strategy",
+      "behavior": {
+        "needs_tool_narrowing": false,
+        "respects_tool_choice": true,
+        "benefits_from_fast_path": false
+      }
+    },
+    "claude-haiku-4-5": {
+      "label": "haiku-4.5",
+      "observations": 6,
+      "optimal_files": "3-6",
+      "single_file_penalty": -0.08,
+      "focused_quality": 0.78,
+      "notes": "Fast; keep tasks focused",
+      "behavior": {
+        "needs_tool_narrowing": false,
+        "respects_tool_choice": true,
+        "benefits_from_fast_path": true
+      }
+    }
+  }
+}

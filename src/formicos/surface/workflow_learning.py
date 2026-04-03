@@ -33,7 +33,7 @@ _MIN_SUCCESS_COUNT = 3
 _MIN_DISTINCT_THREADS = 2
 
 
-def extract_workflow_patterns(
+async def extract_workflow_patterns(
     data_dir: str,
     workspace_id: str,
     outcomes: list[Any],
@@ -126,7 +126,7 @@ def extract_workflow_patterns(
 _MIN_BEHAVIOR_COUNT = 3
 
 
-def detect_operator_patterns(
+async def detect_operator_patterns(
     data_dir: str,
     workspace_id: str,
     actions: list[dict[str, Any]] | None = None,
@@ -374,3 +374,66 @@ def _create_procedure_suggestion(
     )
     append_action(data_dir, workspace_id, action)
     return action
+
+
+# ---------------------------------------------------------------------------
+# Wave 82 Track A: Planning-side read path
+# ---------------------------------------------------------------------------
+
+
+def get_relevant_outcomes(
+    projections: Any,  # noqa: ANN401
+    *,
+    workspace_id: str,
+    operator_message: str,
+    planner_model: str = "",
+    worker_model: str = "",
+    top_k: int = 3,
+) -> list[dict[str, Any]]:
+    """Return relevant prior plan outcomes for planning-time comparison.
+
+    Surfaces the most informative successful prior decompositions from
+    replay-derived outcome stats.
+    """
+    try:
+        stats = projections.outcome_stats(workspace_id)
+    except Exception:
+        return []
+
+    if not stats:
+        return []
+
+    results: list[dict[str, Any]] = []
+
+    for entry in stats:
+        strategy = entry.get("strategy", "unknown")
+        avg_q = entry.get("avg_quality", 0.0)
+        count = entry.get("count", 0)
+        avg_rounds = entry.get("avg_rounds", 0.0)
+        caste_mix = entry.get("caste_mix", "")
+        success_rate = entry.get("success_rate", 0.0)
+
+        if count < 1:
+            continue
+
+        # Simple relevance: prefer entries with higher quality and count
+        relevance = avg_q * 0.5 + min(count / 10.0, 0.3) + success_rate * 0.2
+
+        results.append({
+            "strategy": strategy,
+            "avg_quality": round(avg_q, 3),
+            "count": count,
+            "avg_rounds": round(avg_rounds, 1),
+            "caste_mix": caste_mix,
+            "success_rate": round(success_rate, 3),
+            "planner_model": planner_model,
+            "worker_model": worker_model,
+            "relevance": round(relevance, 3),
+            "evidence": (
+                f"{strategy}, n={count}, "
+                f"q={avg_q:.2f}, sr={success_rate:.2f}"
+            ),
+        })
+
+    results.sort(key=lambda x: -x["relevance"])
+    return results[:top_k]

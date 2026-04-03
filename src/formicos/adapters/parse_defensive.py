@@ -24,6 +24,10 @@ logger = structlog.get_logger(__name__)
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 _BRACE_RE = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+_MAX_DIRECT_PARSE_CHARS = 64_000
+_MAX_STAGE3_SCAN_CHARS = 64_000
+_MAX_CANDIDATE_CHARS = 24_000
+_MAX_STAGE3_MATCHES = 8
 
 
 @dataclass(frozen=True)
@@ -42,25 +46,48 @@ def parse_tool_calls_defensive(
     if not text or not text.strip():
         return []
 
-    # Stage 1: native json.loads
-    result = _try_json_loads(text, known_tools)
-    if result is not None:
-        logger.debug("parse_defensive.stage1_success", count=len(result))
-        return result
+    stripped = text.strip()
+    cleaned = _THINK_RE.sub("", stripped).strip()
 
-    # Stage 2: json_repair
-    result = _try_json_repair(text, known_tools)
-    if result is not None:
-        logger.debug("parse_defensive.stage2_success", count=len(result))
-        return result
+    # Stage 1/2: only attempt full-text parsing for bounded JSON-like payloads.
+    seen_candidates: set[str] = set()
+    for candidate in (stripped, cleaned):
+        if (
+            not candidate
+            or candidate in seen_candidates
+            or len(candidate) > _MAX_DIRECT_PARSE_CHARS
+            or not _looks_like_json_payload(candidate)
+        ):
+            continue
+        seen_candidates.add(candidate)
 
-    # Stage 3: regex extraction after stripping <think> tags
-    cleaned = _THINK_RE.sub("", text).strip()
-    for pattern in [_FENCE_RE, _BRACE_RE]:
+        result = _try_json_loads(candidate, known_tools)
+        if result is not None:
+            logger.debug("parse_defensive.stage1_success", count=len(result))
+            return result
+
+        result = _try_json_repair(candidate, known_tools)
+        if result is not None:
+            logger.debug("parse_defensive.stage2_success", count=len(result))
+            return result
+
+    # Stage 3: regex extraction after stripping <think> tags.
+    patterns = [_FENCE_RE]
+    if len(cleaned) <= _MAX_STAGE3_SCAN_CHARS:
+        patterns.append(_BRACE_RE)
+    elif "```" not in cleaned:
+        logger.debug("parse_defensive.skip_large_scan", text_len=len(cleaned))
+        return []
+
+    for pattern in patterns:
+        match_count = 0
         for match in pattern.finditer(cleaned):
+            match_count += 1
+            if match_count > _MAX_STAGE3_MATCHES:
+                break
             candidate = match.group(1) if pattern is _FENCE_RE else match.group(0)
             candidate = candidate.strip()
-            if not candidate:
+            if not candidate or len(candidate) > _MAX_CANDIDATE_CHARS:
                 continue
             result = _try_json_repair(candidate, known_tools)
             if result is not None:
@@ -69,6 +96,11 @@ def parse_tool_calls_defensive(
 
     logger.debug("parse_defensive.all_stages_failed", text_len=len(text))
     return []
+
+
+def _looks_like_json_payload(text: str) -> bool:
+    stripped = text.lstrip()
+    return stripped.startswith("{") or stripped.startswith("[")
 
 
 def _try_json_loads(

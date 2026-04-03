@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from unittest.mock import MagicMock
 
 import pytest
 
-from formicos.surface.app import create_app, route_model_to_adapter
+from formicos.surface.app import (
+    _configure_asyncio_debug_from_env,
+    create_app,
+    route_model_to_adapter,
+)
 
 
 class TestRouteModelToAdapter:
@@ -45,3 +50,31 @@ class TestCreateApp:
         source = inspect.getsource(create_app)
         assert "combined_lifespan" in source
         assert 'getattr(mcp_http, "lifespan", None)' in source
+
+
+class TestAsyncioDebugConfig:
+    """Asyncio debug instrumentation should be opt-in."""
+
+    def test_asyncio_debug_disabled_by_default(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        monkeypatch.delenv("FORMICOS_ASYNCIO_DEBUG", raising=False)
+        monkeypatch.setattr("formicos.surface.app.asyncio.get_running_loop", lambda: loop)
+
+        _configure_asyncio_debug_from_env()
+
+        loop.set_debug.assert_not_called()
+
+    def test_asyncio_debug_enabled_when_flag_set(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        loop.slow_callback_duration = 0.0
+        monkeypatch.setenv("FORMICOS_ASYNCIO_DEBUG", "1")
+        monkeypatch.setattr("formicos.surface.app.asyncio.get_running_loop", lambda: loop)
+
+        _configure_asyncio_debug_from_env()
+
+        loop.set_debug.assert_called_once_with(True)
+        assert loop.slow_callback_duration == 0.1

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
 
+import formicos.adapters.llm_openai_compatible as openai_adapter_module
 from formicos.adapters.llm_openai_compatible import (
     OpenAICompatibleLLMAdapter,
     _is_local_url,
@@ -35,10 +37,11 @@ def _make_adapter(
     api_key: str | None = "test-key",
 ) -> OpenAICompatibleLLMAdapter:
     adapter = OpenAICompatibleLLMAdapter(base_url=base_url, api_key=api_key)
-    adapter._client = httpx.AsyncClient(
+    adapter._client_factory = lambda: httpx.AsyncClient(
         transport=MockTransport(handler),
         base_url=base_url,
     )
+    adapter._client = adapter._client_factory()
     return adapter
 
 
@@ -80,6 +83,24 @@ async def test_complete_basic() -> None:
         assert result.stop_reason == "stop"
     finally:
         await adapter.close()
+
+
+def test_local_headers_request_connection_close() -> None:
+    adapter = OpenAICompatibleLLMAdapter(base_url="http://llm:8080/v1")
+    try:
+        headers = adapter._headers()
+        assert headers["connection"] == "close"
+    finally:
+        asyncio.run(adapter.close())
+
+
+def test_cloud_headers_do_not_force_connection_close() -> None:
+    adapter = OpenAICompatibleLLMAdapter(base_url="https://api.openai.com/v1")
+    try:
+        headers = adapter._headers()
+        assert "connection" not in headers
+    finally:
+        asyncio.run(adapter.close())
 
 
 @pytest.mark.asyncio
@@ -271,6 +292,50 @@ def test_local_concurrency_limit_minimum_one(monkeypatch: pytest.MonkeyPatch) ->
     assert _local_concurrency_limit() == 1
 
 
+def test_local_client_factory_sets_explicit_limits() -> None:
+    captured: dict[str, Any] = {}
+
+    class DummyClient:
+        async def aclose(self) -> None:
+            return None
+
+    def fake_async_client(**kwargs: Any) -> DummyClient:
+        captured.update(kwargs)
+        return DummyClient()
+
+    original = openai_adapter_module.httpx.AsyncClient
+    openai_adapter_module.httpx.AsyncClient = fake_async_client  # type: ignore[assignment]
+    try:
+        adapter = OpenAICompatibleLLMAdapter(base_url="http://llm:8080/v1")
+        limits = captured["limits"]
+        assert limits.max_connections == 10
+        assert limits.max_keepalive_connections == 5
+    finally:
+        openai_adapter_module.httpx.AsyncClient = original  # type: ignore[assignment]
+        asyncio.run(adapter.close())
+
+
+def test_cloud_client_factory_does_not_force_local_limits() -> None:
+    captured: dict[str, Any] = {}
+
+    class DummyClient:
+        async def aclose(self) -> None:
+            return None
+
+    def fake_async_client(**kwargs: Any) -> DummyClient:
+        captured.update(kwargs)
+        return DummyClient()
+
+    original = openai_adapter_module.httpx.AsyncClient
+    openai_adapter_module.httpx.AsyncClient = fake_async_client  # type: ignore[assignment]
+    try:
+        adapter = OpenAICompatibleLLMAdapter(base_url="https://api.openai.com/v1")
+        assert "limits" not in captured
+    finally:
+        openai_adapter_module.httpx.AsyncClient = original  # type: ignore[assignment]
+        asyncio.run(adapter.close())
+
+
 @pytest.mark.asyncio
 async def test_local_semaphore_limits_concurrency() -> None:
     """Concurrent local requests are limited to 2 at a time."""
@@ -375,6 +440,28 @@ async def test_local_service_hostname_400_is_retried() -> None:
 
 
 @pytest.mark.asyncio
+async def test_local_transport_timeout_resets_client_and_retries() -> None:
+    """Local transport/timeouts should reset pooled connections and retry."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise httpx.ReadTimeout("stale pooled connection")
+        return httpx.Response(200, json=_openai_response())
+
+    adapter = _make_adapter(handler, base_url="http://llm:8080/v1")
+    try:
+        messages: list[LLMMessage] = [{"role": "user", "content": "Hi"}]
+        result = await adapter.complete("llama-cpp/gpt-4", messages)
+        assert result.content == "Hello world"
+        assert call_count == 2
+    finally:
+        await adapter.close()
+
+
+@pytest.mark.asyncio
 async def test_cloud_400_is_not_retried() -> None:
     """Cloud 400 is NOT retried — it's a real client error."""
     call_count = 0
@@ -437,5 +524,92 @@ async def test_stream_through_retry_path() -> None:
             chunks.append(chunk)
         assert call_count == 2
         assert any(c.content == "ok" for c in chunks)
+    finally:
+        await adapter.close()
+
+
+@pytest.mark.asyncio
+async def test_tool_recovery_timeout_returns_without_hanging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Slow defensive recovery should time out instead of stalling the colony."""
+    body = _openai_response(
+        content="I will do it now.",
+        tool_calls=None,
+        finish_reason="stop",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    def slow_parse(_text: str, known_tools: set[str] | None = None) -> list[Any]:
+        _ = known_tools
+        time.sleep(0.05)
+        return []
+
+    monkeypatch.setattr(
+        openai_adapter_module,
+        "parse_tool_calls_defensive",
+        slow_parse,
+    )
+    monkeypatch.setattr(
+        openai_adapter_module,
+        "_TOOL_RECOVERY_TIMEOUT_S",
+        0.01,
+    )
+
+    adapter = _make_adapter(handler, base_url="http://llm:8080/v1")
+    try:
+        messages: list[LLMMessage] = [{"role": "user", "content": "Write the file"}]
+        tools: list[LLMToolSpec] = [
+            {
+                "name": "write_workspace_file",
+                "description": "Write a workspace file",
+                "parameters": {},
+            },
+        ]
+        started = time.perf_counter()
+        result = await adapter.complete("llama-cpp/gpt-4", messages, tools=tools)
+        elapsed = time.perf_counter() - started
+        assert elapsed < 0.2
+        assert result.content == "I will do it now."
+        assert result.tool_calls == []
+    finally:
+        await adapter.close()
+
+
+@pytest.mark.asyncio
+async def test_response_json_timeout_raises_visible_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SlowJSONResponse:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def json(self) -> dict[str, Any]:
+            time.sleep(0.05)
+            return _openai_response()
+
+        def close(self) -> None:
+            self.closed = True
+
+    slow = SlowJSONResponse()
+
+    async def fake_post_with_retry(*_args: Any, **_kwargs: Any) -> Any:
+        return slow
+
+    adapter = _make_adapter(lambda _request: httpx.Response(200, json=_openai_response()))
+    monkeypatch.setattr(adapter, "_post_with_retry", fake_post_with_retry)
+    monkeypatch.setattr(
+        openai_adapter_module,
+        "_RESPONSE_JSON_TIMEOUT_S",
+        0.01,
+    )
+
+    try:
+        messages: list[LLMMessage] = [{"role": "user", "content": "Hi"}]
+        with pytest.raises(TimeoutError):
+            await adapter.complete("llama-cpp/gpt-4", messages)
+        assert slow.closed is True
     finally:
         await adapter.close()

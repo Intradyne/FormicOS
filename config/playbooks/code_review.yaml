@@ -1,5 +1,11 @@
 task_class: code_review
 castes: [coder]
+decomposition:
+  confidence: 0.9
+  colony_range: "1-3"
+  grouping: "one colony per module or PR; reviewer-led"
+  recommended_caste: "reviewer"
+  recommended_strategy: "sequential"
 workflow: "Read code -> Analyze changes -> Write feedback -> Suggest patches"
 steps:
   - "Read the file under review with read_workspace_file"

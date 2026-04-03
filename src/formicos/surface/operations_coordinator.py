@@ -242,6 +242,18 @@ def _compute_operator_activity(
             if sender == "operator" and ts > latest_ts:
                 latest_ts = ts
 
+    # Wave 76: also check Queen thread messages for operator activity
+    if hasattr(ws, "threads"):
+        for thread in ws.threads.values():
+            if not hasattr(thread, "queen_messages"):
+                continue
+            for msg in reversed(thread.queen_messages):
+                ts = getattr(msg, "timestamp", "")
+                role = getattr(msg, "role", "")
+                if role == "operator" and ts > latest_ts:
+                    latest_ts = ts
+                    break  # first operator message from the tail wins
+
     if latest_ts:
         result["last_operator_activity_at"] = latest_ts
         try:

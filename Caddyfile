@@ -1,0 +1,17 @@
+:8443 {
+    tls /certs/localhost.pem /certs/localhost-key.pem
+
+    # CORS headers for Claude Desktop connector
+    header {
+        Access-Control-Allow-Origin *
+        Access-Control-Allow-Methods "GET, POST, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Accept, Authorization, Mcp-Session-Id"
+        Access-Control-Expose-Headers "Mcp-Session-Id"
+    }
+
+    # Handle CORS preflight
+    @options method OPTIONS
+    respond @options 204
+
+    reverse_proxy formicos:8080
+}

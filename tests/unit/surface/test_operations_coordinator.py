@@ -8,16 +8,17 @@ from typing import Any
 
 import pytest
 
+from formicos.surface.operations_coordinator import (
+    _compute_operator_activity,
+    build_operations_summary,
+    render_continuity_block,
+)
 from formicos.surface.thread_plan import (
     load_all_thread_plans,
     load_thread_plan,
     parse_thread_plan,
     render_for_queen,
     thread_plan_path,
-)
-from formicos.surface.operations_coordinator import (
-    build_operations_summary,
-    render_continuity_block,
 )
 
 
@@ -340,3 +341,55 @@ class TestRenderContinuityBlock:
         text = render_continuity_block(summary)
         assert "Sync issues:" in text
         assert "Recent:" in text
+
+
+# ---------------------------------------------------------------------------
+# Wave 76: operator-idle includes Queen chat
+# ---------------------------------------------------------------------------
+
+
+class TestOperatorIdleQueenChat:
+    def test_queen_chat_counts_as_operator_activity(self) -> None:
+        """Queen thread messages with role=operator should register as activity."""
+        from datetime import UTC, datetime  # noqa: PLC0415
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        now = datetime.now(UTC)
+        recent_ts = now.isoformat()
+
+        # Build a fake projection with no colony chat but Queen messages
+        queen_msg = MagicMock()
+        queen_msg.role = "operator"
+        queen_msg.timestamp = recent_ts
+
+        thread = MagicMock()
+        thread.queen_messages = [queen_msg]
+
+        ws = MagicMock()
+        ws.threads = {"thr-1": thread}
+
+        projections = MagicMock()
+        projections.workspaces = {"ws-1": ws}
+        projections.list_colonies.return_value = []
+
+        result = _compute_operator_activity(projections, "ws-1")
+        assert result["operator_active"] is True
+        assert result["last_operator_activity_at"] == recent_ts
+
+    def test_no_queen_messages_stays_idle(self) -> None:
+        """Without any messages at all, operator should be idle."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        thread = MagicMock()
+        thread.queen_messages = []
+
+        ws = MagicMock()
+        ws.threads = {"thr-1": thread}
+
+        projections = MagicMock()
+        projections.workspaces = {"ws-1": ws}
+        projections.list_colonies.return_value = []
+
+        result = _compute_operator_activity(projections, "ws-1")
+        assert result["operator_active"] is False
+        assert result["last_operator_activity_at"] is None

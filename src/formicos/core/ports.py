@@ -109,6 +109,7 @@ class LLMPort(Protocol):
         temperature: float = 0.0,
         max_tokens: int = 4096,
         tool_choice: object | None = None,  # Wave 54: reactive escalation
+        extra_body: dict[str, object] | None = None,  # Wave 77.5: thinking mode
     ) -> LLMResponse:
         """Return a single structured completion."""
         ...

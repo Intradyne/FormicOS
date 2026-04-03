@@ -2,13 +2,29 @@
 
 Open-source Python system: AI agents coordinate through shared environmental
 signals (pheromones), not direct messaging. Tree-structured data model.
-Event-sourced (69 events, closed union). Single operator. Local-first with
+Event-sourced (70 events, closed union). Single operator. Local-first with
 cloud model support. Bayesian knowledge metabolism with Thompson Sampling
 retrieval. Federated knowledge exchange via Computational CRDTs.
-Multi-colony orchestration via DelegationPlan DAG parallelism.
-MCP developer bridge (27 tools, 9 resources, 6 prompts) for Claude Code
-integration. Queen Command & Control surface with behavioral overrides,
-display board, tool tracking, and context budget visibility.
+Multi-colony orchestration via DelegationPlan DAG parallelism with deferred
+group dispatch. MCP developer bridge (29 tools, 12 resources, 8 prompts)
+for Claude Code integration. Queen Command & Control surface with behavioral
+overrides, display board, tool tracking, and context budget visibility.
+Planning workbench with structural analysis, replay-derived capability
+calibration, deterministic reviewed-plan validation and dispatch, saved plan
+patterns, and DAG editing. Live planning policy (`planning_policy.py`) as
+the Queen routing authority with fast_path enforcement at the execution
+layer. Project binding with real-repo codebase indexing (14K+ chunks).
+Production local profile: Qwen3.5-35B MoE (0.804 quality on fast_path
+tasks, 5/5 real-repo tasks completed, zero hangs).
+
+## Knowledge base
+
+The FormicOS knowledge system contains 100+ entries covering agent
+architecture state of the art (loop patterns, tool calling, context
+engineering, multi-agent coordination, production deployment, evaluation).
+Before making architectural choices, search the knowledge base via the
+`search_knowledge` MCP tool or the Queen's `memory_search` tool. Cite
+relevant entries by title when they influence design decisions.
 
 ## Architecture
 
@@ -275,6 +291,48 @@ not a DAG; they are Queen scaffolding. When a colony completes a step, the
 system prompts the Queen with the next pending step via the follow_up_colony
 summary.
 
+### Metering and billing (Wave 75)
+
+Token metering aggregates `TokensConsumed` events per billing period with
+chain-hash integrity. `formicos billing` CLI subgroup (status, estimate,
+attest, history, self-test). Attestations are deterministic and stored in
+`data_dir/attestations/`. The `metering.py` surface module computes fees
+from tiered token thresholds. `scripts/attribution.py` computes contributor
+revenue-share proportions from git history.
+
+### A2A economic contracts (Wave 75)
+
+Task receipts (`surface/task_receipts.py`) produce deterministic cost/quality
+summaries for completed A2A work. `get_task_receipt` MCP tool and
+`formicos://receipt/{task_id}` resource expose receipts to clients.
+`search_knowledge` MCP tool provides full-pipeline retrieval from external
+clients (semantic + Thompson + freshness + co-occurrence + graph proximity).
+
+### Structural integrity (Wave 76)
+
+16 correctness fixes across 3 teams (data truth, operational safety,
+context integrity). No new features -- fixes silent errors and race
+conditions that would surface under real multi-client load.
+
+Data truth: `BudgetSnapshot.total_tokens` includes reasoning tokens.
+Agent-to-colony reverse index (`_agent_colony_index`) in ProjectionStore
+for O(1) token attribution. Daily spend persistence to disk with reload
+on restart. Budget reconciliation (estimated vs actual colony cost)
+wired through `_post_colony_hooks`.
+
+Operational safety: Action queue compaction preserves `pending_review`
+items. State transition validation via `_VALID_TRANSITIONS` map (409 on
+invalid). Operational sweep reentrancy guard (`asyncio.Lock`).
+Kill/completion race guard at both colony completion paths. Journal
+entries for all approval/execution branches. Operator-idle detection
+includes Queen thread messages.
+
+Context integrity: Budget caps on memory retrieval, notes, and thread
+context injections. Workspace-scoped session and plan paths with
+migration fallback. Queen chat workspace propagation across all 4
+dispatch sites. Settings and queen-overview workspace resolution via
+`activeWorkspaceId` property.
+
 ## Tech stack
 
 Use Python 3.12+, uv, Pydantic v2 (sole serialization), asyncio, httpx,
@@ -483,15 +541,28 @@ IMPORTANT: These are non-negotiable. Violating any of these requires operator ap
 | `surface/self_maintenance.py` | MaintenanceDispatcher, autonomy policy, blast radius, autonomy scoring | Self-maintenance |
 | `surface/project_plan.py` | Project plan parser/helper, milestone tools, plan rendering | Project plan |
 | `surface/queen_budget.py` | 9-slot proportional Queen context budget (ADR-051) | Queen budget |
-| `surface/queen_tools.py` | Queen tool dispatch (42 tools), spawn_parallel, DelegationPlan | Queen tools |
+| `surface/queen_tools.py` | Queen tool dispatch (~45 tools, dynamic toolsets), spawn_parallel, DelegationPlan | Queen tools |
 | `surface/transcript_view.py` | Canonical colony transcript schema | A2A/MCP export |
 | `surface/proactive_intelligence.py` | 17 deterministic briefing rules (7 knowledge + 4 performance + evaporation + branching + earned autonomy + template health + outcome digest + popular unexamined) | Proactive intel |
 | `surface/routes/api.py` | REST endpoints: outcomes, create-demo, project-plan, autonomy-status, maintenance-policy, add-model | API surface |
 | `surface/workflow_learning.py` | Deterministic workflow pattern recognition + procedure suggestions (Wave 72) | Workflow learning |
 | `docs/AUTONOMOUS_OPERATIONS.md` | Autonomy operator runbook: action queue, levels, learning, controls | Reference |
 | `docs/DEVELOPER_BRIDGE.md` | Developer onboarding guide for Claude Code integration | Reference |
-| `surface/mcp_server.py` | MCP server (27 tools, 9 resources, 6 prompts) | MCP surface |
+| `surface/mcp_server.py` | MCP server (29 tools, 12 resources, 8 prompts) | MCP surface |
 | `config/templates/demo-workspace.yaml` | Demo workspace template with seeded entries | Demo path |
+| `surface/workspace_roots.py` | Project/library/runtime root resolution (Wave 81) | Project binding |
+| `surface/parallel_plans.py` | Deferred group dispatch, honest plan aggregation (Wave 81) | Parallel execution |
+| `surface/planning_signals.py` | Structured planning signal builder (Wave 82) | Planning |
+| `surface/structural_planner.py` | File matching, import coupling, grouping hints (Wave 82) | Planning |
+| `surface/capability_profiles.py` | Replay-derived capability calibration (Wave 82) | Planning |
+| `surface/reviewed_plan.py` | Reviewed-plan validation and normalization (Wave 83) | Planning workbench |
+| `surface/plan_patterns.py` | YAML-backed saved plan-pattern store (Wave 83) | Planning workbench |
+| `surface/planning_policy.py` | Consolidated routing: `decide_planning_route()` + `PlanningDecision` (Wave 85) | Queen routing |
+| `surface/commands.py` | WebSocket command handlers incl. `confirm_reviewed_plan` | WS surface |
+| `surface/metering.py` | Token metering, fee computation, attestation generation | Billing |
+| `surface/task_receipts.py` | Deterministic task receipts for A2A economic contracts | A2A economics |
+| `scripts/attribution.py` | Contributor revenue-share attribution from git history | Billing |
+| `docs/waves/wave_81/real_repo_task_pack.md` | Real-repo evaluation tasks (rtp-01 through rtp-05) | Benchmark |
 
 ## Common patterns
 

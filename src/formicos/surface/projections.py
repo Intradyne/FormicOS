@@ -307,7 +307,7 @@ class BudgetSnapshot:
 
     @property
     def total_tokens(self) -> int:
-        return self.total_input_tokens + self.total_output_tokens
+        return self.total_input_tokens + self.total_output_tokens + self.total_reasoning_tokens
 
     @property
     def api_cost(self) -> float:
@@ -701,6 +701,8 @@ class ProjectionStore:
         self.distillation_candidates: list[list[str]] = []
         # Wave 35.5 C3: replay-derived colony outcomes (internal foundation)
         self.colony_outcomes: dict[str, ColonyOutcome] = {}
+        # Wave 76: agent_id -> colony_id reverse index for O(1) lookup
+        self._agent_colony_index: dict[str, str] = {}
         # Wave 37 4B: operator behavior signals (replay-derived)
         self.operator_behavior = OperatorBehaviorProjection()
         # Wave 39: operator editorial overlays (ADR-049)
@@ -1150,6 +1152,10 @@ def _on_colony_completed(store: ProjectionStore, event: FormicOSEvent) -> None:
                         thread.artifact_types_produced[atype] = (
                             thread.artifact_types_produced.get(atype, 0) + 1
                         )
+    # Wave 76: clean up reverse index
+    if colony is not None:
+        for aid in colony.agents:
+            store._agent_colony_index.pop(aid, None)
 
 
 def _on_colony_failed(store: ProjectionStore, event: FormicOSEvent) -> None:
@@ -1172,6 +1178,10 @@ def _on_colony_failed(store: ProjectionStore, event: FormicOSEvent) -> None:
                 thread = ws.threads.get(colony.thread_id)
                 if thread is not None:
                     thread.failed_colony_count += 1
+    # Wave 76: clean up reverse index
+    if colony is not None:
+        for aid in colony.agents:
+            store._agent_colony_index.pop(aid, None)
 
 
 def _on_colony_killed(store: ProjectionStore, event: FormicOSEvent) -> None:
@@ -1191,6 +1201,10 @@ def _on_colony_killed(store: ProjectionStore, event: FormicOSEvent) -> None:
             round_at_kill=colony.round_number,
             timestamp=e.timestamp.isoformat(),
         )
+    # Wave 76: clean up reverse index
+    if colony is not None:
+        for aid in colony.agents:
+            store._agent_colony_index.pop(aid, None)
 
 
 def _get_or_create_round(
@@ -1223,6 +1237,7 @@ def _on_agent_turn_started(store: ProjectionStore, event: FormicOSEvent) -> None
                 id=e.agent_id, caste=e.caste, model=e.model,
             )
         colony.agents[e.agent_id].status = "active"
+        store._agent_colony_index[e.agent_id] = e.colony_id
         colony.last_activity_at = _time.monotonic()
 
 
@@ -1243,10 +1258,16 @@ def _on_agent_turn_completed(store: ProjectionStore, event: FormicOSEvent) -> No
     colony_id = e.address.rsplit("/", 1)[-1] if "/" in e.address else e.address
     colony = store.colonies.get(colony_id)
     if colony is None:
-        for candidate in store.colonies.values():
-            if e.agent_id in candidate.agents:
-                colony = candidate
-                break
+        # Wave 76: O(1) lookup via reverse index
+        _indexed_cid = store._agent_colony_index.get(e.agent_id)
+        if _indexed_cid is not None:
+            colony = store.colonies.get(_indexed_cid)
+        if colony is None:
+            # Final defensive fallback
+            for candidate in store.colonies.values():
+                if e.agent_id in candidate.agents:
+                    colony = candidate
+                    break
     if colony is None:
         return
 
@@ -1361,16 +1382,31 @@ def _on_approval_denied(store: ProjectionStore, event: FormicOSEvent) -> None:
 def _on_tokens_consumed(store: ProjectionStore, event: FormicOSEvent) -> None:
     e: TokensConsumed = event  # type: ignore[assignment]
     matched_colony: ColonyProjection | None = None
-    for colony in store.colonies.values():
-        agent = colony.agents.get(e.agent_id)
-        if agent is not None:
-            # Update agent model to reflect the actual serving model
-            # (may differ from planned route after LLMRouter fallback).
-            if e.model:
-                agent.model = e.model
-            agent.tokens += e.input_tokens + e.output_tokens
-            matched_colony = colony
-            break
+    # Wave 76: O(1) lookup via reverse index
+    _indexed_cid = store._agent_colony_index.get(e.agent_id)
+    if _indexed_cid is not None:
+        _candidate = store.colonies.get(_indexed_cid)
+        if _candidate is not None:
+            agent = _candidate.agents.get(e.agent_id)
+            if agent is not None:
+                if e.model:
+                    agent.model = e.model
+                agent.tokens += (
+                    e.input_tokens + e.output_tokens + e.reasoning_tokens
+                )
+                matched_colony = _candidate
+    if matched_colony is None:
+        # Defensive fallback: index miss (should not happen in normal operation)
+        for colony in store.colonies.values():
+            agent = colony.agents.get(e.agent_id)
+            if agent is not None:
+                if e.model:
+                    agent.model = e.model
+                agent.tokens += (
+                    e.input_tokens + e.output_tokens + e.reasoning_tokens
+                )
+                matched_colony = colony
+                break
 
     # Wave 43: colony-level budget truth from TokensConsumed
     if matched_colony is not None:
@@ -1926,6 +1962,11 @@ def _on_parallel_plan_created(store: ProjectionStore, event: FormicOSEvent) -> N
     if thread:
         thread.active_plan = e.plan
         thread.parallel_groups = e.parallel_groups
+        # Wave 82 Track A: persist planning provenance on thread
+        if e.planner_model:
+            thread.active_plan["planner_model"] = e.planner_model  # type: ignore[index]
+        if e.planning_signals:
+            thread.active_plan["planning_signals"] = e.planning_signals  # type: ignore[index]
 
 
 def _on_knowledge_distilled(store: ProjectionStore, event: FormicOSEvent) -> None:

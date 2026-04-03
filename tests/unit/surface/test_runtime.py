@@ -132,6 +132,7 @@ class TestLLMRouter:
             temperature=0.0,
             max_tokens=4096,
             tool_choice=None,
+            extra_body=None,
         )
 
 

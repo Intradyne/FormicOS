@@ -1,5 +1,11 @@
 task_class: research
 castes: [coder]
+decomposition:
+  confidence: 0.8
+  colony_range: "1-2"
+  grouping: "one colony per research question; merge findings at end"
+  recommended_caste: "researcher"
+  recommended_strategy: "sequential"
 workflow: "Search existing knowledge -> Read relevant files -> Write findings"
 steps:
   - "Search existing knowledge with memory_search (up to 3 times)"

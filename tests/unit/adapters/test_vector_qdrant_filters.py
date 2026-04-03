@@ -23,7 +23,7 @@ from formicos.core.types import VectorDocument
 # ---------------------------------------------------------------------------
 
 
-def _embed(texts: list[str]) -> list[list[float]]:
+def _embed(texts: list[str], *, is_query: bool = False) -> list[list[float]]:
     vectors: list[list[float]] = []
     for text in texts:
         digest = hashlib.sha256(text.encode()).digest()

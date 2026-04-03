@@ -238,8 +238,9 @@ class TestCompaction:
         system_blocks = [r for r in result if r["role"] == "system"]
         assert len(system_blocks) >= 1
         compacted = system_blocks[0]["content"]
-        assert "Earlier conversation:" in compacted
-        assert "Colony result: Fix auth" in compacted
+        # Wave 77.5 A8: structured compression uses section headers
+        assert "## Progress" in compacted or "Earlier conversation:" in compacted
+        assert "Fix auth" in compacted
 
     def test_is_pinned_ask(self) -> None:
         msg = FakeMsg(role="queen", content="x", intent="ask")

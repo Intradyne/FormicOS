@@ -14,6 +14,7 @@ import type { QueenThread, QueenChatMessage, EventKind, PreviewCardMeta, ResultC
 import './atoms.js';
 import './directive-panel.js';
 import './fc-preview-card.js';
+import './fc-parallel-preview.js';
 import './fc-result-card.js';
 import './proposal-card.js';
 import './edit-proposal.js';
@@ -196,7 +197,16 @@ export class FcQueenChat extends LitElement {
   @property({ type: Array }) threads: QueenThread[] = [];
   @property() activeThreadId = '';
   @property({ type: Array }) runningColonies: { id: string; name: string }[] = [];
+  // Wave 79.5 A: externally settable draft message
+  @property() draftMessage = '';
   @state() private input = '';
+
+  protected willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has('draftMessage') && this.draftMessage) {
+      this.input = this.draftMessage;
+      this.draftMessage = '';
+    }
+  }
   @state() private _queenPending = false;
   @state() private _directiveOpen = false;
   @state() private _directiveTargetId = '';
@@ -309,6 +319,27 @@ export class FcQueenChat extends LitElement {
     const renderType = m.render;
     if (renderType === 'preview_card' && m.meta) {
       const preview = m.meta as unknown as PreviewCardMeta;
+      // Wave 82 Track D: parallel plan preview when groups exist
+      if (preview.groups?.length) {
+        return html`
+          <div class="msg">
+            <div class="msg-header">
+              <span style="font-size:8px;color:var(--v-accent)">\u265B</span>
+              <span class="msg-role" style="color:var(--v-accent)">Queen</span>
+              <span class="msg-ts">${timeAgo(m.ts)}</span>
+            </div>
+            ${m.text ? html`<div class="msg-body" style="color:var(--v-fg);padding-left:14px;margin-bottom:8px">${m.text}</div>` : nothing}
+          </div>
+          <div class="card-wrap">
+            <fc-parallel-preview
+              .preview=${preview}
+              @plan-confirm=${(e: CustomEvent) => this._handlePreviewConfirm(e, idx)}
+              @plan-cancel=${() => this._handlePreviewCancel(idx)}
+              @plan-open-workbench=${(e: CustomEvent) => this._handleOpenWorkbench(e)}
+            ></fc-parallel-preview>
+          </div>
+          ${this._renderProgressCards(m)}`;
+      }
       return html`
         <div class="msg">
           <div class="msg-header">
@@ -459,12 +490,20 @@ export class FcQueenChat extends LitElement {
     }));
   }
 
+  /** Wave 83 Track D: open the plan workbench from a parallel preview. */
+  private _handleOpenWorkbench(e: CustomEvent) {
+    this.dispatchEvent(new CustomEvent('open-plan-workbench', {
+      detail: e.detail,
+      bubbles: true, composed: true,
+    }));
+  }
+
   // Wave 63: edit proposal handlers
   private _handleEditApply(e: CustomEvent) {
     const d = e.detail as { filePath: string; diff: string; colonyId?: string };
     if (!this.activeThread) return;
     this.dispatchEvent(new CustomEvent('send-message', {
-      detail: { threadId: this.activeThread.id, content: `Apply edit to ${d.filePath}` },
+      detail: { threadId: this.activeThread.id, workspaceId: this.activeThread?.workspaceId ?? '', content: `Apply edit to ${d.filePath}` },
       bubbles: true, composed: true,
     }));
   }
@@ -473,7 +512,7 @@ export class FcQueenChat extends LitElement {
     const d = e.detail as { filePath: string; colonyId?: string };
     if (!this.activeThread) return;
     this.dispatchEvent(new CustomEvent('send-message', {
-      detail: { threadId: this.activeThread.id, content: `Reject edit to ${d.filePath}` },
+      detail: { threadId: this.activeThread.id, workspaceId: this.activeThread?.workspaceId ?? '', content: `Reject edit to ${d.filePath}` },
       bubbles: true, composed: true,
     }));
   }
@@ -499,7 +538,7 @@ export class FcQueenChat extends LitElement {
       // Send the confirmation as an operator message
       if (!this.activeThread) return;
       this.dispatchEvent(new CustomEvent('send-message', {
-        detail: { threadId: this.activeThread.id, content: d.message },
+        detail: { threadId: this.activeThread.id, workspaceId: this.activeThread?.workspaceId ?? '', content: d.message },
         bubbles: true, composed: true,
       }));
       this._queenPending = true;
@@ -609,7 +648,7 @@ export class FcQueenChat extends LitElement {
   private sendMessage() {
     if (!this.input.trim() || !this.activeThread) return;
     this.dispatchEvent(new CustomEvent('send-message', {
-      detail: { threadId: this.activeThread.id, content: this.input.trim() },
+      detail: { threadId: this.activeThread.id, workspaceId: this.activeThread?.workspaceId ?? '', content: this.input.trim() },
       bubbles: true, composed: true,
     }));
     this.input = '';

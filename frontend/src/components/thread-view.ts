@@ -314,31 +314,28 @@ export class FcThreadView extends LitElement {
       </div>`;
   }
 
-  private async _handleEditPlan(e: CustomEvent) {
+  /** Wave 83 Track D: "Edit before launch" opens the workbench instead
+   *  of dispatching immediately. */
+  private _handleEditPlan(e: CustomEvent) {
     const plan = e.detail;
     if (!plan || !this.threadData?.workspaceId) return;
     const workspaceId = this.threadData.workspaceId;
-    try {
-      await fetch(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/config-overrides`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            suggestion_category: 'delegation_plan',
-            original_config: plan,
-            overridden_config: plan,
-            reason: 'operator_edit_before_launch',
-          }),
-        },
-      );
-      this.dispatchEvent(new CustomEvent('edit-plan', {
-        detail: { workspaceId, plan },
-        bubbles: true, composed: true,
-      }));
-    } catch {
-      // Silently fail — the override was best-effort
-    }
+    const threadId = this.thread ?? '';
+
+    // Build a preview-shaped payload and open the workbench
+    const preview = {
+      ...plan,
+      groups: this.threadData?.parallel_groups?.map(
+        (taskIds: string[]) => ({ taskIds, tasks: [] }),
+      ) ?? [],
+      totalPlannedTasks: plan.tasks?.length ?? 0,
+      workspaceId,
+      threadId,
+    };
+    this.dispatchEvent(new CustomEvent('open-plan-workbench', {
+      detail: preview,
+      bubbles: true, composed: true,
+    }));
   }
 
   private _completeThread() {

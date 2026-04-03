@@ -7,6 +7,7 @@ No direct event emission — runtime.emit_and_broadcast is the ONE mutation path
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -279,6 +280,83 @@ async def _handle_save_queen_note(
     return {"status": "saved", "noteCount": count}
 
 
+async def _handle_validate_reviewed_plan(
+    _workspace_id: str, payload: dict[str, Any], _runtime: Runtime,
+) -> dict[str, Any]:
+    """Dry-run validation of a reviewed plan (Wave 83 Track A).
+
+    Returns structured errors and warnings without dispatching.
+    """
+    from formicos.surface.reviewed_plan import normalize_preview, validate_plan  # noqa: PLC0415
+
+    preview = payload.get("preview", {})
+    if not preview:
+        return {"valid": False, "errors": ["preview is required"], "warnings": []}
+
+    normalized = normalize_preview(preview)
+    errors, warnings = validate_plan(normalized)
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+async def _handle_confirm_reviewed_plan(
+    workspace_id: str, payload: dict[str, Any], runtime: Runtime,
+) -> dict[str, Any]:
+    """Deterministic dispatch of a reviewed parallel plan (Wave 82/83).
+
+    Normalizes and validates the plan before dispatch. Uses the same
+    validation path as ``validate_reviewed_plan``.
+    """
+    from formicos.surface.reviewed_plan import normalize_preview, validate_plan  # noqa: PLC0415
+
+    thread_id = payload.get("threadId", "")
+    preview = payload.get("preview", {})
+    if not thread_id or not preview:
+        return {"status": "error", "detail": "threadId and preview required"}
+
+    # Normalize and validate
+    spawn_inputs = normalize_preview(preview)
+    errors, warnings = validate_plan(spawn_inputs)
+    if errors:
+        return {
+            "status": "validation_failed",
+            "errors": errors,
+            "warnings": warnings,
+        }
+
+    # Dispatch through the Queen tool dispatcher
+    queen = runtime.queen
+    if queen is None:
+        return {"status": "error", "detail": "Queen not available"}
+
+    dispatcher = queen._tool_dispatcher  # pyright: ignore[reportPrivateUsage]
+    result_text, action = await dispatcher._spawn_parallel(  # pyright: ignore[reportPrivateUsage]
+        spawn_inputs, workspace_id, thread_id,
+    )
+
+    # Emit the result as a Queen message so the operator sees it
+    from formicos.core.events import QueenMessage  # noqa: PLC0415
+
+    await runtime.emit_and_broadcast(QueenMessage(
+        seq=0,
+        timestamp=datetime.now(UTC).isoformat(),
+        address=f"{workspace_id}/{thread_id}",
+        thread_id=thread_id,
+        role="queen",
+        content=f"Reviewed plan dispatched: {result_text}",
+    ))
+
+    return {
+        "status": "dispatched",
+        "result": result_text,
+        "action": action,
+        "warnings": warnings,
+    }
+
+
 _COMMAND_HANDLERS: dict[str, Any] = {
     "create_thread": _handle_create_thread,
     "spawn_colony": _handle_spawn_colony,
@@ -295,6 +373,8 @@ _COMMAND_HANDLERS: dict[str, Any] = {
     "rename_colony": _handle_rename_colony,
     "rename_thread": _handle_rename_thread,
     "save_queen_note": _handle_save_queen_note,
+    "confirm_reviewed_plan": _handle_confirm_reviewed_plan,
+    "validate_reviewed_plan": _handle_validate_reviewed_plan,
 }
 
 

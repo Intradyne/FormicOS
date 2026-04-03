@@ -53,6 +53,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "live_eval: requires FORMICOS_LIVE_EVAL=1 and a running stack",
 ]
 
 [tool.pyright]

@@ -7,9 +7,11 @@ Works with any endpoint exposing the OpenAI /chat/completions format
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from collections.abc import AsyncIterator, Sequence
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -18,27 +20,43 @@ import structlog
 from formicos.adapters.parse_defensive import parse_tool_calls_defensive
 from formicos.core.types import LLMChunk, LLMMessage, LLMResponse, LLMToolSpec
 
+_MAX_ARG_REPAIR_CHARS = 64_000
+_TOOL_RECOVERY_TIMEOUT_S = 2.0
+_RESPONSE_JSON_TIMEOUT_S = 30.0
+_LOCAL_HTTPX_LIMITS = httpx.Limits(
+    max_connections=10,
+    max_keepalive_connections=5,
+)
+
+
+def _looks_like_json_payload(raw: str) -> bool:
+    stripped = raw.lstrip()
+    return stripped.startswith("{") or stripped.startswith("[")
+
 
 def _parse_args_defensive(raw: object) -> dict[str, object]:
     """Parse tool-call arguments defensively. Handles string or dict."""
     if isinstance(raw, dict):
         return raw  # type: ignore[return-value]
     if isinstance(raw, str) and raw.strip():
+        stripped = raw.strip()
         # Try stage 1: json.loads
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return parsed  # type: ignore[return-value]
-        except (json.JSONDecodeError, TypeError):
-            pass
-        # Try stage 2: json_repair
-        try:
-            import json_repair
-            parsed = json_repair.loads(raw)  # pyright: ignore[reportUnknownMemberAccess]
-            if isinstance(parsed, dict):
-                return parsed  # type: ignore[return-value]
-        except Exception:  # noqa: BLE001
-            pass
+        if _looks_like_json_payload(stripped):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    return parsed  # type: ignore[return-value]
+            except (json.JSONDecodeError, TypeError):
+                pass
+            # Try stage 2: json_repair only for bounded JSON-like payloads.
+            if len(stripped) <= _MAX_ARG_REPAIR_CHARS:
+                try:
+                    import json_repair
+                    parsed = json_repair.loads(stripped)  # pyright: ignore[reportUnknownMemberAccess]
+                    if isinstance(parsed, dict):
+                        return parsed  # type: ignore[return-value]
+                except Exception:  # noqa: BLE001
+                    pass
         return {"_raw": raw}
     return {}
 
@@ -118,16 +136,25 @@ class OpenAICompatibleLLMAdapter:
         self,
         base_url: str = "http://localhost:11434/v1",
         api_key: str | None = None,
-        timeout_s: float = 120.0,
+        timeout_s: float = 300.0,
         max_concurrent: int = 0,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url
+        self._timeout_s = timeout_s
         self._is_local = _is_local_url(base_url)
-        self._client = httpx.AsyncClient(
-            base_url=base_url,
-            timeout=httpx.Timeout(timeout_s),
-        )
+
+        def _make_client() -> httpx.AsyncClient:
+            kwargs: dict[str, object] = {
+                "base_url": base_url,
+                "timeout": httpx.Timeout(timeout_s),
+            }
+            if self._is_local:
+                kwargs["limits"] = _LOCAL_HTTPX_LIMITS
+            return httpx.AsyncClient(**kwargs)
+
+        self._client_factory: Any = _make_client
+        self._client = self._client_factory()
         # Wave 64: per-model max_concurrent overrides LLM_SLOTS.
         # If max_concurrent > 0, always use it (local or cloud).
         # Otherwise, local endpoints use LLM_SLOTS, cloud is unthrottled.
@@ -146,7 +173,18 @@ class OpenAICompatibleLLMAdapter:
         headers: dict[str, str] = {"content-type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
+        if self._is_local:
+            # Local inference servers have shown brittle keep-alive behavior
+            # after restarts and long-running requests. Prefer fresh sockets.
+            headers["connection"] = "close"
         return headers
+
+    async def _reset_client(self) -> None:
+        """Drop pooled connections after local transport churn and rebuild."""
+        old_client = self._client
+        self._client = self._client_factory()
+        with contextlib.suppress(Exception):
+            await old_client.aclose()
 
     async def _post_with_retry(
         self,
@@ -181,17 +219,41 @@ class OpenAICompatibleLLMAdapter:
         """Inner retry loop.  Caller is responsible for semaphore lifecycle."""
         last_exc: httpx.HTTPStatusError | None = None
         for attempt in range(_MAX_ATTEMPTS):
-            if stream:
-                request = self._client.build_request(
-                    "POST", path, headers=self._headers(), json=payload
+            try:
+                if stream:
+                    request = self._client.build_request(
+                        "POST", path, headers=self._headers(), json=payload
+                    )
+                    response = await self._client.send(request, stream=True)
+                else:
+                    response = await self._client.post(
+                        path, headers=self._headers(), json=payload
+                    )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if not self._is_local or attempt >= _MAX_ATTEMPTS - 1:
+                    raise
+                wait = _BACKOFF_BASE * (2**attempt)
+                logger.warning(
+                    "openai_transport_retry",
+                    attempt=attempt + 1,
+                    wait=wait,
+                    local=self._is_local,
+                    error=repr(exc),
                 )
-                response = await self._client.send(request, stream=True)
-            else:
-                response = await self._client.post(
-                    path, headers=self._headers(), json=payload
-                )
+                await self._reset_client()
+                await asyncio.sleep(wait)
+                continue
 
             if not _is_retryable(response.status_code, is_local=self._is_local):
+                if response.status_code >= 400:
+                    _err_body = response.text[:500] if not stream else "(stream)"
+                    _log = structlog.get_logger()
+                    _log.warning(
+                        "llm_adapter.http_error",
+                        status=response.status_code,
+                        body=_err_body,
+                        url=path,
+                    )
                 response.raise_for_status()
                 return response
 
@@ -225,6 +287,47 @@ class OpenAICompatibleLLMAdapter:
         if self._semaphore is not None:
             self._semaphore.release()
 
+    async def _recover_tool_calls_from_content(
+        self,
+        content: str,
+        tools: Sequence[LLMToolSpec],
+    ) -> list[dict[str, object]]:
+        """Bound defensive recovery so malformed content can't stall a colony."""
+        known_tools = {t["name"] for t in tools}
+        try:
+            recovered = await asyncio.wait_for(
+                asyncio.to_thread(
+                    parse_tool_calls_defensive,
+                    content,
+                    known_tools=known_tools,
+                ),
+                timeout=_TOOL_RECOVERY_TIMEOUT_S,
+            )
+        except TimeoutError:
+            logger.warning(
+                "llm_adapter.tool_recovery_timeout",
+                content_len=len(content),
+                tool_count=len(known_tools),
+            )
+            return []
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "llm_adapter.tool_recovery_error",
+                error=repr(exc),
+                content_len=len(content),
+                tool_count=len(known_tools),
+            )
+            return []
+
+        return [
+            {
+                "name": call.name,
+                "id": f"parsed_{idx}",
+                "arguments": call.arguments,
+            }
+            for idx, call in enumerate(recovered)
+        ]
+
     # --- LLMPort.complete ---
 
     async def complete(
@@ -235,6 +338,7 @@ class OpenAICompatibleLLMAdapter:
         temperature: float = 0.0,
         max_tokens: int = 4096,
         tool_choice: object | None = None,  # Wave 54: reactive escalation
+        extra_body: dict[str, object] | None = None,  # Wave 77.5: thinking mode
     ) -> LLMResponse:
         """Return a single structured completion from an OpenAI-compatible endpoint."""
         payload: dict[str, object] = {
@@ -246,11 +350,48 @@ class OpenAICompatibleLLMAdapter:
         if tools:
             payload["tools"] = _build_tools(tools)
         if tool_choice is not None:
-            payload["tool_choice"] = tool_choice
+            # Wave 81: normalize tool_choice for llama.cpp / OpenAI-compat.
+            # Accepts string ("auto", "none", "required") or dict
+            # ({"type": "function", "function": {"name": "..."}}).
+            # llama.cpp only supports string values; convert dicts to
+            # "required" so tool-forcing escalation actually works.
+            if isinstance(tool_choice, dict):
+                if self._is_local:
+                    payload["tool_choice"] = "required"
+                else:
+                    payload["tool_choice"] = tool_choice
+            elif isinstance(tool_choice, str):
+                payload["tool_choice"] = tool_choice
+            else:
+                # Pydantic model or other — try dict conversion
+                payload["tool_choice"] = (
+                    tool_choice.model_dump()
+                    if hasattr(tool_choice, "model_dump")
+                    else str(tool_choice)
+                )
+        if extra_body:
+            payload.update(extra_body)
 
         resp = await self._post_with_retry("/chat/completions", payload)
         try:
-            data = resp.json()
+            try:
+                data = await asyncio.wait_for(
+                    asyncio.to_thread(resp.json),
+                    timeout=_RESPONSE_JSON_TIMEOUT_S,
+                )
+            except TimeoutError as exc:
+                with contextlib.suppress(Exception):
+                    resp.close()
+                logger.warning(
+                    "llm_adapter.response_json_timeout",
+                    timeout_s=_RESPONSE_JSON_TIMEOUT_S,
+                    model=_strip_prefix(model),
+                    local=self._is_local,
+                )
+                raise TimeoutError(
+                    f"Timed out parsing LLM response JSON after "
+                    f"{_RESPONSE_JSON_TIMEOUT_S:.1f}s"
+                ) from exc
 
             choice = data["choices"][0]
             message = choice["message"]
@@ -264,14 +405,9 @@ class OpenAICompatibleLLMAdapter:
                     {"name": func["name"], "id": tc["id"], "arguments": args}  # pyright: ignore[reportUnknownMemberType]
                 )
             if not tool_calls and tools and isinstance(content, str):
-                known_tools = {t["name"] for t in tools}
-                recovered = parse_tool_calls_defensive(content, known_tools=known_tools)
-                for idx, call in enumerate(recovered):
-                    tool_calls.append({
-                        "name": call.name,
-                        "id": f"parsed_{idx}",
-                        "arguments": call.arguments,
-                    })
+                tool_calls.extend(
+                    await self._recover_tool_calls_from_content(content, tools),
+                )
 
             usage = data.get("usage", {})
             _cd = usage.get("completion_tokens_details") or {}

@@ -33,8 +33,16 @@ _STEP_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 
-def thread_plan_path(data_dir: str, thread_id: str) -> Path:
-    """Return the canonical thread plan path."""
+def thread_plan_path(
+    data_dir: str, thread_id: str, workspace_id: str = "",
+) -> Path:
+    """Return the canonical thread plan path (workspace-scoped when provided)."""
+    if workspace_id:
+        return (
+            Path(data_dir) / ".formicos" / "plans"
+            / workspace_id / f"{thread_id}.md"
+        )
+    # Legacy fallback for callers that don't pass workspace_id
     return Path(data_dir) / ".formicos" / "plans" / f"{thread_id}.md"
 
 
@@ -148,12 +156,30 @@ def load_all_thread_plans(data_dir: str) -> list[dict[str, Any]]:
         return []
 
     plans: list[dict[str, Any]] = []
+    seen: set[str] = set()
     try:
+        # Wave 76: scan workspace-scoped plans first
+        for plan_file in sorted(plans_dir.glob("*/*.md")):
+            thread_id = plan_file.stem
+            if thread_id in seen:
+                continue
+            text = plan_file.read_text(encoding="utf-8")
+            plan = parse_thread_plan(text)
+            if plan.get("exists"):
+                if not plan.get("thread_id"):
+                    plan["thread_id"] = thread_id
+                plan["workspace_id"] = plan_file.parent.name
+                plans.append(plan)
+                seen.add(thread_id)
+        # Legacy unscoped plans
         for plan_file in sorted(plans_dir.glob("*.md")):
             thread_id = plan_file.stem
+            if thread_id in seen:
+                continue
             plan = load_thread_plan(data_dir, thread_id)
             if plan.get("exists"):
                 plans.append(plan)
+                seen.add(thread_id)
     except OSError:
         pass
 

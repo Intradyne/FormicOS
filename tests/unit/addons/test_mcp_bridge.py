@@ -55,6 +55,35 @@ async def test_bridge_connect_and_list_tools() -> None:
     assert health["totalRemoteTools"] == 1
 
 
+@pytest.mark.anyio()
+async def test_bridge_passes_optional_auth_to_client() -> None:
+    """Configured auth token is forwarded to the HTTP client transport."""
+    bridge = McpBridge()
+    bridge.configure([{
+        "name": "secure-srv",
+        "url": "http://localhost:9999/sse",
+        "auth": "test-token",
+    }])
+
+    mock_client = MagicMock()
+    mock_client.is_connected = MagicMock(return_value=True)
+    mock_client.list_tools = AsyncMock(return_value=[])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch(
+        "formicos.addons.mcp_bridge.client.Client",
+        return_value=mock_client,
+    ) as client_cls:
+        await bridge.list_tools("secure-srv")
+
+    client_cls.assert_called_once_with(
+        "http://localhost:9999/sse",
+        timeout=10,
+        auth="test-token",
+    )
+
+
 # ---------------------------------------------------------------------------
 # 2. Bridge health reports disconnected/error states
 # ---------------------------------------------------------------------------

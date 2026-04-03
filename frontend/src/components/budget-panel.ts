@@ -176,7 +176,7 @@ export class FcBudgetPanel extends LitElement {
           </div>
           <div class="glass stat-card">
             <div class="stat-label">Total Tokens</div>
-            <div class="stat-value">${this._fmtTokens(d.total_input_tokens + d.total_output_tokens)}</div>
+            <div class="stat-value">${this._fmtTokens(d.total_input_tokens + d.total_output_tokens + (d.total_reasoning_tokens ?? 0))}</div>
             <div class="stat-detail">${this._fmtTokens(d.total_input_tokens)} in / ${this._fmtTokens(d.total_output_tokens)} out</div>
             ${localTokens > 0 ? html`
               <div class="stat-detail" style="color:var(--v-purple)">${this._fmtTokens(localTokens)} local (free)</div>

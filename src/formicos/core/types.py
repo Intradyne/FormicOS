@@ -181,6 +181,10 @@ class CasteRecipe(BaseModel):
         default=10,
         description="Base tool calls per iteration (multiplied by model policy).",
     )
+    thinking: bool = Field(
+        default=False,
+        description="Enable extended thinking for this caste on local llama.cpp models.",
+    )
     tier_models: dict[str, str] = Field(
         default_factory=dict,
         description="Per-tier model overrides, e.g. {'light': 'gemini/gemini-2.5-flash'}.",
@@ -878,6 +882,7 @@ class ColonyTask(BaseModel):
     model_config = FrozenConfig
 
     task_id: str = Field(...)
+    colony_id: str = Field(default="", description="Pre-allocated colony ID (Wave 81).")
     task: str = Field(...)
     caste: str = Field(...)  # "coder" | "reviewer" | "researcher" | "archivist"
     strategy: str = Field(default="sequential")  # "sequential" | "stigmergic"
@@ -888,6 +893,10 @@ class ColonyTask(BaseModel):
     target_files: list[str] = Field(
         default_factory=list,
         description="Files the colony should focus on (Wave 41 multi-file).",
+    )
+    expected_outputs: list[str] = Field(
+        default_factory=list,
+        description="Files this colony is expected to produce (Wave 80 file handoff).",
     )
 
 

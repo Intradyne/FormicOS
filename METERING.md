@@ -8,6 +8,30 @@ the canonical method for computing Total Tokens and producing Usage
 Attestations under Tier 2 and Tier 3 Commercial Licenses.
 
 
+## Implementation status (Wave 75)
+
+**Implemented:**
+- Event-store-backed token aggregation (`surface/metering.py`)
+- Fee computation (`compute_fee`) — single source of truth
+- Unsigned v1 attestation generation
+- CLI: `formicos billing status|estimate|attest|history|self-test`
+- REST: `GET /api/v1/billing/status`
+- MCP: `formicos://billing` resource, `economic-status` prompt
+
+**Deferred:**
+- Ed25519 key derivation and signing (attestations are `"unsigned"`)
+- Billing submission endpoint (`formicos billing submit`)
+- External billing service integration
+
+**Repo truth notes:**
+- `TokensConsumed` events carry `cost` (not `cost_usd` as shown in the
+  schema example below). The aggregate uses the actual event field name.
+- `TokensConsumed` events do not carry a `provider` field. The example
+  below shows `provider` for specification completeness. The implementation
+  derives provider best-effort from model name prefixes. `by_model` is
+  canonical; `by_provider` is not available in the current event schema.
+
+
 ## What is metered
 
 **Total Tokens** is the sum of all input tokens, output tokens, and

@@ -22,6 +22,11 @@ interface PlaybookData {
   observation_limit?: number;
   example?: { name?: string; arguments?: Record<string, unknown> };
   _file?: string;
+  // Wave 78 Track 4: auto-generated playbook fields
+  source?: string;        // 'agent' for auto-generated
+  status?: string;        // 'candidate' | 'approved'
+  proposed_by?: string;   // colony ID
+  proposed_at?: string;   // ISO timestamp
 }
 
 @customElement('fc-playbook-view')
@@ -101,6 +106,47 @@ export class FcPlaybookView extends LitElement {
     .pb-empty {
       font-size: 10px; color: var(--v-fg-dim);
       text-align: center; padding: 32px 0;
+    }
+    .pb-card.candidate {
+      border-color: rgba(245,183,49,0.3);
+      background: rgba(245,183,49,0.03);
+    }
+    .pb-badge {
+      font-size: 8px; font-family: var(--f-mono); padding: 1px 5px;
+      border-radius: 4px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .pb-badge.proposed {
+      background: rgba(245,183,49,0.12); color: var(--v-warn);
+      border: 1px solid rgba(245,183,49,0.25);
+    }
+    .pb-badge.approved {
+      background: rgba(45,212,168,0.1); color: var(--v-success);
+      border: 1px solid rgba(45,212,168,0.2);
+    }
+    .pb-proposed-by {
+      font-size: 9px; font-family: var(--f-mono); color: var(--v-fg-dim);
+      margin-bottom: 6px;
+    }
+    .pb-actions {
+      display: flex; gap: 6px; margin-top: 8px;
+    }
+    .pb-action-btn {
+      font-size: 9px; font-family: var(--f-mono); padding: 2px 10px;
+      border-radius: 8px; cursor: pointer; border: 1px solid var(--v-border);
+      background: transparent; color: var(--v-fg-dim); transition: all 0.15s;
+    }
+    .pb-action-btn.approve {
+      border-color: rgba(45,212,168,0.3); color: var(--v-success);
+    }
+    .pb-action-btn.approve:hover {
+      background: rgba(45,212,168,0.08);
+    }
+    .pb-action-btn.dismiss {
+      border-color: rgba(240,100,100,0.3); color: var(--v-danger);
+    }
+    .pb-action-btn.dismiss:hover {
+      background: rgba(240,100,100,0.08);
     }
   `];
 
@@ -204,13 +250,20 @@ export class FcPlaybookView extends LitElement {
     const observation = (pb.observation_tools || []).join(', ');
     const obsLimit = pb.observation_limit ?? 2;
     const example = pb.example;
+    const isCandidate = pb.source === 'agent' && pb.status === 'candidate';
+    const isApproved = pb.status === 'approved';
 
     return html`
-      <div class="pb-card">
+      <div class="pb-card ${isCandidate ? 'candidate' : ''}">
         <div class="pb-header">
           <span class="pb-title">${taskClass}</span>
           <span class="pb-castes">${castes}</span>
+          ${isCandidate ? html`<span class="pb-badge proposed">Proposed</span>` : nothing}
+          ${isApproved && pb.source === 'agent' ? html`<span class="pb-badge approved">Approved</span>` : nothing}
         </div>
+        ${pb.proposed_by ? html`
+          <div class="pb-proposed-by">Proposed by colony ${pb.proposed_by.slice(0, 12)}</div>
+        ` : nothing}
         ${pb.workflow ? html`<div class="pb-workflow">${pb.workflow}</div>` : nothing}
         ${steps.length > 0 ? html`
           <div class="pb-section-label">Steps</div>
@@ -221,11 +274,19 @@ export class FcPlaybookView extends LitElement {
         <div class="pb-section-label">Tools</div>
         <div class="pb-tools">
           <span class="productive">${productive}</span>
-          ${observation ? html` · observe: ${observation} (limit ${obsLimit})` : nothing}
+          ${observation ? html` \u00B7 observe: ${observation} (limit ${obsLimit})` : nothing}
         </div>
         ${example?.name ? html`
           <div class="pb-section-label">Example</div>
           <div class="pb-example">${JSON.stringify({ name: example.name, arguments: example.arguments || {} }, null, 2)}</div>
+        ` : nothing}
+        ${isCandidate && pb._file ? html`
+          <div class="pb-actions">
+            <button class="pb-action-btn approve"
+              @click=${() => void this._approvePlaybook(pb._file!)}>Approve</button>
+            <button class="pb-action-btn dismiss"
+              @click=${() => void this._dismissPlaybook(pb._file!)}>Dismiss</button>
+          </div>
         ` : nothing}
       </div>
     `;
@@ -243,6 +304,32 @@ export class FcPlaybookView extends LitElement {
       // Silently fail — empty list is fine
     }
     this._playbooksLoaded = true;
+  }
+
+  /** Wave 78 Track 4: Approve a candidate playbook. */
+  private async _approvePlaybook(filename: string) {
+    try {
+      const resp = await fetch(`/api/v1/playbooks/${encodeURIComponent(filename)}/approve`, {
+        method: 'PUT',
+      });
+      if (resp.ok) {
+        this._playbooksLoaded = false;
+        this._ensurePlaybooksLoaded();
+      }
+    } catch { /* best-effort */ }
+  }
+
+  /** Wave 78 Track 4: Dismiss (delete) a candidate playbook. */
+  private async _dismissPlaybook(filename: string) {
+    try {
+      const resp = await fetch(`/api/v1/playbooks/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      });
+      if (resp.ok) {
+        this._playbooksLoaded = false;
+        this._ensurePlaybooksLoaded();
+      }
+    } catch { /* best-effort */ }
   }
 
   private _openTemplateEditor(mode: EditorMode, template: TemplateInfo | null) {

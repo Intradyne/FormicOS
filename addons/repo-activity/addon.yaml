@@ -1,0 +1,57 @@
+name: repo-activity
+version: "1.0.0"
+description: >
+  Repository activity dashboard — local git state plus optional remote
+  enrichment (PRs, CI) via governed MCP gateway. Read-only.
+author: "formicos-core"
+
+config:
+  - key: remote_server
+    type: string
+    default: ""
+    label: "Optional MCP server name for remote enrichment"
+  - key: repo_owner
+    type: string
+    default: ""
+    label: "Optional repository owner/org for remote enrichment"
+  - key: repo_name
+    type: string
+    default: ""
+    label: "Optional repository name for remote enrichment"
+  - key: pr_tool
+    type: string
+    default: ""
+    label: "Optional override for remote PR/MR listing tool"
+  - key: ci_tool
+    type: string
+    default: ""
+    label: "Optional override for remote CI/pipeline tool"
+
+mcp_permissions:
+  - server: github
+    tools:
+      - list_pull_requests
+      - get_pull_request_status
+      - list_commits
+    mode: read
+  - server: gitlab
+    tools:
+      - list_merge_requests
+      - list_pipelines
+      - list_commits
+    mode: read
+
+panels:
+  - target: workspace
+    display_type: kpi_card
+    path: /dashboard
+    handler: status.py::get_dashboard
+    refresh_interval_s: 30
+
+routes:
+  - path: /dashboard
+    handler: status.py::get_dashboard
+
+triggers:
+  - type: manual
+    handler: refresh.py::handle_refresh

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -52,8 +53,142 @@ from formicos.surface.queen_tools import DELEGATE_THREAD, QueenToolDispatcher
 if TYPE_CHECKING:
     from formicos.surface.runtime import Runtime
 
+
+# -- Wave 78: Keyword-based model routing --
+
+_COMPLEX_KEYWORDS = frozenset({
+    "debug", "implement", "refactor", "architecture", "design",
+    "analyze", "investigate", "optimize", "review", "benchmark",
+    "compare", "patch", "traceback", "exception", "plan",
+    "delegate", "parallel", "colony", "spawn", "knowledge",
+    "pheromone", "convergence", "sweep", "playbook",
+})
+_COORDINATION_MARKERS = frozenset({
+    "parallel", "dependency", "dependencies", "depends on",
+    "handoff", "handoffs", "coordinate", "coordination",
+    "group 1", "group 2", "groups", "fan out", "merge",
+})
+_FILE_HINT_RE = re.compile(r"[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+")
+
+
+def classify_complexity(message: str) -> str:
+    """Classify a Queen message as 'simple' or 'complex'.
+
+    Used to route simple messages to a cheaper model when ``cheap_queen``
+    is configured. Deterministic, no LLM call.
+    """
+    if len(message) > 200:
+        return "complex"
+    if len(message.split()) > 35:
+        return "complex"
+    if "```" in message:
+        return "complex"
+    lower = message.lower()
+    if any(kw in lower for kw in _COMPLEX_KEYWORDS):
+        return "complex"
+    return "simple"
+
+
+def _looks_like_colony_work(message: str) -> bool:
+    """Heuristic: explicit implementation work should keep colony/planning tools available."""
+    lower = message.lower()
+    file_refs = len(_FILE_HINT_RE.findall(message))
+    if file_refs >= 2:
+        return True
+    strong_markers = (
+        "addon", "multi-file", "multiple files", "refactor",
+        "implement", "build", "create", "handlers", "trigger", "tests",
+        "test", "strengthen", "add", "improve", "write", "cover",
+        "fix", "bugfix",
+        "consolidate", "route through",
+    )
+    return any(marker in lower for marker in strong_markers)
+
+
+def _prefer_single_colony_route(message: str) -> bool:
+    """Return True when a simple implementation task should skip DAG planning."""
+    lower = message.lower()
+    if not _looks_like_colony_work(message):
+        return False
+    if classify_complexity(message) != "simple":
+        return False
+    if len(_FILE_HINT_RE.findall(message)) > 3:
+        return False
+    return not any(marker in lower for marker in _COORDINATION_MARKERS)
+
+
+# Wave 87: polite-question gate — don't suppress colony path for
+# implementation requests that happen to end with '?'
+_POLITE_ACTION_RE = re.compile(
+    r"^(can|could|would|will|shall|might)\s+you\s+",
+    re.IGNORECASE,
+)
+
+
+def _is_genuine_question(message: str) -> bool:
+    """Return True only for genuine informational questions.
+
+    Polite implementation requests (``can you fix...?``,
+    ``could you audit...?``) should NOT suppress the colony path.
+    """
+    if "?" not in message:
+        return False
+    stripped = message.strip()
+    # Polite action requests are not genuine questions
+    if _POLITE_ACTION_RE.match(stripped):
+        return False
+    # Short messages ending with ? that don't look like work
+    lower = stripped.lower()
+    _question_starts = (
+        "what ", "how ", "why ", "where ", "when ", "who ",
+        "is ", "are ", "does ", "do ", "should ", "which ",
+    )
+    return any(lower.startswith(q) for q in _question_starts)
+
+
 log = structlog.get_logger()
 
+# Wave 89 Track B: host-mode addon-generation context.
+# Injected into colony context when capability_mode == "host".
+_HOST_ADDON_CONTEXT_TEMPLATE = """\
+ADDON GENERATION MODE — The scaffold has pre-generated the addon \
+structure. You only need to write ONE file: the handler.
+
+Pre-generated files (do NOT write these — they already exist):
+- addons/{addon_name}/addon.yaml (manifest)
+- src/formicos/addons/{addon_package}/__init__.py (package init)
+
+YOUR TASK: Write src/formicos/addons/{addon_package}/status.py with \
+one async function called get_overview that returns dashboard data.
+
+Handler signature:
+  async def get_overview(inputs, workspace_id, _thread_id, *, runtime_context=None) -> dict
+
+Return shape:
+  {{"display_type": "kpi_card", "items": [...], "refresh_interval_s": 30}}
+
+Item shapes:
+- {{"label": "Name", "value": 42, "status": "ok"}}
+- {{"label": "Trend", "value": 0.85, "trend": [0.7, 0.8, 0.85]}}
+  status: "ok" | "warn" | "error"
+
+Available runtime_context fields:
+- projections: colony stats, memory entries, budgets, outcomes
+- data_dir: persistent data directory path
+
+Working example (system-health addon handler):
+  ctx = runtime_context or {{}}
+  projections = ctx.get("projections")
+  colonies = list(projections.colonies.values()) if projections else []
+  recent = [c for c in colonies if c.status in ("completed", "failed")]
+  items.append({{"label": "Colonies", "value": str(len(recent))}})
+
+AFTER writing the handler, call deploy_addon with addon_name="{addon_name}" \
+to validate and mount it. The panel will appear immediately.
+
+Keep the handler focused on internal FormicOS data only.
+No external API calls. No MCP gateway.
+"""
 
 _MAX_TOOL_ITERATIONS = 7
 
@@ -141,6 +276,84 @@ def _check_contract(
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Wave 79 Track 1: dynamic toolset classifier
+# ---------------------------------------------------------------------------
+
+_TOOLSET_KEYWORDS: dict[str, set[str]] = {
+    "colony": {
+        "spawn", "colony", "kill", "parallel", "team", "delegate",
+        "swarm", "retry", "dispatch", "worker",
+    },
+    "workspace": {
+        "file", "edit", "write", "read", "code", "fix", "patch",
+        "run", "test", "command", "build", "lint",
+    },
+    "knowledge": {
+        "knowledge", "search", "memory", "remember", "briefing",
+        "codebase", "find", "lookup",
+    },
+    "planning": {
+        "plan", "milestone", "goal", "workflow", "step", "archive",
+        "thread", "organize", "roadmap",
+    },
+    "documents": {"document", "draft", "summarize", "summary", "write up"},
+    "working_memory": {"note", "working", "artifact", "promote"},
+    "analysis": {"analyze", "outcome", "performance", "quality", "metric"},
+    "safety": {"rollback", "undo", "revert", "checkpoint", "restore"},
+}
+
+
+def classify_relevant_toolsets(
+    message: str,
+    *,
+    active_colonies: int = 0,
+) -> set[str]:
+    """Choose the smallest reasonable Queen toolset for an operator turn.
+
+    Always includes ``operations`` as the base. Adds domain-specific
+    toolsets based on keyword matches and thread state.
+    """
+    relevant: set[str] = {"operations"}
+    lower = message.lower()
+
+    for toolset, keywords in _TOOLSET_KEYWORDS.items():
+        if any(kw in lower for kw in keywords):
+            relevant.add(toolset)
+
+    try:
+        from formicos.surface.task_classifier import classify_task  # noqa: PLC0415
+
+        task_class, _ = classify_task(message)
+    except Exception:
+        task_class = "generic"
+
+    if task_class in {"code_implementation", "design"}:
+        relevant.add("planning")
+        if _looks_like_colony_work(message):
+            relevant.add("colony")
+
+    # Colony markers override classification — "improve", "strengthen", etc.
+    # should get colony tools even if classified as generic/research.
+    if _looks_like_colony_work(message):
+        relevant.add("colony")
+        relevant.add("planning")
+
+    # Thread-state hint: if colonies are running, include colony tools
+    if active_colonies > 0:
+        relevant.add("colony")
+
+    # Planning tools are needed whenever colony tools are available.
+    if "colony" in relevant:
+        relevant.add("planning")
+
+    # Fallback: if no strong matches beyond operations, include common set
+    if relevant == {"operations"}:
+        relevant.update({"colony", "workspace", "knowledge"})
+
+    return relevant
+
+
 # Wave 49: deterministic Queen thread compaction
 # ---------------------------------------------------------------------------
 
@@ -171,6 +384,44 @@ def _is_pinned(msg: Any) -> bool:  # noqa: ANN401
     return render == "preview_card"
 
 
+def _prune_old_tool_results(
+    messages: list[dict[str, str]],
+    protect_recent: int = 9,
+) -> list[dict[str, str]]:
+    """Replace old tool results with stubs to reclaim context (Wave 77.5 A8)."""
+    if len(messages) <= protect_recent:
+        return messages
+    cutoff = len(messages) - protect_recent
+    pruned: list[dict[str, str]] = []
+    for i, msg in enumerate(messages):
+        if (
+            i < cutoff
+            and msg.get("role") == "tool"
+            and len(msg.get("content", "")) > 200
+        ):
+            pruned.append({**msg, "content": "[Earlier tool output cleared]"})
+        else:
+            pruned.append(msg)
+    return pruned
+
+
+_FILE_PATH_PATTERN = re.compile(
+    r"(?:^|\s)([a-zA-Z0-9_./-]+\.[a-zA-Z]{1,6})(?:\s|$|[,;:\)])",
+)
+_CRITICAL_KEYWORDS = frozenset({
+    "error", "exception", "traceback", "failed", "timeout", "denied",
+    "rejected", "blocked", "crash", "panic", "fatal",
+})
+_BLOCKED_KEYWORDS = frozenset({
+    "blocked", "blocker", "stuck", "cannot", "failed", "error", "broken",
+    "missing", "unavailable", "timeout",
+})
+_NEXT_STEP_KEYWORDS = frozenset({
+    "next", "todo", "should", "need to", "plan to", "will", "suggest",
+    "recommend", "propose",
+})
+
+
 def _compact_thread_history(
     queen_messages: list[Any],
     token_budget: int = _THREAD_TOKEN_BUDGET,
@@ -179,9 +430,9 @@ def _compact_thread_history(
     """Build LLM message entries from Queen thread history with compaction.
 
     When total estimated tokens exceed *token_budget*, older messages are
-    collapsed into one deterministic ``Earlier conversation:`` block.
-    Recent messages and pinned items (asks, active previews) are always
-    kept raw.
+    collapsed into a structured summary with 7 sections: Goal, Progress
+    (Done/In Progress/Blocked), Key Decisions, Relevant Files, Next Steps,
+    and Critical Context. Recent messages and pinned items are always kept raw.
 
     Returns a list of ``{role, content}`` dicts ready for the LLM prompt.
     """
@@ -214,38 +465,121 @@ def _compact_thread_history(
         else:
             compactable.append(msg)
 
-    # Build the compacted summary block from structured metadata first.
-    summary_parts: list[str] = []
+    # Build structured compaction sections (Wave 79 Track 3).
+    goal_parts: list[str] = []
+    done_parts: list[str] = []
+    in_progress_parts: list[str] = []
+    blocked_parts: list[str] = []
+    decisions_parts: list[str] = []
+    files_seen: set[str] = set()
+    next_steps_parts: list[str] = []
+    critical_parts: list[str] = []
+    other_parts: list[str] = []
+
     for msg in compactable:
         render = getattr(msg, "render", None)
         meta = getattr(msg, "meta", None)
+        content = msg.content or ""
+        lower = content[:500].lower()
         role_label = "Operator" if msg.role == "operator" else "Queen"
 
+        # --- Structured card types ---
         if render == "result_card" and isinstance(meta, dict):
             task = meta.get("task", meta.get("display_name", ""))
             status = meta.get("status", "")
             cost = meta.get("cost", "")
-            summary_parts.append(
-                f"- [{role_label}] Colony result: {task} — {status}"
-                + (f", ${cost:.4f}" if isinstance(cost, (int, float)) else ""),
-            )
-        elif render == "preview_card" and isinstance(meta, dict):
+            line = f"- {task} — {status}"
+            if isinstance(cost, (int, float)):
+                line += f", ${cost:.4f}"
+            if status in ("failed", "error"):
+                blocked_parts.append(line)
+            else:
+                done_parts.append(line)
+            continue
+
+        if render == "preview_card" and isinstance(meta, dict):
             task = meta.get("task", "")
-            summary_parts.append(f"- [{role_label}] Preview proposed: {task}")
-        else:
-            # Prose fallback: truncate to keep bounded.
-            snippet = msg.content[:150].replace("\n", " ")
-            if len(msg.content) > 150:
-                snippet += "…"
-            summary_parts.append(f"- [{role_label}] {snippet}")
+            in_progress_parts.append(f"- Preview: {task}")
+            continue
+
+        # --- Extract file paths from content ---
+        for m in _FILE_PATH_PATTERN.finditer(content):
+            path = m.group(1)
+            if "/" in path or path.count(".") == 1:
+                files_seen.add(path)
+
+        # --- Classify free-text messages ---
+        snippet = content[:150].replace("\n", " ")
+        if len(content) > 150:
+            snippet += "\u2026"
+
+        # Goal: first operator message or explicit goal-setting
+        if not goal_parts and msg.role == "operator":
+            goal_parts.append(snippet)
+            continue
+
+        # Blocked: error/failure indicators
+        if any(kw in lower for kw in _BLOCKED_KEYWORDS):
+            blocked_parts.append(f"- [{role_label}] {snippet}")
+            # Also capture as critical context if it has error details
+            if any(kw in lower for kw in _CRITICAL_KEYWORDS):
+                critical_parts.append(f"- [{role_label}] {snippet}")
+            continue
+
+        # Key Decisions: config/strategy changes
+        if any(kw in lower for kw in ("config", "strategy", "changed", "override", "setting")):
+            decisions_parts.append(f"- [{role_label}] {snippet}")
+            continue
+
+        # Next Steps: forward-looking suggestions
+        if msg.role != "operator" and any(kw in lower for kw in _NEXT_STEP_KEYWORDS):
+            next_steps_parts.append(f"- {snippet}")
+            continue
+
+        # Critical Context: error messages, IDs, concrete values
+        if any(kw in lower for kw in _CRITICAL_KEYWORDS):
+            critical_parts.append(f"- [{role_label}] {snippet}")
+            continue
+
+        # Everything else
+        other_parts.append(f"- [{role_label}] {snippet}")
 
     result: list[dict[str, str]] = []
 
-    if summary_parts:
-        compacted_block = (
-            "Earlier conversation:\n" + "\n".join(summary_parts)
-        )
-        result.append({"role": "system", "content": compacted_block})
+    sections: list[str] = []
+    if goal_parts:
+        sections.append("## Goal")
+        sections.extend(goal_parts)
+    if done_parts or in_progress_parts or blocked_parts:
+        sections.append("## Progress")
+        if done_parts:
+            sections.append("### Done")
+            sections.extend(done_parts)
+        if in_progress_parts:
+            sections.append("### In Progress")
+            sections.extend(in_progress_parts)
+        if blocked_parts:
+            sections.append("### Blocked")
+            sections.extend(blocked_parts)
+    if decisions_parts:
+        sections.append("## Key Decisions")
+        sections.extend(decisions_parts)
+    if files_seen:
+        sections.append("## Relevant Files")
+        for fp in sorted(files_seen):
+            sections.append(f"- `{fp}`")
+    if next_steps_parts:
+        sections.append("## Next Steps")
+        sections.extend(next_steps_parts)
+    if critical_parts:
+        sections.append("## Critical Context")
+        sections.extend(critical_parts)
+    if other_parts:
+        sections.append("## Earlier Context")
+        sections.extend(other_parts)
+
+    if sections:
+        result.append({"role": "system", "content": "\n".join(sections)})
 
     # Re-inject pinned messages from the older region in original order.
     for msg in pinned:
@@ -290,6 +624,10 @@ class QueenAgent:
         self._tool_last_status: dict[str, str] = {}
         # Wave 74 Track 5c: per-workspace initial board population
         self._board_populated_workspaces: set[str] = set()
+        # Wave 75 audit fix: per-thread respond() serialization
+        self._respond_locks: dict[str, asyncio.Lock] = {}
+        # Wave 77.5 A2: per-workspace budget consumption tracking
+        self._last_budget_usage_by_workspace: dict[str, dict[str, Any]] = {}
 
     async def name_colony(
         self,
@@ -504,6 +842,18 @@ class QueenAgent:
             ]
             if _file_arts:
                 result_meta["filesChanged"] = len(_file_arts)
+                # Wave 79.5 B1: include concrete output filenames
+                _output_names = []
+                for _fa in _file_arts[:5]:
+                    _fname = (
+                        _fa.get("filename")
+                        or _fa.get("name")
+                        or _fa.get("path", "")
+                    )
+                    if _fname:
+                        _output_names.append(str(_fname))
+                if _output_names:
+                    result_meta["outputFiles"] = _output_names
 
         # Wave 63 Track 2: check parallel plan aggregation
         completed_plan_id = self._check_parallel_aggregation(colony_id, result_meta)
@@ -546,16 +896,30 @@ class QueenAgent:
         colony_id: str,
         result_meta: dict[str, Any],
     ) -> str | None:
-        """Wave 63 Track 2: check if colony belongs to a parallel plan.
+        """Wave 63/81: check if colony belongs to a parallel plan.
 
-        Returns plan_id if this colony is the last to complete, else None.
-        Stores result_meta for aggregated summary.
+        Updates plan tracker state. Returns plan_id when the plan
+        is fully terminal (all tasks across all groups done).
+        Also triggers deferred-group dispatch when a group completes.
         """
+        # Wave 81: update plan tracker
+        from formicos.surface.parallel_plans import TaskState  # noqa: PLC0415
+
+        tracker = getattr(self, "_plan_tracker", None)
+        if tracker is not None:
+            is_failed = result_meta.get("status") == "failed"
+            state = TaskState.failed if is_failed else TaskState.completed
+            tracker.mark_task_state(colony_id, state, result_meta)
+
+        # Legacy aggregation path
         for plan_id, members in self._pending_parallel.items():
             if colony_id in members:
                 members[colony_id] = result_meta
-                # Check if all colonies in plan have reported
+                # Check if all registered colonies have reported
                 if all(v is not None for v in members.values()):
+                    # Wave 81: check if plan tracker says fully terminal
+                    if tracker is not None and not tracker.is_plan_terminal(plan_id):
+                        return None  # deferred groups still pending
                     return plan_id
                 return None  # Still waiting
         return None  # Not part of any plan
@@ -566,21 +930,48 @@ class QueenAgent:
         workspace_id: str,
         thread_id: str,
     ) -> None:
-        """Wave 63 Track 2: emit aggregated result card for a completed parallel plan."""
+        """Wave 63/81: emit aggregated result card for a completed parallel plan.
+
+        Wave 81: uses plan tracker for honest counts across ALL planned
+        tasks, not only the colonies that happened to spawn.
+        """
         members = self._pending_parallel.pop(plan_id, {})
         if not members:
             return
 
-        succeeded = sum(
-            1 for m in members.values()
-            if m and m.get("status") != "failed"
-        )
-        total = len(members)
+        # Wave 81: try honest counts from plan tracker first
+        tracker = getattr(self, "_plan_tracker", None)
+        tracker_summary: dict[str, Any] | None = None
+        if tracker is not None:
+            tracker_summary = tracker.get_plan_summary(plan_id)
+
+        # Compute from tracker if available, else from legacy members
+        if tracker_summary and tracker_summary.get("total_tasks", 0) > 0:
+            total = tracker_summary["total_tasks"]
+            succeeded = tracker_summary.get("completed", 0)
+            failed = tracker_summary.get("failed", 0)
+            pending = tracker_summary.get("pending", 0)
+            group_count = tracker_summary.get("group_count", 1)
+        else:
+            total = len(members)
+            succeeded = sum(
+                1 for m in members.values()
+                if m and m.get("status") != "failed"
+            )
+            failed = total - succeeded
+            pending = 0
+            group_count = 1
+
         total_cost = sum(
             (m or {}).get("cost", 0.0) for m in members.values()
         )
 
-        lines = [f"Parallel plan complete: {succeeded}/{total} succeeded."]
+        lines = [
+            f"Parallel plan complete: {succeeded}/{total} succeeded"
+            f"{f', {failed} failed' if failed else ''}"
+            f"{f', {pending} pending' if pending else ''}"
+            f" ({group_count} groups).",
+        ]
         for cid, meta in members.items():
             meta = meta or {}
             name = meta.get("displayName", cid)
@@ -598,16 +989,64 @@ class QueenAgent:
                 cid: m for cid, m in members.items()
             },
             "succeeded": succeeded,
+            "failed": failed,
+            "pending": pending,
             "total": total,
+            "groupCount": group_count,
             "totalCost": total_cost,
             "threadId": thread_id,
             "workspaceId": workspace_id,
         }
 
+        # Wave 86: enrich completion truth with verification state
+        verification: dict[str, Any] = {}
+        try:
+            from formicos.surface.plan_patterns import verify_outcome  # noqa: PLC0415
+
+            avg_quality = 0.0
+            if total > 0:
+                qualities = [
+                    (m or {}).get("qualityScore", 0.0)
+                    for m in members.values() if m
+                ]
+                avg_quality = sum(qualities) / max(len(qualities), 1)
+
+            verification = verify_outcome(
+                avg_quality,
+                failed_colonies=failed,
+                total_colonies=total,
+            )
+            group_meta["verification"] = verification
+        except Exception:
+            pass
+
         await self._emit_queen_message(
             workspace_id, thread_id, summary,
             intent="notify", render="result_card", meta=group_meta,
         )
+
+        # Wave 86: auto-learn plan pattern from validated parallel success
+        if verification.get("learnable"):
+            try:
+                from formicos.surface.plan_patterns import auto_learn_pattern  # noqa: PLC0415
+
+                thread = self._runtime.projections.get_thread(
+                    workspace_id, thread_id,
+                )
+                plan_data = getattr(thread, "active_plan", {}) or {}
+                if plan_data:
+                    auto_learn_pattern(
+                        self._runtime.settings.system.data_dir,
+                        workspace_id,
+                        plan_data=plan_data,
+                        outcome={
+                            "quality": avg_quality,
+                            "succeeded": succeeded,
+                            "total": total,
+                        },
+                    )
+            except Exception:
+                log.debug("queen.auto_learn_failed", plan_id=plan_id)
 
     _CONFIRM_WORDS = {"apply", "confirm", "yes", "go ahead", "do it", "approve"}
 
@@ -847,9 +1286,10 @@ class QueenAgent:
         try:
             _data_dir = self._runtime.settings.system.data_dir
             if isinstance(_data_dir, str) and _data_dir:
-                _session_dir = (
-                    Path(_data_dir) / ".formicos" / "sessions"
-                )
+                # Wave 76: workspace-scoped session paths
+                _session_dir = Path(_data_dir) / ".formicos" / "sessions"
+                if workspace_id:
+                    _session_dir = _session_dir / workspace_id
                 _session_dir.mkdir(parents=True, exist_ok=True)
                 _session_path = _session_dir / f"{thread_id}.md"
                 _session_path.write_text(
@@ -886,6 +1326,15 @@ class QueenAgent:
         CRITICAL: This method ALWAYS emits a QueenMessage before returning,
         even on error. The operator must see feedback in the chat panel.
         """
+        # Wave 75 audit fix: serialize concurrent responds per thread
+        _lock_key = f"{workspace_id}/{thread_id}"
+        if _lock_key not in self._respond_locks:
+            self._respond_locks[_lock_key] = asyncio.Lock()
+        async with self._respond_locks[_lock_key]:
+            return await self._respond_inner(workspace_id, thread_id)
+
+    async def _respond_inner(self, workspace_id: str, thread_id: str) -> QueenResponse:
+        """Inner respond logic, called under per-thread lock."""
         thread = self._runtime.projections.get_thread(workspace_id, thread_id)
         if thread is None:
             msg = "Thread not found."
@@ -895,7 +1344,7 @@ class QueenAgent:
         # Wave 74 Track 5c: populate display board on first respond() per workspace
         if workspace_id and workspace_id not in self._board_populated_workspaces:
             try:
-                from formicos.surface.operational_state import post_sweep_observations  # noqa: PLC0415
+                from formicos.surface.operational_state import post_sweep_observations  # noqa: PLC0415, I001
                 from formicos.surface.operations_coordinator import build_operations_summary  # noqa: PLC0415
 
                 _data_dir_str = self._runtime.settings.system.data_dir
@@ -914,7 +1363,16 @@ class QueenAgent:
         if pending_result is not None:
             return pending_result
 
-        queen_model = self._resolve_queen_model(workspace_id)
+        # Wave 78: extract operator message early for cheap-queen routing
+        _last_op_msg = ""
+        for _qm in reversed(thread.queen_messages):
+            if _qm.role == "operator":
+                _last_op_msg = _qm.content
+                break
+
+        queen_model = self._resolve_queen_model(
+            workspace_id, operator_message=_last_op_msg,
+        )
 
         # Wave 68 Track 3: compute dynamic context budget (ADR-051)
         _output_reserve = self._queen_max_tokens(workspace_id)
@@ -925,21 +1383,218 @@ class QueenAgent:
                 if _rec.address == _model_addr:
                     _ctx_window = _rec.context_window
                     break
-        budget = compute_queen_budget(_ctx_window, _output_reserve)
+        # Shared-pool KV: each slot has full context_window (hybrid arch).
+        # Wave 81 TODO: read actual n_ctx from /slots endpoint at startup.
+        _num_slots = 1
+        budget = compute_queen_budget(
+            _ctx_window, _output_reserve, num_slots=_num_slots,
+        )
 
         messages = self._build_messages(thread, budget=budget)
-        tools = self._queen_tools()
+
+        # Wave 79 Track 1: dynamic toolset loading
+        _active_colonies = sum(
+            1 for c in self._runtime.projections.colonies.values()
+            if c.status == "running" and c.workspace_id == workspace_id
+        )
+        _relevant_toolsets = classify_relevant_toolsets(
+            _last_op_msg, active_colonies=_active_colonies,
+        )
+        tools = self._tool_dispatcher.tool_specs_for_toolsets(_relevant_toolsets)
+        _toolsets_widened = False
+
+        # Wave 80 Track A / 84.5: conditional planning brief for decomposition turns
+        _planning_signals_for_meta: dict[str, Any] | None = None
+        if "colony" in _relevant_toolsets and _last_op_msg:
+            try:
+                from formicos.surface.planning_brief import (  # noqa: PLC0415
+                    build_planning_brief,
+                )
+                from formicos.surface.planning_signals import (  # noqa: PLC0415
+                    build_planning_signals,
+                )
+
+                _signals = await build_planning_signals(
+                    self._runtime, workspace_id, thread_id, _last_op_msg,
+                )
+                _planning_signals_for_meta = _signals
+
+                _brief_budget = min(500, budget.memory_retrieval // 3)
+                _brief = await build_planning_brief(
+                    self._runtime, workspace_id, thread_id,
+                    _last_op_msg, token_budget=_brief_budget,
+                )
+                if _brief:
+                    _brief_insert = 0
+                    for _bi, _bm in enumerate(messages):
+                        if _bm.get("role") != "system":
+                            _brief_insert = _bi
+                            break
+                    else:
+                        _brief_insert = len(messages)
+                    messages.insert(_brief_insert, {
+                        "role": "system",
+                        "content": _brief,
+                    })
+            except Exception:
+                log.debug("queen.planning_brief_failed", workspace_id=workspace_id)
+
+        # Wave 85: consolidated routing via planning_policy
+        from formicos.surface.planning_policy import decide_planning_route  # noqa: PLC0415
+
+        _planning_decision = decide_planning_route(
+            _last_op_msg,
+            model_addr=queen_model,
+            active_colonies=_active_colonies,
+        )
+        log.info(
+            "queen.planning_decision",
+            capability=_planning_decision.capability_mode,
+            route=_planning_decision.route,
+            task_class=_planning_decision.task_class,
+            complexity=_planning_decision.complexity,
+            confidence=_planning_decision.confidence,
+        )
+
+        _is_colony_turn = bool(
+            _last_op_msg
+            and "colony" in _relevant_toolsets
+            and _planning_decision.route != "fast_path"
+            and not _is_genuine_question(_last_op_msg)
+            and not _DELIBERATION_RE.search(_last_op_msg)
+        )
+        _prefer_direct_spawn = (
+            _planning_decision.route == "single_colony"
+            and _is_colony_turn
+        )
+
+        if _is_colony_turn:
+            _directive_insert = 0
+            for _di, _dm in enumerate(messages):
+                if _dm.get("role") != "system":
+                    _directive_insert = _di
+                    break
+            else:
+                _directive_insert = len(messages)
+            messages.insert(_directive_insert, {
+                "role": "system",
+                "content": (
+                    "IMPORTANT: The operator's message is implementation work, "
+                    "not a question. Do not stop at reconnaissance or prose. "
+                    "On this turn, call spawn_colony. "
+                    "Use fast_path when a single worker is enough. "
+                    if _prefer_direct_spawn else
+                    "On this turn, call spawn_colony or spawn_parallel. "
+                    "If you need scope context first, do at "
+                    "most 2 tool calls, then immediately delegate."
+                ),
+            })
+
+        # Wave 89 + 89.5: host-mode addon generation.
+        # Pre-scaffold addon structure (manifest + __init__), then inject
+        # a context telling the colony to write ONLY the handler file.
+        if _planning_decision.capability_mode == "host" and _is_colony_turn:
+            import re as _re  # noqa: PLC0415
+
+            # Derive addon name from operator message
+            _addon_name = "colony-dashboard"
+            _name_match = _re.search(
+                r"(?:dashboard|panel|addon)\s+(?:for|showing|called|named)\s+(\w[\w-]*)",
+                _last_op_msg.lower(),
+            )
+            if _name_match:
+                _addon_name = _name_match.group(1)[:30]
+            _addon_package = _addon_name.replace("-", "_")
+
+            # Pre-scaffold the boilerplate files into the project root
+            try:
+                from formicos.surface.addon_template import scaffold_addon  # noqa: PLC0415
+                from formicos.surface.workspace_roots import workspace_project_root  # noqa: PLC0415
+
+                # Write to both project root (persist) and app root (importable)
+                _project_root = workspace_project_root(workspace_id)
+                _base = str(_project_root) if _project_root else "."
+                scaffold_addon(
+                    _addon_name,
+                    description=_last_op_msg[:80],
+                    addons_dir=f"{_base}/addons",
+                    src_dir=f"{_base}/src/formicos/addons",
+                )
+                # Also write to the installed package path for import resolution
+                import formicos.addons as _addons_pkg  # noqa: PLC0415
+                _installed_addons = Path(_addons_pkg.__path__[0])
+                if str(_installed_addons) != f"{_base}/src/formicos/addons":
+                    scaffold_addon(
+                        _addon_name,
+                        description=_last_op_msg[:80],
+                        addons_dir=f"{_base}/addons",
+                        src_dir=str(_installed_addons),
+                    )
+                log.info(
+                    "queen.host_mode_scaffolded",
+                    addon_name=_addon_name,
+                    workspace_id=workspace_id,
+                )
+            except Exception:
+                log.exception("queen.host_scaffold_failed")
+
+            # Inject narrowed context — colony writes ONE handler file
+            _host_context = _HOST_ADDON_CONTEXT_TEMPLATE.format(
+                addon_name=_addon_name,
+                addon_package=_addon_package,
+            )
+            _host_insert = 0
+            for _hi, _hm in enumerate(messages):
+                if _hm.get("role") != "system":
+                    _host_insert = _hi
+                    break
+            else:
+                _host_insert = len(messages)
+            messages.insert(_host_insert, {
+                "role": "system",
+                "content": _host_context,
+            })
+            log.info(
+                "queen.host_mode_context_injected",
+                addon_name=_addon_name,
+                workspace_id=workspace_id,
+            )
+
+        # Wave 81.2 + 85: colony-work first-turn tool narrowing.
+        _DELEGATION_TOOLS = {
+            "spawn_colony",
+            "get_status", "memory_search", "list_templates",
+        }
+        if not _prefer_direct_spawn:
+            _DELEGATION_TOOLS.add("spawn_parallel")
+        _colony_narrowed = (
+            _is_colony_turn
+            and not any(m.get("role") == "assistant" for m in messages)
+        )
+        _first_turn_tools = (
+            [t for t in tools if t["name"] in _DELEGATION_TOOLS]
+            if _colony_narrowed
+            else tools
+        )
+        if _colony_narrowed:
+            log.info(
+                "queen.tool_narrowing",
+                narrowed=True,
+                route=_planning_decision.route,
+                direct_spawn=_prefer_direct_spawn,
+                first_turn_count=len(_first_turn_tools),
+                full_count=len(tools),
+            )
+
         actions: list[dict[str, Any]] = []
         response = None
         fallback_result_text: str | None = None
+        _recon_follow_up_used = False
+        _executed_tool_iteration = False
 
         # Wave 26 B3: deterministic pre-spawn memory retrieval
-        last_operator_msg = ""
+        last_operator_msg = _last_op_msg  # already extracted for cheap-queen routing
         _consulted: list[dict[str, Any]] = []
-        for msg in reversed(thread.queen_messages):
-            if msg.role == "operator":
-                last_operator_msg = msg.content
-                break
         if last_operator_msg:
             memory_block, _memory_items = (
                 await self._runtime.retrieve_relevant_memory(
@@ -947,6 +1602,8 @@ class QueenAgent:
                 )
             )
             if memory_block:
+                # Wave 76: cap memory retrieval to its budget slot
+                memory_block = memory_block[:budget.memory_retrieval * 4]
                 # Insert after system prompt(s) but before conversation history
                 insert_idx = 0
                 for i, m in enumerate(messages):
@@ -1079,10 +1736,14 @@ class QueenAgent:
         try:
             _data_dir2 = self._runtime.settings.system.data_dir
             if isinstance(_data_dir2, str) and _data_dir2:
-                _session_path = (
-                    Path(_data_dir2) / ".formicos" / "sessions"
-                    / f"{thread_id}.md"
-                )
+                # Wave 76: workspace-scoped with migration fallback
+                _session_base = Path(_data_dir2) / ".formicos" / "sessions"
+                if workspace_id:
+                    _session_path = _session_base / workspace_id / f"{thread_id}.md"
+                    if not _session_path.is_file():
+                        _session_path = _session_base / f"{thread_id}.md"
+                else:
+                    _session_path = _session_base / f"{thread_id}.md"
                 if _session_path.is_file():
                     _session_text = _session_path.read_text(
                         encoding="utf-8",
@@ -1108,6 +1769,8 @@ class QueenAgent:
         # Wave 29: inject thread workflow context
         thread_ctx = self._build_thread_context(thread_id, workspace_id)
         if thread_ctx:
+            # Wave 76: cap thread context to its budget slot
+            thread_ctx = thread_ctx[:budget.thread_context * 4]
             # Insert after system prompt(s), before conversation history
             insert_pos = 0
             for i, m in enumerate(messages):
@@ -1344,15 +2007,34 @@ class QueenAgent:
                         "@cloud", ""
                     ).strip()
 
+        # Wave 77.5 A2: track per-slot budget consumption
+        self._track_budget_usage(messages, workspace_id)
+
+        # Wave 77.5 A8: prune old tool results before LLM call
+        messages = _prune_old_tool_results(messages)
+
         try:
             for _iteration in range(_MAX_TOOL_ITERATIONS):
+                # Keep narrowed until a spawn action happens
+                _active_tools = (
+                    _first_turn_tools
+                    if _colony_narrowed and not actions
+                    else tools
+                )
+                # Wave 87: require tool use on first narrowed cold-start turn
+                _force_tool: object | None = (
+                    "required"
+                    if _colony_narrowed and not actions
+                    else None
+                )
                 try:
                     response = await self._runtime.llm_router.complete(
                         model=queen_model,
                         messages=messages,  # type: ignore[arg-type]
-                        tools=tools,  # type: ignore[arg-type]
+                        tools=_active_tools,  # type: ignore[arg-type]
                         temperature=self._queen_temperature(),
                         max_tokens=self._queen_max_tokens(workspace_id),
+                        tool_choice=_force_tool,
                     )
                 except Exception:
                     log.exception("queen.llm_error", workspace_id=workspace_id,
@@ -1371,6 +2053,32 @@ class QueenAgent:
                     return QueenResponse(reply=error_msg)
 
                 if not response.tool_calls:
+                    if (
+                        not actions
+                        and not _recon_follow_up_used
+                        and _executed_tool_iteration
+                        and "colony" in _relevant_toolsets
+                        and _looks_like_colony_work(last_operator_msg)
+                    ):
+                        _recon_follow_up_used = True
+                        messages.append({
+                            "role": "assistant",
+                            "content": response.content or "(no action taken)",
+                        })
+                        messages.append({
+                            "role": "system",
+                            "content": (
+                                "The operator asked for concrete implementation work. "
+                                "Do not stop after reconnaissance alone. On this turn, "
+                                "call spawn_colony. Use fast_path when a single worker "
+                                "is enough, or state the specific blocker preventing "
+                                "execution."
+                                if _prefer_direct_spawn else
+                                "either call spawn_parallel or spawn_colony, "
+                                "or state the specific blocker preventing execution."
+                            ),
+                        })
+                        continue
                     break
 
                 # Wave 61: safety net — if the operator's message looks
@@ -1399,10 +2107,25 @@ class QueenAgent:
                 tool_results: list[str] = []
                 for tc in response.tool_calls:
                     tc_dict: dict[str, Any] = tc  # pyright: ignore[reportAssignmentType]
+                    tc_dict = self._sanitize_dispatch_tool_call(
+                        tc_dict,
+                        force_dispatch=_colony_narrowed and not actions,
+                        prefer_fast_path=_prefer_direct_spawn,
+                    )
                     result, action = await self._execute_tool(tc_dict, workspace_id, thread_id)
                     tool_results.append(result)
                     if action:
                         actions.append(action)
+                _executed_tool_iteration = True
+
+                # Wave 79 Track 1D: auto-widen on unknown tool hallucination
+                if (
+                    not _toolsets_widened
+                    and any(r.startswith("Unknown tool:") for r in tool_results)
+                ):
+                    tools = self._tool_dispatcher.tool_specs()
+                    _toolsets_widened = True
+                    log.info("queen.toolsets_widened", workspace_id=workspace_id)
 
                 # Feed results back as untrusted prompt data (Wave 52 B0)
                 messages.append({"role": "assistant", "content": response.content or "(tool call)"})
@@ -1426,6 +2149,11 @@ class QueenAgent:
                 if intent is not None:
                     tc_dict = intent_to_tool_call(intent)
                     if tc_dict.get("name"):
+                        tc_dict = self._sanitize_dispatch_tool_call(
+                            tc_dict,
+                            force_dispatch=_colony_narrowed,
+                            prefer_fast_path=_prefer_direct_spawn,
+                        )
                         log.info(
                             "queen.intent_fallback",
                             action=intent["action"], via=via,
@@ -1437,6 +2165,63 @@ class QueenAgent:
                         if action:
                             action["via"] = f"intent_parser:{via}"
                             actions.append(action)
+
+            # Wave 81: post-loop recon follow-up.
+            # If the Queen spent all iterations on recon tools without
+            # spawning, give her one more turn to act.  The last iteration
+            # may still have tool_calls (all recon), so we don't gate on
+            # response.tool_calls here — only on whether a spawn happened.
+            if (
+                not actions
+                and not _recon_follow_up_used
+                and _executed_tool_iteration
+                and "colony" in _relevant_toolsets
+                and _looks_like_colony_work(last_operator_msg)
+                and response
+            ):
+                _recon_follow_up_used = True
+                messages.append({
+                    "role": "assistant",
+                    "content": response.content or "(no action taken)",
+                })
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "The operator asked for concrete implementation work. "
+                        "Do not stop after reconnaissance alone. On this turn, "
+                        "call spawn_colony. Use fast_path when a single worker "
+                        "is enough, or state the specific blocker preventing "
+                        "execution."
+                        if _prefer_direct_spawn else
+                        "either call spawn_parallel or spawn_colony, "
+                        "or state the specific blocker preventing execution."
+                    ),
+                })
+                try:
+                    response = await self._runtime.llm_router.complete(
+                        model=queen_model,
+                        messages=messages,  # type: ignore[arg-type]
+                        tools=(
+                            _first_turn_tools if _prefer_direct_spawn else tools
+                        ),  # type: ignore[arg-type]
+                        temperature=self._queen_temperature(),
+                        max_tokens=self._queen_max_tokens(workspace_id),
+                    )
+                    if response.tool_calls:
+                        for tc in response.tool_calls:
+                            tc_dict_fb: dict[str, Any] = tc  # pyright: ignore[reportAssignmentType]
+                            tc_dict_fb = self._sanitize_dispatch_tool_call(
+                                tc_dict_fb,
+                                force_dispatch=True,
+                                prefer_fast_path=_prefer_direct_spawn,
+                            )
+                            result, action = await self._execute_tool(
+                                tc_dict_fb, workspace_id, thread_id,
+                            )
+                            if action:
+                                actions.append(action)
+                except Exception:
+                    log.exception("queen.recon_followup_failed", workspace_id=workspace_id)
 
             # Wave 64 Track 4 (C): auto-escalation on parse failure.
             # If local model produced no tool calls, no intent, short
@@ -1543,6 +2328,10 @@ class QueenAgent:
                 msg_meta = {}
             msg_meta["model_used"] = queen_model
 
+            # Wave 84.5: attach compact planning signals to meta
+            if _planning_signals_for_meta:
+                msg_meta["planning_signals"] = _planning_signals_for_meta
+
             await self._emit_queen_message(
                 workspace_id, thread_id, reply,
                 intent=msg_intent, render=msg_render, meta=msg_meta,
@@ -1555,7 +2344,21 @@ class QueenAgent:
             await self._emit_queen_message(workspace_id, thread_id, error_msg)
             return QueenResponse(reply=error_msg)
 
-    def _resolve_queen_model(self, workspace_id: str) -> str:
+    def _resolve_queen_model(
+        self, workspace_id: str, *, operator_message: str = "",
+    ) -> str:
+        """Resolve Queen model with optional cheap-queen routing (Wave 78).
+
+        When ``cheap_queen`` is configured in model defaults and the
+        operator message classifies as ``simple``, route to the cheaper
+        model instead.
+        """
+        # Check for cheap_queen configuration
+        cheap = self._runtime.settings.models.defaults.cheap_queen or ""
+        if cheap and operator_message:
+            complexity = classify_complexity(operator_message)
+            if complexity == "simple":
+                return cheap
         return self._runtime.resolve_model("queen", workspace_id)
 
     def _queen_temperature(self) -> float:
@@ -1851,12 +2654,15 @@ class QueenAgent:
             if notes:
                 latest = notes[-self._tool_dispatcher._INJECT_NOTES:]  # pyright: ignore[reportPrivateUsage]
                 note_lines = [f"- {n.get('content', '')}" for n in latest]
+                notes_content = (
+                    "Your saved notes (operator preferences and memory):\n"
+                    + "\n".join(note_lines)
+                )
+                # Wave 76: cap notes to tool_memory budget slot
+                notes_content = notes_content[:budget.tool_memory * 4]
                 messages.append({
                     "role": "system",
-                    "content": (
-                        "Your saved notes (operator preferences and memory):\n"
-                        + "\n".join(note_lines)
-                    ),
+                    "content": notes_content,
                 })
 
         # Wave 63 Track 1: inject prior-turn tool memory (last 3 turns)
@@ -1891,6 +2697,23 @@ class QueenAgent:
                     ),
                 })
 
+        # Wave 77: working memory injection (ADR-052)
+        if workspace_id:
+            try:
+                from formicos.surface.ai_filesystem import read_working_memory  # noqa: PLC0415
+
+                data_dir = self._runtime.settings.system.data_dir
+                wm_content = read_working_memory(
+                    data_dir, workspace_id, budget.working_memory,
+                )
+                if wm_content:
+                    messages.append({
+                        "role": "system",
+                        "content": wm_content,
+                    })
+            except Exception:  # noqa: BLE001
+                pass  # No working memory available
+
         # Metacognitive nudges (Wave 26 Track C) — ephemeral developer hints
         self._inject_nudges(messages, workspace_id, thread)
 
@@ -1906,6 +2729,46 @@ class QueenAgent:
             messages.append(entry)
 
         return messages
+
+    def _track_budget_usage(
+        self,
+        messages: list[dict[str, str]],
+        workspace_id: str,
+    ) -> None:
+        """Record per-slot token consumption for budget transparency (Wave 77.5 A2)."""
+        _cpt = 4  # chars per token estimate
+        usage: dict[str, int] = {}
+        for msg in messages:
+            content = msg.get("content", "")
+            tokens = len(content) // _cpt
+            role = msg.get("role", "")
+            if content.startswith("You are") or content.startswith("## Tools"):
+                usage["system_prompt"] = usage.get("system_prompt", 0) + tokens
+            elif "# Project Context" in content:
+                usage["project_context"] = usage.get("project_context", 0) + tokens
+            elif "# Project Plan" in content or "milestone" in content[:100].lower():
+                usage["project_plan"] = usage.get("project_plan", 0) + tokens
+            elif "# Operating Procedures" in content:
+                usage["operating_procedures"] = usage.get("operating_procedures", 0) + tokens
+            elif "# Queen Journal" in content:
+                usage["queen_journal"] = usage.get("queen_journal", 0) + tokens
+            elif "# Prior Session Context" in content or "thread_context" in content[:50].lower():
+                usage["thread_context"] = usage.get("thread_context", 0) + tokens
+            elif "saved notes" in content[:80].lower() or "Prior tool results" in content[:50]:
+                usage["tool_memory"] = usage.get("tool_memory", 0) + tokens
+            elif "# Working Memory" in content:
+                usage["working_memory"] = usage.get("working_memory", 0) + tokens
+            elif role == "system" and "relevant knowledge" in content[:100].lower():
+                usage["memory_retrieval"] = usage.get("memory_retrieval", 0) + tokens
+            elif role != "system":
+                usage["conversation_history"] = usage.get("conversation_history", 0) + tokens
+            else:
+                usage["system_prompt"] = usage.get("system_prompt", 0) + tokens
+
+        self._last_budget_usage_by_workspace[workspace_id] = {
+            "slots": usage,
+            "total_consumed": sum(usage.values()),
+        }
 
     def _inject_nudges(
         self,
@@ -2054,10 +2917,14 @@ class QueenAgent:
         try:
             _data_dir = self._runtime.settings.system.data_dir
             if isinstance(_data_dir, str) and _data_dir:
-                _plan_path = (
-                    Path(_data_dir) / ".formicos" / "plans"
-                    / f"{thread_id}.md"
-                )
+                # Wave 76: workspace-scoped plan path with fallback
+                _plans_base = Path(_data_dir) / ".formicos" / "plans"
+                if workspace_id:
+                    _plan_path = _plans_base / workspace_id / f"{thread_id}.md"
+                    if not _plan_path.is_file():
+                        _plan_path = _plans_base / f"{thread_id}.md"
+                else:
+                    _plan_path = _plans_base / f"{thread_id}.md"
                 if _plan_path.is_file():
                     _plan_text = _plan_path.read_text(
                         encoding="utf-8",
@@ -2079,6 +2946,57 @@ class QueenAgent:
     def _queen_tools(self) -> list[dict[str, Any]]:
         """Define the tools available to the Queen (ADR-030)."""
         return self._tool_dispatcher.tool_specs()
+
+    def _sanitize_dispatch_tool_call(
+        self,
+        tc: dict[str, Any],
+        *,
+        force_dispatch: bool = False,
+        prefer_fast_path: bool = False,
+    ) -> dict[str, Any]:
+        """Normalize spawn tool calls for implementation-turn execution."""
+        tool_name = str(tc.get("name", ""))
+        if tool_name not in {"spawn_colony", "spawn_parallel"}:
+            return tc
+
+        try:
+            inputs = dict(self._runtime.parse_tool_input(tc))
+        except Exception:
+            return tc
+
+        preview_stripped = False
+        fast_path_forced = False
+
+        if force_dispatch and bool(inputs.get("preview", False)):
+            inputs["preview"] = False
+            preview_stripped = True
+
+        if prefer_fast_path and tool_name == "spawn_colony" and not inputs.get("fast_path", False):
+            raw_castes = inputs.get("castes", [])
+            slot_count = 0
+            if isinstance(raw_castes, list):
+                for item in raw_castes:
+                    if isinstance(item, dict):
+                        slot_count += max(1, int(item.get("count", 1)))
+                    else:
+                        slot_count += 1
+            if slot_count <= 1:
+                inputs["fast_path"] = True
+                fast_path_forced = True
+
+        if not preview_stripped and not fast_path_forced:
+            return tc
+
+        updated = dict(tc)
+        updated["input"] = inputs
+        updated.pop("arguments", None)
+        log.info(
+            "queen.tool_call_sanitized",
+            tool=tool_name,
+            preview_stripped=preview_stripped,
+            fast_path_forced=fast_path_forced,
+        )
+        return updated
 
     async def _execute_tool(
         self,

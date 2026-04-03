@@ -215,6 +215,15 @@ export class FcPreviewCard extends LitElement {
           </div>
         ` : nothing}
 
+        ${p.groups && p.groups.length > 1 ? html`
+          <div class="files-list" style="margin-top:4px">
+            <span class="files-label">${p.totalPlannedTasks ?? p.groups.flat().length} tasks in ${p.groups.length} groups:</span>
+            ${p.groups.map((g, i) => html`
+              <span style="font-size:10px;color:var(--v-fg-dim)">G${i + 1}(${g.tasks.length})</span>
+            `)}
+          </div>
+        ` : nothing}
+
         ${this.confirmed ? html`
           <div style="font-size:10px;color:var(--v-success);font-weight:600;margin-top:6px">\u2713 Confirmed — colony dispatched</div>
         ` : this.cancelled ? html`
